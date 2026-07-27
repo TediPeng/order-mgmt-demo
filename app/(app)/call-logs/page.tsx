@@ -18,7 +18,7 @@ export default async function CallLogsPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = readDb();
+  const db = await readDb();
   const canView = can(user.role, "call_logs", "view", db.role_permissions);
   const canUpload = can(user.role, "call_logs", "upload", db.role_permissions);
   const canDelete = can(user.role, "call_logs", "delete", db.role_permissions);

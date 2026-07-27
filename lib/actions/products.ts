@@ -46,7 +46,7 @@ export async function createProductAction(formData: FormData) {
     updated_value: product,
     ...info,
   });
-  writeDb(db);
+  await writeDb(db);
   redirect(`/products/${product.id}?created=1`);
 }
 
@@ -86,7 +86,7 @@ export async function updateProductAction(productId: string, formData: FormData)
     updated_value: product,
     ...info,
   });
-  writeDb(db);
+  await writeDb(db);
   redirect(`/products/${productId}?updated=1`);
 }
 
@@ -113,7 +113,7 @@ export async function setProductActiveAction(productId: string, active: boolean)
     { name: product!.name },
     { module: "products", previous_value: before, updated_value: product, ...info }
   );
-  writeDb(db);
+  await writeDb(db);
   redirect(`/products?${active ? "activated" : "deactivated"}=1`);
 }
 
@@ -138,6 +138,6 @@ export async function deleteProductAction(productId: string) {
     previous_value: removed,
     ...info,
   });
-  writeDb(db);
+  await writeDb(db);
   redirect("/products?deleted=1");
 }

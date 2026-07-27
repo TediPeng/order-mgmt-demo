@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 
 export default async function FileUploadsPage() {
   const user = (await getCurrentUser())!;
-  const db = readDb();
+  const db = await readDb();
 
   if (!can(user.role, "file_uploads", "view", db.role_permissions)) redirect("/dashboard");
 

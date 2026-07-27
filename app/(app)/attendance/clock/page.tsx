@@ -18,7 +18,7 @@ export default async function TimeClockPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = readDb();
+  const db = await readDb();
   const today = todayInTz();
   const record = db.attendance.find((a) => a.user_id === user.id && a.work_date === today);
   const canOverride = can(user.role, "attendance", "approve", db.role_permissions);

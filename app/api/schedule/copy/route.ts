@@ -13,7 +13,7 @@ import { copySchedules } from "@/lib/actions/schedules";
 export async function POST(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  const db = readDb();
+  const db = await readDb();
   if (!can(user.role, "schedules", "assign", db.role_permissions)) {
     return NextResponse.json({ ok: false, error: "You do not have permission to copy schedules." }, { status: 403 });
   }
@@ -73,6 +73,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  writeDb(db);
+  await writeDb(db);
   return NextResponse.json({ ok: true, preview: false, summary });
 }

@@ -13,7 +13,7 @@ export default async function SalesMonitoringPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = readDb();
+  const db = await readDb();
 
   if (!can(user.role, "performance", "view", db.role_permissions)) redirect("/dashboard");
 

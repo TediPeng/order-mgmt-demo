@@ -36,7 +36,7 @@ export function logActivity(
   });
 }
 
-export function logActivityStandalone(
+export async function logActivityStandalone(
   userId: string | null,
   action: string,
   entityType: string | null = null,
@@ -44,7 +44,7 @@ export function logActivityStandalone(
   details: Record<string, unknown> | null = null,
   extra: AuditExtra = {}
 ) {
-  const db = readDb();
+  const db = await readDb();
   logActivity(db, userId, action, entityType, entityId, details, extra);
-  writeDb(db);
+  await writeDb(db);
 }

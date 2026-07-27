@@ -22,7 +22,7 @@ export default async function AttendanceManagePage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = readDb();
+  const db = await readDb();
 
   const canCreate = can(user.role, "attendance", "create", db.role_permissions);
   const canEdit = can(user.role, "attendance", "edit", db.role_permissions);

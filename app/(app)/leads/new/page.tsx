@@ -17,7 +17,7 @@ export default async function NewLeadPage({
 }) {
   const { error } = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = readDb();
+  const db = await readDb();
   const allowedIds = new Set(allowedAssigneeIds(user, db));
   const agents = db.profiles.filter((p) => p.is_active && allowedIds.has(p.id));
   const canReassign = isFullAccess(user.role);

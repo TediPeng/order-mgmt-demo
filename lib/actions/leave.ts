@@ -1,9 +1,9 @@
 "use server";
 
-import fs from "fs";
 import path from "path";
 import { redirect } from "next/navigation";
-import { writeDb, uuid, nowIso, UPLOADS_DIR } from "@/lib/db";
+import { writeDb, uuid, nowIso } from "@/lib/db";
+import { uploadFile } from "@/lib/storage";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { notify, supervisorRecipients } from "@/lib/notifications";
@@ -14,7 +14,6 @@ import type { LeaveRequest, LeaveStatus } from "@/lib/types";
 
 const MAX_SIZE = 5 * 1024 * 1024;
 const ALLOWED_EXT = [".pdf", ".jpg", ".jpeg", ".png"];
-const LEAVE_UPLOADS_DIR = path.join(UPLOADS_DIR, "leave");
 
 function dateOnlyUTC(d: string): number {
   const [y, m, day] = d.split("-").map(Number);
@@ -77,9 +76,8 @@ export async function fileLeaveAction(formData: FormData) {
     if (file.size > MAX_SIZE) {
       redirect(`/leave?error=${encodeURIComponent("Attachment must be 5 MB or smaller.")}`);
     }
-    if (!fs.existsSync(LEAVE_UPLOADS_DIR)) fs.mkdirSync(LEAVE_UPLOADS_DIR, { recursive: true });
     const storedName = `${uuid()}${ext}`;
-    fs.writeFileSync(path.join(LEAVE_UPLOADS_DIR, storedName), Buffer.from(await file.arrayBuffer()));
+    await uploadFile(`leave/${storedName}`, Buffer.from(await file.arrayBuffer()));
     attachmentPath = storedName;
   } else if (data.leave_type === "sick" && db.work_schedule.require_attachment_for_sick_leave) {
     redirect(`/leave?error=${encodeURIComponent("A supporting document is required for Sick leave.")}`);
@@ -126,7 +124,7 @@ export async function fileLeaveAction(formData: FormData) {
     "/leave"
   );
 
-  writeDb(db);
+  await writeDb(db);
   redirect("/leave?filed=1");
 }
 
@@ -149,7 +147,7 @@ export async function cancelLeaveAction(requestId: string) {
     updated_value: request,
     ...info,
   });
-  writeDb(db);
+  await writeDb(db);
   redirect("/leave?cancelled=1");
 }
 
@@ -197,7 +195,7 @@ export async function resubmitLeaveAction(formData: FormData) {
     `${user.full_name} resubmitted a leave request for ${request!.leave_start} to ${request!.leave_end}.`,
     "/leave"
   );
-  writeDb(db);
+  await writeDb(db);
   redirect("/leave?filed=1");
 }
 
@@ -284,6 +282,6 @@ export async function reviewLeaveAction(formData: FormData) {
     "/leave"
   );
 
-  writeDb(db);
+  await writeDb(db);
   redirect("/leave?reviewed=1");
 }

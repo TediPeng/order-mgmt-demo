@@ -16,7 +16,7 @@ export async function loginAction(formData: FormData) {
     redirect(`/login?error=${encodeURIComponent("Please enter your username and password.")}`);
   }
 
-  const db = readDb();
+  const db = await readDb();
   const user = db.profiles.find((p) => p.username.toLowerCase() === username.toLowerCase());
 
   if (!user || !verifyPassword(password, user.password_hash)) {
@@ -24,18 +24,18 @@ export async function loginAction(formData: FormData) {
       module: "settings",
       ...info,
     });
-    writeDb(db);
+    await writeDb(db);
     redirect(`/login?error=${encodeURIComponent("Incorrect username or password.")}`);
   }
 
   if (!user.is_active) {
     logActivity(db, user.id, "LOGIN_FAILED", "auth", null, { reason: "deactivated" }, { module: "settings", ...info });
-    writeDb(db);
+    await writeDb(db);
     redirect(`/login?error=${encodeURIComponent("This account has been deactivated. Contact your administrator.")}`);
   }
 
   logActivity(db, user.id, "LOGIN", "auth", user.id, { username: user.username }, { module: "settings", ...info });
-  writeDb(db);
+  await writeDb(db);
   await createSession(user.id);
   redirect("/dashboard");
 }
@@ -43,10 +43,10 @@ export async function loginAction(formData: FormData) {
 export async function logoutAction() {
   const user = await getCurrentUser();
   if (user) {
-    const db = readDb();
+    const db = await readDb();
     const info = await getRequestInfo();
     logActivity(db, user.id, "LOGOUT", "auth", user.id, { username: user.username }, { module: "settings", ...info });
-    writeDb(db);
+    await writeDb(db);
   }
   await destroySession();
   redirect("/login");
@@ -54,11 +54,11 @@ export async function logoutAction() {
 
 export async function requestPasswordResetAction(formData: FormData) {
   const email = String(formData.get("email") || "").trim();
-  const db = readDb();
+  const db = await readDb();
   const user = db.profiles.find((p) => p.email.toLowerCase() === email.toLowerCase());
   if (user) {
     logActivity(db, user.id, "PASSWORD_RESET_REQUESTED", "auth", user.id, { email });
-    writeDb(db);
+    await writeDb(db);
   }
   redirect(`/forgot-password?sent=1`);
 }
@@ -78,7 +78,7 @@ export async function changeOwnPasswordAction(formData: FormData) {
     redirect(`/settings/password?error=${encodeURIComponent(msg)}`);
   }
 
-  const db = readDb();
+  const db = await readDb();
   const profile = db.profiles.find((p) => p.id === user!.id)!;
 
   if (!verifyPassword(parsed.data.current_password, profile.password_hash)) {
@@ -89,6 +89,6 @@ export async function changeOwnPasswordAction(formData: FormData) {
   profile.must_change_password = false;
   const info = await getRequestInfo();
   logActivity(db, user!.id, "PASSWORD_CHANGED", "user", user!.id, { self: true }, { module: "settings", ...info });
-  writeDb(db);
+  await writeDb(db);
   redirect(`/settings/password?success=1`);
 }

@@ -86,7 +86,7 @@ export async function timeInAction(formData: FormData) {
     );
   }
 
-  writeDb(db);
+  await writeDb(db);
   redirect(`${target}?timedin=1`);
 }
 
@@ -132,7 +132,7 @@ export async function timeOutAction(formData: FormData) {
     { work_date: today, total_hours: record!.total_hours },
     { module: "attendance", ...info }
   );
-  writeDb(db);
+  await writeDb(db);
   redirect(`${target}?timedout=1`);
 }
 
@@ -159,7 +159,7 @@ export async function startBreakAction(formData: FormData) {
   record!.break_end = null;
   const info = await getRequestInfo();
   logActivity(db, user.id, "BREAK_START", "attendance", record!.id, { work_date: today }, { module: "attendance", ...info });
-  writeDb(db);
+  await writeDb(db);
   redirect(`${target}?breakstarted=1`);
 }
 
@@ -208,7 +208,7 @@ export async function endBreakAction(formData: FormData) {
     module: "attendance",
     ...info,
   });
-  writeDb(db);
+  await writeDb(db);
   redirect(`${target}?breakended=1`);
 }
 
@@ -241,7 +241,7 @@ export async function checkOverBreakAction() {
         `${user.full_name} exceeded break by ${over} minute(s).`,
         "/attendance/clock"
       );
-      writeDb(db);
+      await writeDb(db);
     }
   }
   revalidatePath("/attendance/clock");
@@ -326,6 +326,6 @@ export async function overrideAttendanceAction(formData: FormData) {
     { target_user_id: data.user_id, work_date: data.work_date, reason: data.reason },
     { module: "attendance", previous_value: before, updated_value: record, ...info }
   );
-  writeDb(db);
+  await writeDb(db);
   redirect(`/attendance/clock?overridden=1`);
 }

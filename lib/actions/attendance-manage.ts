@@ -1,9 +1,9 @@
 "use server";
 
-import fs from "fs";
 import path from "path";
 import { redirect } from "next/navigation";
-import { writeDb, uuid, nowIso, UPLOADS_DIR } from "@/lib/db";
+import { writeDb, uuid, nowIso } from "@/lib/db";
+import { uploadFile } from "@/lib/storage";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { requireUser, requirePermission } from "./guards";
@@ -14,7 +14,6 @@ import type { Attendance, AttendanceStatus } from "@/lib/types";
 
 const MAX_SIZE = 5 * 1024 * 1024;
 const ALLOWED_EXT = [".pdf", ".jpg", ".jpeg", ".png"];
-const ATTENDANCE_UPLOADS_DIR = path.join(UPLOADS_DIR, "attendance");
 
 function scopedEmployeeIds(role: string, userId: string, allProfiles: { id: string; team_lead_id: string | null }[]): string[] | null {
   if (isFullAccess(role)) return null; // no restriction
@@ -95,9 +94,8 @@ export async function createOrUpdateAttendanceAction(formData: FormData) {
     if (file.size > MAX_SIZE) {
       redirect(`/attendance/manage?error=${encodeURIComponent("Attachment must be 5 MB or smaller.")}`);
     }
-    if (!fs.existsSync(ATTENDANCE_UPLOADS_DIR)) fs.mkdirSync(ATTENDANCE_UPLOADS_DIR, { recursive: true });
     const storedName = `${uuid()}${ext}`;
-    fs.writeFileSync(path.join(ATTENDANCE_UPLOADS_DIR, storedName), Buffer.from(await file.arrayBuffer()));
+    await uploadFile(`attendance/${storedName}`, Buffer.from(await file.arrayBuffer()));
     attachmentPath = storedName;
   }
 
@@ -171,6 +169,6 @@ export async function createOrUpdateAttendanceAction(formData: FormData) {
     );
   }
 
-  writeDb(db);
+  await writeDb(db);
   redirect("/attendance/manage?saved=1");
 }

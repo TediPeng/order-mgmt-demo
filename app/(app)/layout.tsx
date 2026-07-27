@@ -11,8 +11,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const db = readDb();
-  if (sweepAutoAbsences(db)) writeDb(db);
+  const db = await readDb();
+  if (sweepAutoAbsences(db)) await writeDb(db);
   const access = {} as Record<ModuleKey, boolean>;
   for (const m of MODULES) {
     access[m] = can(user.role, m, "view", db.role_permissions);

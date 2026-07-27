@@ -20,7 +20,7 @@ export default async function UsersPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = readDb();
+  const db = await readDb();
 
   if (!can(user.role, "users", "view", db.role_permissions)) redirect("/dashboard");
   const canCreate = can(user.role, "users", "create", db.role_permissions);

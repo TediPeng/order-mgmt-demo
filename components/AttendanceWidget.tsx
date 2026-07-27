@@ -7,7 +7,7 @@ import { readDb } from "@/lib/db";
 import type { Profile } from "@/lib/types";
 import { timeInAction, timeOutAction } from "@/lib/actions/attendance";
 
-export function AttendanceWidget({
+export async function AttendanceWidget({
   user,
   redirectTo = "/dashboard",
   showClock = false,
@@ -16,7 +16,7 @@ export function AttendanceWidget({
   redirectTo?: string;
   showClock?: boolean;
 }) {
-  const db = readDb();
+  const db = await readDb();
   const today = todayInTz();
   const record = db.attendance.find((a) => a.user_id === user.id && a.work_date === today);
 

@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const db = readDb();
+  const db = await readDb();
   if (!can(user.role, "audit_logs", "export", db.role_permissions)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
     module: "audit_logs",
     ...info,
   });
-  writeDb(db);
+  await writeDb(db);
 
   return new NextResponse(csv, {
     headers: {

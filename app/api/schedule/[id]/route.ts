@@ -13,7 +13,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  const db = readDb();
+  const db = await readDb();
 
   const existing = db.schedules.find((s) => s.id === id);
   if (!existing) return NextResponse.json({ ok: false, error: "Schedule not found." }, { status: 404 });
@@ -73,7 +73,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   );
   const action = body.schedule_date && body.schedule_date !== before.schedule_date ? "moved" : "updated";
   notifyAgentSchedule(db, result.schedule, action);
-  writeDb(db);
+  await writeDb(db);
 
   return NextResponse.json({ ok: true, schedule: result.schedule });
 }
@@ -82,7 +82,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const { id } = await params;
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  const db = readDb();
+  const db = await readDb();
 
   const existing = db.schedules.find((s) => s.id === id);
   if (!existing) return NextResponse.json({ ok: false, error: "Schedule not found." }, { status: 404 });
@@ -110,7 +110,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     { module: "schedules", previous_value: removed, ...info }
   );
   notifyAgentSchedule(db, removed, "deleted");
-  writeDb(db);
+  await writeDb(db);
 
   return NextResponse.json({ ok: true });
 }

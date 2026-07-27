@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 
 export default async function ReportsPage() {
   const user = (await getCurrentUser())!;
-  const db = readDb();
+  const db = await readDb();
 
   if (!can(user.role, "reports", "view", db.role_permissions)) redirect("/dashboard");
 

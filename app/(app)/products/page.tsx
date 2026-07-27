@@ -17,7 +17,7 @@ export default async function ProductsPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = readDb();
+  const db = await readDb();
   if (!can(user.role, "products", "view", db.role_permissions)) {
     return (
       <Alert kind="error">You do not have permission to view Products.</Alert>

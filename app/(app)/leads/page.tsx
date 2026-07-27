@@ -39,7 +39,7 @@ export default async function LeadsPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = readDb();
+  const db = await readDb();
   const isAgent = user.role === "agent";
   const canImport = can(user.role, "orders", "upload", db.role_permissions);
   const canExport = can(user.role, "orders", "export", db.role_permissions);

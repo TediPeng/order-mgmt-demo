@@ -7,7 +7,7 @@ import type { ActionKey, DbShape, ModuleKey, Profile } from "@/lib/types";
 export async function requireUser(): Promise<{ user: Profile; db: DbShape }> {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  const db = readDb();
+  const db = await readDb();
   return { user: user!, db };
 }
 

@@ -42,7 +42,7 @@ export async function updateWorkScheduleAction(formData: FormData) {
     updated_value: db.work_schedule,
     ...info,
   });
-  writeDb(db);
+  await writeDb(db);
   redirect("/settings/system?saved=1");
 }
 
@@ -78,6 +78,6 @@ export async function updateThresholdsAction(formData: FormData) {
     updated_value: db.performance_thresholds,
     ...info,
   });
-  writeDb(db);
+  await writeDb(db);
   redirect("/settings/system?saved=1");
 }

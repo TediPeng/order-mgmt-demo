@@ -51,7 +51,7 @@ export async function getSessionUserId(): Promise<string | null> {
 export async function getCurrentUser(): Promise<Profile | null> {
   const userId = await getSessionUserId();
   if (!userId) return null;
-  const db = readDb();
+  const db = await readDb();
   const profile = db.profiles.find((p) => p.id === userId);
   if (!profile || !profile.is_active) return null;
   return profile;

@@ -35,7 +35,7 @@ export default async function RankingPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = readDb();
+  const db = await readDb();
 
   if (!can(user.role, "ranking", "view", db.role_permissions)) redirect("/dashboard");
 

@@ -29,7 +29,7 @@ export default async function DashboardPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = readDb();
+  const db = await readDb();
 
   const isAgent = user.role === "agent";
   const orders = scopeOrders(user, db.orders, db);

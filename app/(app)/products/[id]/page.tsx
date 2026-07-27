@@ -28,7 +28,7 @@ export default async function ProductDetailPage({
 }) {
   const { id } = await params;
   const { error, created, updated } = await searchParams;
-  const db = readDb();
+  const db = await readDb();
   const product = db.products.find((p) => p.id === id);
   if (!product) notFound();
 

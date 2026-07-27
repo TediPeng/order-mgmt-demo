@@ -8,7 +8,7 @@ import { markAllNotificationsReadAction, markNotificationReadAction } from "@/li
 
 export default async function NotificationsPage() {
   const user = (await getCurrentUser())!;
-  const db = readDb();
+  const db = await readDb();
   const notifications = db.notifications
     .filter((n) => n.recipient_id === user.id)
     .sort((a, b) => b.created_at.localeCompare(a.created_at));

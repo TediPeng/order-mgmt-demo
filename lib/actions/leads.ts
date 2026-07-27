@@ -101,7 +101,7 @@ export async function createLeadAction(formData: FormData) {
     module: "orders",
     ...info,
   });
-  writeDb(db);
+  await writeDb(db);
   redirect(`/leads/${order.id}?created=1`);
 }
 
@@ -241,7 +241,7 @@ export async function updateLeadAction(orderId: string, formData: FormData) {
     const target = result.code === "not_found" ? "/leads" : `/leads/${orderId}`;
     redirect(`${target}?error=${encodeURIComponent(result.error)}`);
   }
-  writeDb(db);
+  await writeDb(db);
   redirect(`/leads/${orderId}?updated=1`);
 }
 
@@ -264,7 +264,7 @@ export async function deleteLeadAction(orderId: string) {
     previous_value: removed,
     ...info,
   });
-  writeDb(db);
+  await writeDb(db);
   redirect("/leads?deleted=1");
 }
 
@@ -454,6 +454,6 @@ export async function importLeadsAction(
     },
     { module: "orders", ...info }
   );
-  writeDb(db);
+  await writeDb(db);
   return summary;
 }

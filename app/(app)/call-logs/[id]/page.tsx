@@ -17,7 +17,7 @@ export default async function CallLogDetailPage({
   const { id } = await params;
   const { q } = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = readDb();
+  const db = await readDb();
 
   if (!can(user.role, "call_logs", "view", db.role_permissions)) {
     redirect("/call-logs");

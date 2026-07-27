@@ -29,7 +29,7 @@ export default async function LeadDetailPage({
 }) {
   const { id } = await params;
   const { error, created, updated } = await searchParams;
-  const db = readDb();
+  const db = await readDb();
   const order = db.orders.find((o) => o.id === id);
   if (!order) notFound();
 

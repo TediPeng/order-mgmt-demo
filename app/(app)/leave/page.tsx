@@ -32,7 +32,7 @@ export default async function LeavePage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = readDb();
+  const db = await readDb();
 
   const canFile = can(user.role, "leave", "create", db.role_permissions);
   const canApprove = can(user.role, "leave", "approve", db.role_permissions);

@@ -15,7 +15,7 @@ export default async function SystemSettingsPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = readDb();
+  const db = await readDb();
 
   if (!can(user.role, "settings", "view", db.role_permissions)) redirect("/dashboard");
   const canManage = can(user.role, "settings", "manage", db.role_permissions);

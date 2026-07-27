@@ -25,7 +25,7 @@ export default async function AuditLogsPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = readDb();
+  const db = await readDb();
 
   if (!can(user.role, "audit_logs", "view", db.role_permissions)) {
     redirect("/dashboard");

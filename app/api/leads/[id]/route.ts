@@ -13,7 +13,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
-  const db = readDb();
+  const db = await readDb();
   if (!can(user.role, "orders", "edit", db.role_permissions)) {
     return NextResponse.json({ ok: false, error: "You do not have permission to perform this action." }, { status: 403 });
   }
@@ -31,6 +31,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ ok: false, error: result.error }, { status });
   }
 
-  writeDb(db);
+  await writeDb(db);
   return NextResponse.json({ ok: true, order: result.order });
 }

@@ -19,7 +19,7 @@ const SCHEDULE_STATUS_COLORS: Record<string, string> = {
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const db = readDb();
+  const db = await readDb();
   if (!can(user.role, "schedules", "view", db.role_permissions)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  const db = readDb();
+  const db = await readDb();
   if (!can(user.role, "schedules", "create", db.role_permissions)) {
     return NextResponse.json({ ok: false, error: "You do not have permission to create schedules." }, { status: 403 });
   }
@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
     { module: "schedules", updated_value: result.schedule, ...info }
   );
   notifyAgentSchedule(db, result.schedule, result.replaced ? "updated" : "created");
-  writeDb(db);
+  await writeDb(db);
 
   return NextResponse.json({ ok: true, schedule: result.schedule });
 }

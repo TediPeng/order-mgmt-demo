@@ -151,7 +151,7 @@ export async function issueSuspensionAction(formData: FormData) {
     );
   }
 
-  writeDb(db);
+  await writeDb(db);
   redirect(`/schedule/suspensions?issued=1${replaced.length > 0 ? `&replaced=${replaced.length}` : ""}`);
 }
 
@@ -200,6 +200,6 @@ export async function liftSuspensionAction(formData: FormData) {
     "/schedule/suspensions"
   );
 
-  writeDb(db);
+  await writeDb(db);
   redirect("/schedule/suspensions?lifted=1");
 }

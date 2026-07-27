@@ -12,7 +12,7 @@ import { PrintButton } from "@/components/PrintButton";
 
 export default async function SchedulePage() {
   const user = (await getCurrentUser())!;
-  const db = readDb();
+  const db = await readDb();
 
   if (!can(user.role, "schedules", "view", db.role_permissions)) redirect("/dashboard");
   const canCreate = can(user.role, "schedules", "create", db.role_permissions);

@@ -50,7 +50,7 @@ export async function createRoleAction(formData: FormData) {
 
   const info = await getRequestInfo();
   logActivity(db, user.id, "ROLE_CREATED", "role", key, { name: data.name }, { module: "roles", ...info });
-  writeDb(db);
+  await writeDb(db);
   redirect(`/settings/roles?role=${encodeURIComponent(key)}&created=1`);
 }
 
@@ -76,7 +76,7 @@ export async function deleteRoleAction(roleKey: string) {
     previous_value: role,
     ...info,
   });
-  writeDb(db);
+  await writeDb(db);
   redirect("/settings/roles?deleted=1");
 }
 
@@ -111,7 +111,7 @@ export async function updatePermissionAction(role: string, moduleKey: ModuleKey,
     { role, module: moduleKey, action, before, after: allowed },
     { module: "roles", previous_value: { allowed: before }, updated_value: { allowed }, ...info }
   );
-  writeDb(db);
+  await writeDb(db);
   redirect(`/settings/roles?role=${encodeURIComponent(role)}&saved=1`);
 }
 
@@ -128,6 +128,6 @@ export async function resetRolePermissionsAction(role: "team_lead" | "agent") {
     module: "roles",
     ...info,
   });
-  writeDb(db);
+  await writeDb(db);
   redirect(`/settings/roles?role=${encodeURIComponent(role)}&reset=1`);
 }

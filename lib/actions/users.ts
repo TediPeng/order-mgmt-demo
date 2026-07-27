@@ -54,7 +54,7 @@ export async function createUserAction(formData: FormData) {
     updated_value: newUser,
     ...info,
   });
-  writeDb(db);
+  await writeDb(db);
   redirect(`/users?created=1`);
 }
 
@@ -77,7 +77,7 @@ export async function updateUserRoleAction(userId: string, role: string) {
     updated_value: { role },
     ...info,
   });
-  writeDb(db);
+  await writeDb(db);
   redirect("/users?updated=1");
 }
 
@@ -101,7 +101,7 @@ export async function assignTeamLeadAction(userId: string, teamLeadId: string) {
     { field: "team_lead_id", before, after: target!.team_lead_id },
     { module: "users", previous_value: { team_lead_id: before }, updated_value: { team_lead_id: target!.team_lead_id }, ...info }
   );
-  writeDb(db);
+  await writeDb(db);
   redirect("/users?updated=1");
 }
 
@@ -123,7 +123,7 @@ export async function toggleActiveAction(userId: string) {
     updated_value: { is_active: target!.is_active },
     ...info,
   });
-  writeDb(db);
+  await writeDb(db);
   redirect("/users?updated=1");
 }
 
@@ -143,6 +143,6 @@ export async function adminResetPasswordAction(userId: string) {
     module: "users",
     ...info,
   });
-  writeDb(db);
+  await writeDb(db);
   redirect(`/users?reset_pw=${encodeURIComponent(tempPassword)}&reset_for=${encodeURIComponent(target!.username)}`);
 }

@@ -1,9 +1,8 @@
 "use server";
 
-import fs from "fs";
-import path from "path";
 import { redirect } from "next/navigation";
-import { writeDb, uuid, nowIso, UPLOADS_DIR } from "@/lib/db";
+import { writeDb, uuid, nowIso } from "@/lib/db";
+import { uploadFile, deleteFile } from "@/lib/storage";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { requireUser, requirePermission } from "./guards";
@@ -108,8 +107,7 @@ export async function uploadCallLogAction(formData: FormData) {
   }
 
   const storedName = `${uuid()}-${file!.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-  const storagePath = path.join(UPLOADS_DIR, storedName);
-  fs.writeFileSync(storagePath, buffer);
+  await uploadFile(`call-logs/${storedName}`, buffer);
 
   const callLog: CallLog = {
     id: uuid(),
@@ -135,7 +133,7 @@ export async function uploadCallLogAction(formData: FormData) {
     { file_name: callLog.file_name, record_count: callLog.record_count },
     { module: "call_logs", ...info }
   );
-  writeDb(db);
+  await writeDb(db);
   redirect(`/call-logs?uploaded=1`);
 }
 
@@ -149,8 +147,7 @@ export async function deleteCallLogAction(callLogId: string) {
   const [removed] = db.call_logs.splice(idx, 1);
   db.call_log_records = db.call_log_records.filter((r) => r.call_log_id !== callLogId);
 
-  const filePath = path.join(UPLOADS_DIR, removed.storage_path);
-  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  await deleteFile(`call-logs/${removed.storage_path}`);
 
   const info = await getRequestInfo();
   logActivity(db, user.id, "CALL_LOG_DELETED", "call_log", callLogId, { file_name: removed.file_name }, {
@@ -158,6 +155,6 @@ export async function deleteCallLogAction(callLogId: string) {
     previous_value: removed,
     ...info,
   });
-  writeDb(db);
+  await writeDb(db);
   redirect("/call-logs?deleted=1");
 }

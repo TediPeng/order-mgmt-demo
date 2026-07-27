@@ -10,7 +10,7 @@ export async function markNotificationReadAction(notificationId: string) {
   const n = db.notifications.find((x) => x.id === notificationId && x.recipient_id === user.id);
   if (n) {
     n.is_read = true;
-    writeDb(db);
+    await writeDb(db);
   }
   revalidatePath("/", "layout");
 }
@@ -21,6 +21,6 @@ export async function markAllNotificationsReadAction() {
   db.notifications.forEach((n) => {
     if (n.recipient_id === user.id) n.is_read = true;
   });
-  writeDb(db);
+  await writeDb(db);
   revalidatePath("/", "layout");
 }

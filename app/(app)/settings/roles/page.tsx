@@ -21,7 +21,7 @@ export default async function RolesPage({
   const user = (await getCurrentUser())!;
   if (!isFullAccess(user.role)) redirect("/dashboard");
 
-  const db = readDb();
+  const db = await readDb();
   const activeRoleKey = sp.role || "team_lead";
   const activeRole = db.roles.find((r) => r.key === activeRoleKey) || db.roles.find((r) => r.key === "team_lead")!;
   const grid = permissionGrid(activeRole.key, db.role_permissions);

@@ -1,18 +1,29 @@
-import fs from "fs";
-import path from "path";
 import bcrypt from "bcryptjs";
 import { v4 as uuid } from "uuid";
-import type { DbShape, Profile, RolePermission, RoleDef, WorkSchedule, OrderStatus } from "./types";
-import { MODULES } from "./types";
-import { MODULE_ACTIONS, defaultAllowed, buildDefaultRows } from "./permissions";
+import type { DbShape, Profile, RolePermission, RoleDef, WorkSchedule } from "./types";
+import { buildDefaultRows } from "./permissions";
+import { supabaseAdmin } from "./supabaseAdmin";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const DB_PATH = path.join(DATA_DIR, "db.json");
-export const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
 const SCHEMA_VERSION = 7;
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function numOrNull(v: unknown): number | null {
+  return v === null || v === undefined ? null : Number(v);
+}
+
+function num(v: unknown): number {
+  return Number(v);
+}
+
+function time5(v: unknown): string {
+  return String(v).slice(0, 5);
+}
+
+function time5OrNull(v: unknown): string | null {
+  return v === null || v === undefined ? null : String(v).slice(0, 5);
 }
 
 const DEFAULT_WORK_SCHEDULE: WorkSchedule = {
@@ -366,328 +377,210 @@ function seedDb(): DbShape {
   };
 }
 
-const OLD_ROLE_MAP: Record<string, string> = { admin: "management", manager: "team_lead", employee: "agent" };
-const OLD_PERMISSION_KEY_MAP: Record<string, [string, string]> = {
-  "orders.create": ["orders", "create"],
-  "orders.cancel": ["orders", "edit"],
-  "orders.delete": ["orders", "delete"],
-  "orders.import": ["orders", "upload"],
-  "attendance.view_all": ["attendance", "view"],
-  "attendance.export": ["attendance", "export"],
-  "call_logs.upload": ["call_logs", "upload"],
-  "call_logs.view": ["call_logs", "view"],
-  "call_logs.delete": ["call_logs", "delete"],
-  "activity_log.view": ["audit_logs", "view"],
-};
+// --- Supabase-backed persistence -------------------------------------------
+// The rest of the app was built around a single in-memory DbShape object:
+// read the whole thing, mutate it with plain JS, write the whole thing back.
+// To avoid rewriting ~50 call sites' business logic, that contract is kept
+// exactly as-is here -- only the storage underneath changed from a local
+// JSON file (which doesn't work on Vercel's read-only serverless filesystem)
+// to Postgres. readDb() fetches every table and assembles a DbShape;
+// writeDb() upserts the current rows and deletes any that were removed.
 
-// Migrates a pre-4S-RETENTION db.json (admin/manager/employee roles, flat
-// permission_key rows) into the module x action shape (schema v2). Existing
-// accounts and their data are preserved as-is; only role labels and
-// permission rows change shape.
-function migrateV1toV2(raw: Record<string, unknown>): Record<string, unknown> {
-  const profiles = ((raw.profiles as Record<string, unknown>[]) || []).map((p) => ({
-    ...p,
-    role: OLD_ROLE_MAP[p.role as string] || (p.role as string),
-    team_lead_id: (p.team_lead_id as string | null | undefined) ?? null,
-  })) as Profile[];
+type Row = Record<string, unknown>;
 
-  const orders = ((raw.orders as Record<string, unknown>[]) || []).map((o) => ({
-    ...o,
-    agent_id: (o.agent_id as string | undefined) ?? (o.created_by as string),
-  }));
+async function upsertTable(table: string, rows: Row[], idKey = "id"): Promise<void> {
+  if (rows.length === 0) return;
+  const { error } = await supabaseAdmin.from(table).upsert(rows, { onConflict: idKey });
+  if (error) throw new Error(`Supabase upsert failed for ${table}: ${error.message}`);
+}
 
-  const call_log_records = ((raw.call_log_records as Record<string, unknown>[]) || []).map((r) => ({
-    ...r,
-    agent_id: (r.agent_id as string | null | undefined) ?? null,
-  }));
+async function deleteRemoved(table: string, rows: Row[], idKey = "id"): Promise<void> {
+  const query = supabaseAdmin.from(table).delete();
+  const { error } =
+    rows.length > 0
+      ? await query.not(idKey, "in", `(${rows.map((r) => `"${r[idKey]}"`).join(",")})`)
+      : await query.not(idKey, "is", null);
+  if (error) throw new Error(`Supabase delete failed for ${table}: ${error.message}`);
+}
 
-  const attendance = ((raw.attendance as Record<string, unknown>[]) || []).map((a) => ({
-    ...a,
-    overridden: (a.overridden as boolean | undefined) ?? false,
-    override_reason: (a.override_reason as string | null | undefined) ?? null,
-    overridden_by: (a.overridden_by as string | null | undefined) ?? null,
-  }));
+export async function readDb(): Promise<DbShape> {
+  const { data: existingProfiles, error: checkError } = await supabaseAdmin.from("profiles").select("id").limit(1);
+  if (checkError) throw new Error(`Supabase read failed: ${checkError.message}`);
 
-  const activity_log = ((raw.activity_log as Record<string, unknown>[]) || []).map((e) => ({
-    ...e,
-    module: (e.module as string | null | undefined) ?? null,
-    previous_value: e.previous_value ?? null,
-    updated_value: e.updated_value ?? null,
-    ip_address: (e.ip_address as string | null | undefined) ?? null,
-    device_info: (e.device_info as string | null | undefined) ?? null,
-  }));
-
-  const migratedRolePerms: RolePermission[] = [];
-  const seen = new Set<string>();
-  for (const row of (raw.role_permissions as Record<string, unknown>[]) || []) {
-    const role = OLD_ROLE_MAP[row.role as string] || (row.role as string);
-    const permKey = row.permission_key as string | undefined;
-    if (!permKey) continue;
-    const mapped = OLD_PERMISSION_KEY_MAP[permKey];
-    if (!mapped) continue;
-    const [moduleKey, action] = mapped;
-    const dedupeKey = `${role}:${moduleKey}:${action}`;
-    if (seen.has(dedupeKey)) continue;
-    seen.add(dedupeKey);
-    migratedRolePerms.push({
-      id: (row.id as string) || uuid(),
-      role,
-      module: moduleKey as RolePermission["module"],
-      action: action as RolePermission["action"],
-      allowed: row.allowed as boolean,
-      updated_by: (row.updated_by as string | null) ?? null,
-      updated_at: (row.updated_at as string) || nowIso(),
-    });
-  }
-  for (const role of ["team_lead", "agent"] as const) {
-    for (const m of MODULES) {
-      for (const a of MODULE_ACTIONS[m]) {
-        const dedupeKey = `${role}:${m}:${a}`;
-        if (!seen.has(dedupeKey)) {
-          seen.add(dedupeKey);
-          migratedRolePerms.push({
-            id: uuid(),
-            role,
-            module: m,
-            action: a,
-            allowed: defaultAllowed(role, m, a),
-            updated_by: null,
-            updated_at: nowIso(),
-          });
-        }
-      }
-    }
+  if (!existingProfiles || existingProfiles.length === 0) {
+    const seeded = seedDb();
+    await writeDb(seeded);
+    return seeded;
   }
 
-  return {
-    schema_version: 2,
-    profiles,
-    roles: SYSTEM_ROLE_DEFS,
-    orders,
-    attendance,
-    call_logs: raw.call_logs || [],
-    call_log_records,
-    activity_log,
-    role_permissions: migratedRolePerms,
-    order_seq: raw.order_seq || {},
-    performance_thresholds: { top_performer_min_ratio: 1.2, needs_improvement_max_ratio: 0.8 },
-  };
-}
+  const [
+    rolesRes,
+    profilesRes,
+    ordersRes,
+    productsRes,
+    attendanceRes,
+    callLogsRes,
+    callLogRecordsRes,
+    activityLogRes,
+    rolePermsRes,
+    leaveRequestsRes,
+    notificationsRes,
+    schedulesRes,
+    suspensionsRes,
+    orderSeqRes,
+    appSettingsRes,
+  ] = await Promise.all([
+    supabaseAdmin.from("roles").select("*"),
+    supabaseAdmin.from("profiles").select("*"),
+    supabaseAdmin.from("orders").select("*"),
+    supabaseAdmin.from("products").select("*"),
+    supabaseAdmin.from("attendance").select("*"),
+    supabaseAdmin.from("call_logs").select("*"),
+    supabaseAdmin.from("call_log_records").select("*"),
+    supabaseAdmin.from("activity_log").select("*").order("created_at", { ascending: false }),
+    supabaseAdmin.from("role_permissions").select("*"),
+    supabaseAdmin.from("leave_requests").select("*"),
+    supabaseAdmin.from("notifications").select("*"),
+    supabaseAdmin.from("schedules").select("*"),
+    supabaseAdmin.from("suspensions").select("*"),
+    supabaseAdmin.from("order_sequences").select("*"),
+    supabaseAdmin.from("app_settings").select("*").eq("id", 1).single(),
+  ]);
 
-// Adds break/late tracking to attendance, leave requests, notifications,
-// email-based order assignment, and the work-schedule settings (schema v3).
-function migrateV2toV3(raw: Record<string, unknown>): Record<string, unknown> {
-  const profiles = (raw.profiles as Profile[]) || [];
-  const emailById = new Map(profiles.map((p) => [p.id, p.email]));
-  const workSchedule = (raw.work_schedule as WorkSchedule | undefined) || DEFAULT_WORK_SCHEDULE;
+  for (const res of [
+    rolesRes,
+    profilesRes,
+    ordersRes,
+    productsRes,
+    attendanceRes,
+    callLogsRes,
+    callLogRecordsRes,
+    activityLogRes,
+    rolePermsRes,
+    leaveRequestsRes,
+    notificationsRes,
+    schedulesRes,
+    suspensionsRes,
+    orderSeqRes,
+    appSettingsRes,
+  ]) {
+    if (res.error) throw new Error(`Supabase read failed: ${res.error.message}`);
+  }
 
-  const attendance = ((raw.attendance as Record<string, unknown>[]) || []).map((a) => ({
-    break_start: null,
-    break_end: null,
-    break_minutes: null,
-    scheduled_time_in: workSchedule.work_start,
-    scheduled_time_out: workSchedule.work_end,
-    minutes_late: 0,
-    over_break_minutes: 0,
-    status: a.time_out ? "timed_out" : "on_time",
-    remarks: null,
-    attachment_path: null,
-    created_by: null,
-    updated_by: null,
-    updated_at: (a.time_out as string) || (a.time_in as string) || nowIso(),
-    ...a, // preserve any fields already present (e.g. re-running migration)
-  }));
-
-  const orders = ((raw.orders as Record<string, unknown>[]) || []).map((o) => ({
-    updated_by: null,
-    assigned_agent_email: emailById.get(o.agent_id as string) || "",
-    ...o,
-  }));
-
-  const activity_log = ((raw.activity_log as Record<string, unknown>[]) || []).map((e) => ({
-    user_email: e.user_id ? emailById.get(e.user_id as string) || null : null,
-    ...e,
-  }));
-
-  return {
-    ...raw,
-    schema_version: 3,
-    attendance,
-    orders,
-    activity_log,
-    leave_requests: raw.leave_requests || [],
-    notifications: raw.notifications || [],
-    work_schedule: workSchedule,
-  };
-}
-
-// Adds the Administrator system role and the auto-absent sweep cursor (schema v4).
-function migrateV3toV4(raw: Record<string, unknown>): Record<string, unknown> {
-  const roles = (raw.roles as RoleDef[]) || [];
-  const hasAdministrator = roles.some((r) => r.key === "administrator");
-  const withAdministrator = hasAdministrator
-    ? roles
-    : [
-        ...roles,
-        {
-          id: uuid(),
-          key: "administrator",
-          name: "Administrator",
-          description:
-            "Full system access: account management, permissions, order reassignment, and system configuration. Equivalent bypass to Management.",
-          is_system: true,
-          created_at: nowIso(),
-        },
-      ];
+  const settings = appSettingsRes.data!;
 
   return {
-    ...raw,
-    schema_version: 4,
-    roles: withAdministrator,
-    attendance_sweep_cursor: (raw.attendance_sweep_cursor as string | null | undefined) ?? null,
-  };
-}
-
-// Old order-fulfillment statuses -> new call-workflow/pipeline statuses.
-// completed and returned are treated as having already been fulfilled, so
-// they're backstamped with created_at as a best-effort order_date since the
-// real "became ready to ship" date doesn't exist in pre-v5 data.
-const OLD_STATUS_MAP: Record<string, OrderStatus> = {
-  new: "new",
-  pending: "new",
-  completed: "ready_to_ship",
-  cancelled: "new",
-  returned: "returned",
-};
-const BACKSTAMP_STATUSES = new Set(["ready_to_ship", "returned"]);
-
-// Converts Orders (order-fulfillment) into Leads (call-center workflow):
-// structured address fields (customer_address -> landmark), previous-order
-// info, product_id, a real order_date field, the 10-status pipeline, and the
-// new products catalog (schema v5).
-function migrateV4toV5(raw: Record<string, unknown>): Record<string, unknown> {
-  const orders = ((raw.orders as Record<string, unknown>[]) || []).map((o) => {
-    const oldStatus = o.status as string;
-    const newStatus = OLD_STATUS_MAP[oldStatus] || (oldStatus as OrderStatus);
-    const createdAt = (o.created_at as string) || nowIso();
-    return {
+    schema_version: SCHEMA_VERSION,
+    attendance_sweep_cursor: settings.attendance_sweep_cursor,
+    profiles: (profilesRes.data || []) as DbShape["profiles"],
+    roles: (rolesRes.data || []) as DbShape["roles"],
+    orders: (ordersRes.data || []).map((o) => ({
       ...o,
-      purok: (o.purok as string | undefined) ?? "",
-      barangay: (o.barangay as string | undefined) ?? "",
-      city: (o.city as string | undefined) ?? "",
-      province: (o.province as string | undefined) ?? "",
-      landmark: (o.landmark as string | undefined) ?? (o.customer_address as string | undefined) ?? "",
-      previous_order_date: (o.previous_order_date as string | null | undefined) ?? null,
-      previous_order_product: (o.previous_order_product as string | null | undefined) ?? null,
-      previous_order_amount: (o.previous_order_amount as number | null | undefined) ?? null,
-      product_id: (o.product_id as string | null | undefined) ?? null,
-      status: newStatus,
-      order_date:
-        (o.order_date as string | null | undefined) ??
-        (BACKSTAMP_STATUSES.has(newStatus) ? createdAt.slice(0, 10) : null),
-      customer_address: undefined,
-    };
-  });
-  // Drop the now-migrated customer_address key entirely.
-  for (const o of orders) delete (o as Record<string, unknown>).customer_address;
-
-  return {
-    ...raw,
-    schema_version: 5,
-    orders,
-    products: (raw.products as unknown[]) || [],
-  };
-}
-
-// Adds Work From Home/Rest Day attendance statuses, overtime_hours on
-// attendance rows, profiles.avatar_url, and the RTS % warning threshold
-// setting (schema v6). Purely additive -- no existing rows change meaning.
-function migrateV5toV6(raw: Record<string, unknown>): Record<string, unknown> {
-  const profiles = ((raw.profiles as Record<string, unknown>[]) || []).map((p) => ({
-    avatar_url: null,
-    ...p,
-  }));
-  const attendance = ((raw.attendance as Record<string, unknown>[]) || []).map((a) => ({
-    overtime_hours: 0,
-    ...a,
-  }));
-  const thresholds = (raw.performance_thresholds as Record<string, unknown>) || {};
-
-  return {
-    ...raw,
-    schema_version: 6,
-    profiles,
-    attendance,
+      previous_order_amount: numOrNull(o.previous_order_amount),
+      unit_price: numOrNull(o.unit_price),
+      total_amount: num(o.total_amount),
+    })) as DbShape["orders"],
+    products: (productsRes.data || []) as DbShape["products"],
+    attendance: (attendanceRes.data || []).map((a) => ({
+      ...a,
+      total_hours: numOrNull(a.total_hours),
+      overtime_hours: num(a.overtime_hours),
+      scheduled_time_in: time5(a.scheduled_time_in),
+      scheduled_time_out: time5(a.scheduled_time_out),
+    })) as DbShape["attendance"],
+    call_logs: (callLogsRes.data || []) as DbShape["call_logs"],
+    call_log_records: (callLogRecordsRes.data || []) as DbShape["call_log_records"],
+    activity_log: (activityLogRes.data || []) as DbShape["activity_log"],
+    role_permissions: (rolePermsRes.data || []) as DbShape["role_permissions"],
+    leave_requests: (leaveRequestsRes.data || []) as DbShape["leave_requests"],
+    notifications: (notificationsRes.data || []) as DbShape["notifications"],
+    schedules: (schedulesRes.data || []).map((s) => ({
+      ...s,
+      duty_start: time5OrNull(s.duty_start),
+      duty_end: time5OrNull(s.duty_end),
+    })) as DbShape["schedules"],
+    suspensions: (suspensionsRes.data || []) as DbShape["suspensions"],
+    order_seq: Object.fromEntries((orderSeqRes.data || []).map((r) => [r.seq_date, r.last_seq])),
     performance_thresholds: {
-      top_performer_min_ratio: 1.2,
-      needs_improvement_max_ratio: 0.8,
-      ...thresholds,
-      rts_warning_threshold_pct: (thresholds.rts_warning_threshold_pct as number | undefined) ?? 15,
+      top_performer_min_ratio: num(settings.top_performer_min_ratio),
+      needs_improvement_max_ratio: num(settings.needs_improvement_max_ratio),
+      rts_warning_threshold_pct: num(settings.rts_warning_threshold_pct),
+    },
+    work_schedule: {
+      work_start: time5(settings.work_start),
+      work_end: time5(settings.work_end),
+      break_minutes: settings.break_minutes,
+      timezone: settings.timezone,
+      auto_mark_absent: settings.auto_mark_absent,
+      require_attachment_for_sick_leave: settings.require_attachment_for_sick_leave,
     },
   };
 }
 
-// Adds the Schedule Creator module: schedules[] and suspensions[] collections
-// (schema v7). Purely additive -- no existing rows change.
-function migrateV6toV7(raw: Record<string, unknown>): Record<string, unknown> {
-  return {
-    ...raw,
-    schema_version: 7,
-    schedules: raw.schedules || [],
-    suspensions: raw.suspensions || [],
-  };
-}
+export async function writeDb(db: DbShape): Promise<void> {
+  const orderSeqRows: Row[] = Object.entries(db.order_seq).map(([seq_date, last_seq]) => ({ seq_date, last_seq }));
 
-function ensureDb(): void {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-  if (!fs.existsSync(DB_PATH)) {
-    fs.writeFileSync(DB_PATH, JSON.stringify(seedDb(), null, 2));
-  }
-}
+  // Phase 1: upsert parent-before-child so every FK target already exists.
+  await upsertTable("roles", db.roles as unknown as Row[]);
+  await upsertTable("profiles", db.profiles as unknown as Row[]);
+  await Promise.all([
+    upsertTable("products", db.products as unknown as Row[]),
+    upsertTable("role_permissions", db.role_permissions as unknown as Row[]),
+  ]);
+  await upsertTable("orders", db.orders as unknown as Row[]);
+  await Promise.all([
+    upsertTable("attendance", db.attendance as unknown as Row[]),
+    upsertTable("call_logs", db.call_logs as unknown as Row[]),
+    upsertTable("leave_requests", db.leave_requests as unknown as Row[]),
+    upsertTable("suspensions", db.suspensions as unknown as Row[]),
+    upsertTable("notifications", db.notifications as unknown as Row[]),
+    upsertTable("activity_log", db.activity_log as unknown as Row[]),
+  ]);
+  await Promise.all([
+    upsertTable("call_log_records", db.call_log_records as unknown as Row[]),
+    upsertTable("schedules", db.schedules as unknown as Row[]),
+  ]);
+  await upsertTable("order_sequences", orderSeqRows, "seq_date");
 
-export function readDb(): DbShape {
-  ensureDb();
-  let raw = JSON.parse(fs.readFileSync(DB_PATH, "utf-8"));
-  let changed = false;
+  const { error: settingsError } = await supabaseAdmin
+    .from("app_settings")
+    .update({
+      attendance_sweep_cursor: db.attendance_sweep_cursor,
+      work_start: db.work_schedule.work_start,
+      work_end: db.work_schedule.work_end,
+      break_minutes: db.work_schedule.break_minutes,
+      timezone: db.work_schedule.timezone,
+      auto_mark_absent: db.work_schedule.auto_mark_absent,
+      require_attachment_for_sick_leave: db.work_schedule.require_attachment_for_sick_leave,
+      top_performer_min_ratio: db.performance_thresholds.top_performer_min_ratio,
+      needs_improvement_max_ratio: db.performance_thresholds.needs_improvement_max_ratio,
+      rts_warning_threshold_pct: db.performance_thresholds.rts_warning_threshold_pct,
+    })
+    .eq("id", 1);
+  if (settingsError) throw new Error(`Supabase app_settings update failed: ${settingsError.message}`);
 
-  if (!raw.schema_version || raw.schema_version < 2) {
-    raw = migrateV1toV2(raw);
-    changed = true;
-  }
-  if (raw.schema_version < 3) {
-    raw = migrateV2toV3(raw);
-    changed = true;
-  }
-  if (raw.schema_version < 4) {
-    raw = migrateV3toV4(raw);
-    changed = true;
-  }
-  if (raw.schema_version < 5) {
-    raw = migrateV4toV5(raw);
-    changed = true;
-  }
-  if (raw.schema_version < 6) {
-    raw = migrateV5toV6(raw);
-    changed = true;
-  }
-  if (raw.schema_version < 7) {
-    raw = migrateV6toV7(raw);
-    changed = true;
-  }
-
-  if (changed) fs.writeFileSync(DB_PATH, JSON.stringify(raw, null, 2));
-  return raw as DbShape;
-}
-
-export function writeDb(db: DbShape): void {
-  ensureDb();
-  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
-}
-
-export function resetDb(): void {
-  if (fs.existsSync(DB_PATH)) fs.unlinkSync(DB_PATH);
-  ensureDb();
+  // Phase 2: delete child-before-parent so nothing still references a
+  // soon-to-be-deleted row.
+  await Promise.all([
+    deleteRemoved("call_log_records", db.call_log_records as unknown as Row[]),
+    deleteRemoved("schedules", db.schedules as unknown as Row[]),
+  ]);
+  await Promise.all([
+    deleteRemoved("attendance", db.attendance as unknown as Row[]),
+    deleteRemoved("call_logs", db.call_logs as unknown as Row[]),
+    deleteRemoved("leave_requests", db.leave_requests as unknown as Row[]),
+    deleteRemoved("suspensions", db.suspensions as unknown as Row[]),
+    deleteRemoved("notifications", db.notifications as unknown as Row[]),
+    deleteRemoved("activity_log", db.activity_log as unknown as Row[]),
+  ]);
+  await deleteRemoved("orders", db.orders as unknown as Row[]);
+  await Promise.all([
+    deleteRemoved("products", db.products as unknown as Row[]),
+    deleteRemoved("role_permissions", db.role_permissions as unknown as Row[]),
+  ]);
+  await deleteRemoved("profiles", db.profiles as unknown as Row[]);
+  await deleteRemoved("roles", db.roles as unknown as Row[]);
+  await deleteRemoved("order_sequences", orderSeqRows, "seq_date");
 }
 
 export function nextOrderNumber(db: DbShape, date: Date = new Date()): string {
