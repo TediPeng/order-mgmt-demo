@@ -87,6 +87,20 @@ export default async function ProductDetailPage({
               <Label htmlFor="code">Product code</Label>
               <Input id="code" name="code" defaultValue={product.code || ""} disabled={!canEdit} />
             </div>
+            <div>
+              <Label htmlFor="pancake_variation_id">Pancake variation ID / SKU</Label>
+              <Input
+                id="pancake_variation_id"
+                name="pancake_variation_id"
+                defaultValue={product.pancake_variation_id || ""}
+                disabled={!canEdit}
+                placeholder="Required to forward orders containing this product"
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                Pancake POS requires every order line to reference a product in its own catalog. Paste the matching
+                variation ID (or its SKU) from Pancake. Left blank, the Product code above is tried instead.
+              </p>
+            </div>
             <div className="flex justify-end gap-2 pt-2">
               <LinkButton href="/products" variant="outline">
                 Back

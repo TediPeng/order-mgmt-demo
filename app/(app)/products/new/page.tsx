@@ -33,6 +33,14 @@ export default async function NewProductPage({
               <Label htmlFor="code">Product code</Label>
               <Input id="code" name="code" placeholder="Optional, must be unique" />
             </div>
+            <div>
+              <Label htmlFor="pancake_variation_id">Pancake variation ID / SKU</Label>
+              <Input id="pancake_variation_id" name="pancake_variation_id" placeholder="Needed to forward orders to Pancake POS" />
+              <p className="mt-1 text-xs text-slate-400">
+                Pancake POS requires every order line to reference a product in its own catalog. Left blank, the Product
+                code is tried instead.
+              </p>
+            </div>
             <div className="flex justify-end gap-2 pt-2">
               <LinkButton href="/products" variant="outline">
                 Cancel

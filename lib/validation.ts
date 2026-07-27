@@ -129,6 +129,7 @@ export const LEAD_IMPORT_FORBIDDEN_HEADERS = ["Order Number", "Order Date", "New
 export const productFormSchema = z.object({
   name: z.string().trim().min(1, "Product name is required"),
   code: z.string().trim().optional().default(""),
+  pancake_variation_id: z.string().trim().optional().default(""),
   is_active: z.coerce.boolean().default(true),
 });
 

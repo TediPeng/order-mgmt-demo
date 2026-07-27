@@ -15,6 +15,7 @@ export async function createProductAction(formData: FormData) {
   const raw = {
     name: formData.get("name"),
     code: formData.get("code"),
+    pancake_variation_id: formData.get("pancake_variation_id"),
     is_active: true,
   };
   const parsed = productFormSchema.safeParse(raw);
@@ -33,6 +34,7 @@ export async function createProductAction(formData: FormData) {
     id: uuid(),
     name: data.name,
     code,
+    pancake_variation_id: data.pancake_variation_id.trim() || null,
     is_active: true,
     created_by: user.id,
     created_at: now,
@@ -60,6 +62,7 @@ export async function updateProductAction(productId: string, formData: FormData)
   const raw = {
     name: formData.get("name"),
     code: formData.get("code"),
+    pancake_variation_id: formData.get("pancake_variation_id"),
     is_active: product!.is_active,
   };
   const parsed = productFormSchema.safeParse(raw);
@@ -76,6 +79,7 @@ export async function updateProductAction(productId: string, formData: FormData)
   const before = { ...product! };
   product!.name = data.name;
   product!.code = code;
+  product!.pancake_variation_id = data.pancake_variation_id.trim() || null;
   product!.updated_by = user.id;
   product!.updated_at = nowIso();
 

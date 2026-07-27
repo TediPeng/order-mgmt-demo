@@ -119,6 +119,10 @@ export interface Product {
   id: string;
   name: string;
   code: string | null;
+  // Pancake POS variation ID (or SKU) this product maps to. Pancake requires
+  // items[].variation_id on every forwarded order; `code` is used as a
+  // fallback since Pancake accepts a SKU in the same field.
+  pancake_variation_id: string | null;
   is_active: boolean;
   created_by: string;
   created_at: string;

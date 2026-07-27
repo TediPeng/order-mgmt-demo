@@ -17,6 +17,8 @@ export interface ForwardPayload {
   landmark: string;
   complete_address: string;
   product: string;
+  /** Pancake variation ID or SKU — REQUIRED by Pancake on every order line. */
+  variation_id: string;
   quantity: number;
   unit_price: number | null;
   total_amount: number;
@@ -62,7 +64,12 @@ export interface AccountWithSecrets {
   webhookSecret: string | null;
 }
 
-export function buildForwardPayload(order: Order, agentName: string, agentAccount: string): ForwardPayload {
+export function buildForwardPayload(
+  order: Order,
+  agentName: string,
+  agentAccount: string,
+  variationId: string
+): ForwardPayload {
   return {
     internal_order_id: order.id,
     order_number: order.order_number,
@@ -78,6 +85,7 @@ export function buildForwardPayload(order: Order, agentName: string, agentAccoun
     landmark: order.landmark,
     complete_address: [order.purok, order.barangay, order.city, order.province].filter(Boolean).join(", "),
     product: order.product_name,
+    variation_id: variationId,
     quantity: order.quantity,
     unit_price: order.unit_price,
     total_amount: order.total_amount,

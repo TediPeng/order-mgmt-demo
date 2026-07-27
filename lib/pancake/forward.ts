@@ -56,6 +56,39 @@ export async function forwardOrderToPancake(
     return { ok: false, skipped: true, message: "Order is in Needs Review — resolve it from the integration settings." };
   }
 
+  // Pancake requires items[].variation_id (its own catalog id, or the SKU) on
+  // every order line, so the product must be mapped first. Failing here keeps
+  // the bad payload out of Pancake and gives Management something actionable.
+  const { data: product } = await supabaseAdmin
+    .from("products")
+    .select("name, code, pancake_variation_id")
+    .eq("id", order.product_id || "")
+    .maybeSingle();
+  const variationId = (product?.pancake_variation_id || product?.code || "").trim();
+  if (!variationId) {
+    const reason = product
+      ? `Product "${product.name}" has no Pancake variation ID. Set it under Products → ${product.name} → Pancake variation ID / SKU.`
+      : "This lead has no product selected, so there is nothing to send to Pancake.";
+    await updateOrderSyncFields(order.id, { pancake_sync_status: "needs_review", pancake_sync_error: reason });
+    await insertSyncLog({
+      order_id: order.id,
+      action: "forward",
+      old_status: order.status,
+      request_at: new Date().toISOString(),
+      result: "failed",
+      error_message: reason,
+      triggered_by: opts.triggeredBy ?? null,
+      source: opts.source,
+    });
+    await notifyManagement(
+      "pancake_needs_review",
+      `Pancake sync needs review: ${order.order_number}`,
+      reason,
+      `/leads?open=${encodeURIComponent(order.order_number)}`
+    );
+    return { ok: false, skipped: false, message: reason };
+  }
+
   // Resolve the receiving account.
   const { data: agentProfile } = await supabaseAdmin
     .from("profiles")
@@ -104,7 +137,8 @@ export async function forwardOrderToPancake(
   const payload = buildForwardPayload(
     order,
     (agentProfile?.full_name as string) || "",
-    (agentProfile?.username as string) || order.assigned_agent_email
+    (agentProfile?.username as string) || order.assigned_agent_email,
+    variationId
   );
   const result = await createOrder(account, payload);
   const responseAt = new Date().toISOString();
