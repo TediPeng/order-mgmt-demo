@@ -1,3 +1,4 @@
+import { waitUntil } from "@vercel/functions";
 import { forwardOrderToPancake } from "./forward";
 import { applyIncomingUpdate } from "./receive";
 import { getOrder } from "./getOrder";
@@ -22,6 +23,13 @@ export interface SweepSummary {
   errors: string[];
 }
 
+export interface SweepOptions {
+  /** Cap on forwards retried in one run, so a lazy in-request sweep stays short. */
+  maxRetries?: number;
+  /** Cap on orders polled in one run. */
+  maxPolls?: number;
+}
+
 const POLL_BATCH_LIMIT = 20;
 /** A forward stuck in `processing` this long was killed mid-flight. */
 const PROCESSING_STALE_MINUTES = 10;
@@ -40,7 +48,9 @@ function minutesAgoIso(minutes: number): string {
  * Every step is idempotent and guarded by its own due-time check, so running
  * it more often than necessary is cheap and harmless — that's what lets the
  * lazy in-app sweep and the Vercel cron share it without coordinating. */
-export async function runPancakeSync(): Promise<SweepSummary> {
+export async function runPancakeSync(opts: SweepOptions = {}): Promise<SweepSummary> {
+  const maxRetries = opts.maxRetries ?? Number.POSITIVE_INFINITY;
+  const maxPolls = opts.maxPolls ?? POLL_BATCH_LIMIT;
   const summary: SweepSummary = { released: 0, retried: 0, movedToNeedsReview: 0, polled: 0, pollApplied: 0, errors: [] };
 
   // --- 1. Release stuck `processing` forwards --------------------------------
@@ -96,6 +106,7 @@ export async function runPancakeSync(): Promise<SweepSummary> {
         const lastAttemptAt = lastFailure?.request_at || order.updated_at;
         const dueAt = nextRetryDueAt(order, lastAttemptAt);
         if (dueAt && dueAt <= new Date().toISOString()) {
+          if (summary.retried >= maxRetries) break;
           await forwardOrderToPancake(order.id, { source: "auto_retry", allowRetry: true });
           summary.retried++;
         }
@@ -113,7 +124,7 @@ export async function runPancakeSync(): Promise<SweepSummary> {
     const candidates = (await listOrdersForPolling()).filter(
       (o) => !o.pancake_last_synced_at || o.pancake_last_synced_at < staleBefore
     );
-    for (const order of candidates.slice(0, POLL_BATCH_LIMIT)) {
+    for (const order of candidates.slice(0, maxPolls)) {
       try {
         if (!order.pancake_pos_account_id) continue;
         const account = await getAccount(order.pancake_pos_account_id);
@@ -169,20 +180,37 @@ export async function runPancakeSync(): Promise<SweepSummary> {
 // idempotent and every unit of work has its own due-time guard.
 
 const SWEEP_THROTTLE_MS = 5 * 60_000;
+/** Small budget: the sweep shares an invocation with a page render. */
+const LAZY_MAX_RETRIES = 3;
+const LAZY_MAX_POLLS = 5;
 let lastSweepStartedAt = 0;
 let sweepInFlight = false;
 
-/** Fire-and-forget: never awaited by the caller, never throws, never blocks a
- * page render. If the instance is recycled mid-sweep the next request picks up
- * where this left off (stuck `processing` orders are released by step 1). */
+/** Runs the sweep alongside a page render without blocking it.
+ *
+ * The promise is handed to Vercel's waitUntil() so the platform keeps the
+ * invocation alive until the sweep finishes. Without it, the instance is free
+ * to freeze the moment the response is sent, which suspends any in-flight
+ * fetch to Pancake mid-call — on thaw the abort timer fires and a perfectly
+ * healthy request is recorded as "Request timed out". Work is capped so the
+ * sweep can't outlive a reasonable invocation. */
 export function maybeSweepPancakeSync(): void {
   const now = Date.now();
   if (sweepInFlight || now - lastSweepStartedAt < SWEEP_THROTTLE_MS) return;
   lastSweepStartedAt = now;
   sweepInFlight = true;
-  void runPancakeSync()
+
+  const task = runPancakeSync({ maxRetries: LAZY_MAX_RETRIES, maxPolls: LAZY_MAX_POLLS })
     .catch((e) => console.error("Pancake lazy sweep failed:", (e as Error).message))
     .finally(() => {
       sweepInFlight = false;
     });
+
+  try {
+    // Only meaningful on Vercel; a no-op/throw elsewhere (e.g. local dev),
+    // where nothing freezes the process anyway.
+    waitUntil(task);
+  } catch {
+    void task;
+  }
 }

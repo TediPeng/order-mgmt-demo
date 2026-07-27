@@ -30,7 +30,9 @@ export async function listVariations(account: PancakeAccount, search = ""): Prom
     };
   }
 
-  const query = new URLSearchParams({ page_size: "50", page_number: "1" });
+  // Variation rows are large (warehouses, price tables, images), so keep the
+  // page small — this runs inside a page render.
+  const query = new URLSearchParams({ page_size: "25", page_number: "1" });
   if (search.trim()) query.set("search", search.trim());
   const path = `${resolvePath("/shops/{shopId}/products/variations", account)}?${query.toString()}`;
   const res = await pancakeFetch(account, path, { method: "GET" });
