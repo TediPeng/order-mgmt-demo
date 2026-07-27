@@ -63,10 +63,16 @@ export async function createOrder(account: PancakeAccount, payload: ForwardPaylo
     },
     items: [
       {
-        // variation_id is required by Pancake and accepts the variation's SKU
-        // too; it comes from the product's Pancake mapping (see forward.ts).
-        variation_id: payload.variation_id,
+        // Catalog line: variation_id is Pancake's own id, or the variation SKU.
+        // Quick-add line: one_time_product creates the product on the order
+        // itself, so there is no variation to reference and the key is omitted.
+        ...(payload.one_time_product ? {} : { variation_id: payload.variation_id }),
+        one_time_product: payload.one_time_product,
         quantity: payload.quantity,
+        discount_each_product: 0,
+        is_bonus_product: false,
+        is_discount_percent: false,
+        is_wholesale: false,
         variation_info: {
           name: payload.product || "Item",
           retail_price: payload.unit_price ?? 0,

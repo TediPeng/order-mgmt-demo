@@ -94,11 +94,13 @@ export default async function ProductDetailPage({
                 name="pancake_variation_id"
                 defaultValue={product.pancake_variation_id || ""}
                 disabled={!canEdit}
-                placeholder="Required to forward orders containing this product"
+                placeholder="Leave blank to send as a Pancake quick-add product"
               />
               <p className="mt-1 text-xs text-slate-400">
-                Pancake POS requires every order line to reference a product in its own catalog. Paste the matching
-                variation ID (or its SKU) from Pancake. Left blank, the Product code above is tried instead.
+                Links this product to one in your Pancake catalog, so the order draws down Pancake stock. Paste the
+                variation ID (or its SKU) exactly as Pancake shows it — a product name will be rejected. Leave it blank
+                and the order is sent as a Pancake quick-add (one-time) product instead, provided that option is enabled
+                on the integration account.
               </p>
             </div>
             <div className="flex justify-end gap-2 pt-2">

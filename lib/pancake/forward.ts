@@ -56,39 +56,6 @@ export async function forwardOrderToPancake(
     return { ok: false, skipped: true, message: "Order is in Needs Review — resolve it from the integration settings." };
   }
 
-  // Pancake requires items[].variation_id (its own catalog id, or the SKU) on
-  // every order line, so the product must be mapped first. Failing here keeps
-  // the bad payload out of Pancake and gives Management something actionable.
-  const { data: product } = await supabaseAdmin
-    .from("products")
-    .select("name, code, pancake_variation_id")
-    .eq("id", order.product_id || "")
-    .maybeSingle();
-  const variationId = (product?.pancake_variation_id || product?.code || "").trim();
-  if (!variationId) {
-    const reason = product
-      ? `Product "${product.name}" has no Pancake variation ID. Set it under Products → ${product.name} → Pancake variation ID / SKU.`
-      : "This lead has no product selected, so there is nothing to send to Pancake.";
-    await updateOrderSyncFields(order.id, { pancake_sync_status: "needs_review", pancake_sync_error: reason });
-    await insertSyncLog({
-      order_id: order.id,
-      action: "forward",
-      old_status: order.status,
-      request_at: new Date().toISOString(),
-      result: "failed",
-      error_message: reason,
-      triggered_by: opts.triggeredBy ?? null,
-      source: opts.source,
-    });
-    await notifyManagement(
-      "pancake_needs_review",
-      `Pancake sync needs review: ${order.order_number}`,
-      reason,
-      `/leads?open=${encodeURIComponent(order.order_number)}`
-    );
-    return { ok: false, skipped: false, message: reason };
-  }
-
   // Resolve the receiving account.
   const { data: agentProfile } = await supabaseAdmin
     .from("profiles")
@@ -123,6 +90,65 @@ export async function forwardOrderToPancake(
     return { ok: false, skipped: false, message: "No Pancake account resolved — marked Needs Review." };
   }
 
+  // Every Pancake order line normally references a variation in the shop's own
+  // catalog. When the product isn't mapped, the account may instead send it as
+  // a "quick add" one-time product (name + price only, no catalog entry, and
+  // therefore no inventory movement on Pancake's side).
+  const { data: product } = await supabaseAdmin
+    .from("products")
+    .select("name, code, pancake_variation_id")
+    .eq("id", order.product_id || "")
+    .maybeSingle();
+  // Only the explicit mapping counts. The internal product code was previously
+  // used as a fallback, but these codes are this system's own and are rarely
+  // Pancake SKUs — a wrong one produces an opaque rejection, whereas no
+  // mapping at all cleanly falls through to a quick-add product below.
+  const variationId = (product?.pancake_variation_id || "").trim();
+  const oneTimeProduct = !variationId && account.use_one_time_products;
+
+  if (!variationId && !oneTimeProduct) {
+    const reason = product
+      ? `Product "${product.name}" has no Pancake variation ID. Set it under Products → ${product.name} → Pancake variation ID / SKU, or enable quick-add products on the ${account.account_name} account.`
+      : "This lead has no product selected, so there is nothing to send to Pancake.";
+    await updateOrderSyncFields(order.id, { pancake_sync_status: "needs_review", pancake_sync_error: reason });
+    await insertSyncLog({
+      order_id: order.id,
+      pancake_account_id: account.id,
+      action: "forward",
+      old_status: order.status,
+      request_at: new Date().toISOString(),
+      result: "failed",
+      error_message: reason,
+      triggered_by: opts.triggeredBy ?? null,
+      source: opts.source,
+    });
+    await notifyManagement(
+      "pancake_needs_review",
+      `Pancake sync needs review: ${order.order_number}`,
+      reason,
+      `/leads?open=${encodeURIComponent(order.order_number)}`
+    );
+    return { ok: false, skipped: false, message: reason };
+  }
+
+  // A quick-add line still needs something to call the product.
+  if (oneTimeProduct && !(product?.name || order.product_name || "").trim()) {
+    const reason = "This lead has no product selected, so there is nothing to send to Pancake.";
+    await updateOrderSyncFields(order.id, { pancake_sync_status: "needs_review", pancake_sync_error: reason });
+    await insertSyncLog({
+      order_id: order.id,
+      pancake_account_id: account.id,
+      action: "forward",
+      old_status: order.status,
+      request_at: new Date().toISOString(),
+      result: "failed",
+      error_message: reason,
+      triggered_by: opts.triggeredBy ?? null,
+      source: opts.source,
+    });
+    return { ok: false, skipped: false, message: reason };
+  }
+
   const requestAt = new Date().toISOString();
   const attempt = order.pancake_sync_attempts + 1;
   // updated_at doubles as the "processing since" marker the sweep uses to
@@ -138,7 +164,8 @@ export async function forwardOrderToPancake(
     order,
     (agentProfile?.full_name as string) || "",
     (agentProfile?.username as string) || order.assigned_agent_email,
-    variationId
+    variationId,
+    oneTimeProduct
   );
   const result = await createOrder(account, payload);
   const responseAt = new Date().toISOString();

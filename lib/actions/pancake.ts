@@ -86,6 +86,7 @@ export async function createPancakeAccountAction(formData: FormData) {
     assigned_order_source: String(formData.get("assigned_order_source") || "").trim() || null,
     is_default: formData.get("is_default") === "on",
     is_active: formData.get("is_active") !== "off",
+    use_one_time_products: formData.get("use_one_time_products") !== "off",
     created_by: user.id,
     created_at: new Date().toISOString(),
     updated_at: null,
@@ -117,6 +118,7 @@ export async function updatePancakeAccountAction(accountId: string, formData: Fo
     assigned_order_source: String(formData.get("assigned_order_source") || "").trim() || null,
     is_default: formData.get("is_default") === "on",
     is_active: formData.get("is_active") === "on",
+    use_one_time_products: formData.get("use_one_time_products") === "on",
     updated_at: new Date().toISOString(),
   };
 

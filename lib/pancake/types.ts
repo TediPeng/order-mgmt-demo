@@ -17,8 +17,10 @@ export interface ForwardPayload {
   landmark: string;
   complete_address: string;
   product: string;
-  /** Pancake variation ID or SKU — REQUIRED by Pancake on every order line. */
+  /** Pancake variation ID or SKU. Empty only when one_time_product is set. */
   variation_id: string;
+  /** Send as a Pancake "quick add" (one-time) product with no catalog entry. */
+  one_time_product: boolean;
   quantity: number;
   unit_price: number | null;
   total_amount: number;
@@ -68,7 +70,8 @@ export function buildForwardPayload(
   order: Order,
   agentName: string,
   agentAccount: string,
-  variationId: string
+  variationId: string,
+  oneTimeProduct = false
 ): ForwardPayload {
   return {
     internal_order_id: order.id,
@@ -86,6 +89,7 @@ export function buildForwardPayload(
     complete_address: [order.purok, order.barangay, order.city, order.province].filter(Boolean).join(", "),
     product: order.product_name,
     variation_id: variationId,
+    one_time_product: oneTimeProduct,
     quantity: order.quantity,
     unit_price: order.unit_price,
     total_amount: order.total_amount,

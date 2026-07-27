@@ -35,10 +35,10 @@ export default async function NewProductPage({
             </div>
             <div>
               <Label htmlFor="pancake_variation_id">Pancake variation ID / SKU</Label>
-              <Input id="pancake_variation_id" name="pancake_variation_id" placeholder="Needed to forward orders to Pancake POS" />
+              <Input id="pancake_variation_id" name="pancake_variation_id" placeholder="Optional — blank sends a quick-add product" />
               <p className="mt-1 text-xs text-slate-400">
-                Pancake POS requires every order line to reference a product in its own catalog. Left blank, the Product
-                code is tried instead.
+                Links this product to your Pancake catalog so orders draw down Pancake stock. Leave blank to send it as a
+                Pancake quick-add (one-time) product instead.
               </p>
             </div>
             <div className="flex justify-end gap-2 pt-2">

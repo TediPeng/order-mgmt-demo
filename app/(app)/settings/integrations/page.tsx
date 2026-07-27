@@ -120,6 +120,24 @@ export default async function IntegrationsSettingsPage({
           Active
         </label>
       </div>
+      <div className="sm:col-span-2">
+        <label className="flex items-start gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            name="use_one_time_products"
+            defaultChecked={defaults ? defaults.use_one_time_products : true}
+            className="mt-0.5 h-4 w-4 rounded border-slate-300"
+          />
+          <span>
+            Quick-add products
+            <span className="block text-xs text-slate-400">
+              Products with no Pancake variation ID are sent as Pancake &ldquo;one-time&rdquo; products (name and price
+              only), so orders forward without mapping your catalog first. These lines do not draw down Pancake
+              inventory — untick to hold such orders for review instead.
+            </span>
+          </span>
+        </label>
+      </div>
     </>
   );
 

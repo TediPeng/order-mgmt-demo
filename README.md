@@ -13,6 +13,12 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Pancake POS integration
 
+Order lines: Pancake normally requires `items[].variation_id` pointing at a variation in the
+shop's own catalog, so `products.pancake_variation_id` maps each product across. Products left
+unmapped are sent as Pancake **quick-add (one-time) products** — name and price only, no
+catalog entry and no Pancake inventory movement — when the account has that option enabled
+(the default); with it off, such orders are held as Needs Review instead.
+
 Two-way order sync lives in `lib/pancake/`. `lib/pancake/config.ts` is wired against the
 **official Pancake POS OpenAPI spec** (base URL `https://pos.pages.fm/api/v1`, `api_key`
 query-param auth, `POST/GET /shops/{SHOP_ID}/orders`, integer status codes). The API key is

@@ -358,6 +358,9 @@ export interface PancakeAccount {
   assigned_order_source: string | null;
   is_default: boolean;
   is_active: boolean;
+  // Send products with no pancake_variation_id as Pancake "quick add"
+  // (one-time) products rather than holding the order back for mapping.
+  use_one_time_products: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string | null;
