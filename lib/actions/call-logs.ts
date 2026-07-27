@@ -3,7 +3,7 @@
 import fs from "fs";
 import path from "path";
 import { redirect } from "next/navigation";
-import { readDb, writeDb, uuid, nowIso, UPLOADS_DIR } from "@/lib/db";
+import { writeDb, uuid, nowIso, UPLOADS_DIR } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { requireUser, requirePermission } from "./guards";

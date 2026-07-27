@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { readDb, writeDb } from "@/lib/db";
+import { writeDb } from "@/lib/db";
 import { requireUser } from "./guards";
 
 export async function markNotificationReadAction(notificationId: string) {

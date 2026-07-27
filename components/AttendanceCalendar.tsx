@@ -169,7 +169,7 @@ export function AttendanceCalendar({
                   )}
                 </>
               ) : derivedRestDayForOpen ? (
-                <p className="py-6 text-center text-slate-400">Rest Day (from the agent's schedule).</p>
+                <p className="py-6 text-center text-slate-400">Rest Day (from the agent&apos;s schedule).</p>
               ) : (
                 <p className="py-6 text-center text-slate-400">No attendance record for this date.</p>
               )}

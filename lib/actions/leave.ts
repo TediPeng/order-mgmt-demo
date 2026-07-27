@@ -3,7 +3,7 @@
 import fs from "fs";
 import path from "path";
 import { redirect } from "next/navigation";
-import { readDb, writeDb, uuid, nowIso, UPLOADS_DIR } from "@/lib/db";
+import { writeDb, uuid, nowIso, UPLOADS_DIR } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { notify, supervisorRecipients } from "@/lib/notifications";
@@ -239,7 +239,7 @@ export async function reviewLeaveAction(formData: FormData) {
 
   if (data.decision === "approved") {
     for (const date of eachDate(request!.leave_start, request!.leave_end)) {
-      let att = db.attendance.find((a) => a.user_id === request!.agent_id && a.work_date === date);
+      const att = db.attendance.find((a) => a.user_id === request!.agent_id && a.work_date === date);
       if (att) {
         att.status = "on_leave";
         att.updated_by = user.id;

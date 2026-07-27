@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { ACTIONS, MODULE_ACTIONS, MODULE_LABELS, ACTION_LABELS, permissionGrid, isFullAccess } from "@/lib/permissions";
 import { MODULES } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Input, Label, Textarea } from "@/components/ui/Field";
+import { Input, Textarea } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";

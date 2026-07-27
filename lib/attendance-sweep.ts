@@ -36,7 +36,6 @@ export function sweepAutoAbsences(db: DbShape): boolean {
   }
 
   const scheduledAgents = db.profiles.filter((p) => p.is_active && !isFullAccess(p.role));
-  let mutated = false;
 
   for (let d = start; d < today; d = addDaysToYmd(d, 1)) {
     for (const profile of scheduledAgents) {
@@ -79,7 +78,6 @@ export function sweepAutoAbsences(db: DbShape): boolean {
         `${profile.full_name} was automatically marked absent for ${d} (no time-in recorded).`,
         "/attendance"
       );
-      mutated = true;
     }
   }
 

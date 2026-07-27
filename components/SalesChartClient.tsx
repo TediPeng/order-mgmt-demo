@@ -37,13 +37,32 @@ function formatMetricValue(metric: ChartMetric, value: number): string {
   return String(value);
 }
 
-function CustomTooltip({ active, payload, label, metric, groupLabels }: any) {
+interface TooltipPayloadEntry {
+  dataKey: string;
+  color: string;
+  value: number;
+  payload: Record<string, number | string>;
+}
+
+function CustomTooltip({
+  active,
+  payload,
+  label,
+  metric,
+  groupLabels,
+}: {
+  active?: boolean;
+  payload?: TooltipPayloadEntry[];
+  label?: string;
+  metric: ChartMetric;
+  groupLabels: Record<string, string>;
+}) {
   if (!active || !payload || payload.length === 0) return null;
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs shadow-lg">
       <p className="mb-1 font-semibold text-slate-700">{formatDate(label)}</p>
-      {payload.map((entry: any) => {
-        const key = entry.dataKey as string;
+      {payload.map((entry) => {
+        const key = entry.dataKey;
         const point = entry.payload;
         return (
           <div key={key} className="mb-1.5 last:mb-0">
@@ -52,7 +71,7 @@ function CustomTooltip({ active, payload, label, metric, groupLabels }: any) {
             </p>
             <p className="text-slate-400">
               Calls {point[`${key}__calls`]} · Orders {point[`${key}__orders`]} · Sales{" "}
-              {formatCurrency(point[`${key}__amount`] || 0)}
+              {formatCurrency(Number(point[`${key}__amount`]) || 0)}
             </p>
           </div>
         );

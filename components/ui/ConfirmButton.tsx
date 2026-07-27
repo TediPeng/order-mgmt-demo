@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { Button } from "./Button";
-import { cn } from "@/lib/utils";
 
 export function ConfirmButton({
   action,
