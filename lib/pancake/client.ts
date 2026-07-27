@@ -36,8 +36,9 @@ export function resolvePath(template: string, account: PancakeAccount, orderId?:
 export async function pancakeFetch(
   account: PancakeAccount,
   path: string,
-  init: { method: string; body?: unknown; headers?: Record<string, string> }
+  init: { method: string; body?: unknown; headers?: Record<string, string>; timeoutMs?: number }
 ): Promise<PancakeHttpResult> {
+  const timeoutMs = init.timeoutMs ?? REQUEST_TIMEOUT_MS;
   let apiKey: string;
   try {
     apiKey = decryptSecret(account.api_key_encrypted);
@@ -49,7 +50,7 @@ export async function pancakeFetch(
   url.searchParams.set(AUTH_QUERY_PARAM, apiKey);
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url.toString(), {
       method: init.method,
@@ -75,7 +76,7 @@ export async function pancakeFetch(
       error: res.ok ? null : `Pancake API responded ${res.status}: ${summarizeErrorBody(body, text)}`,
     };
   } catch (e) {
-    const msg = (e as Error).name === "AbortError" ? `Request timed out after ${REQUEST_TIMEOUT_MS}ms` : (e as Error).message;
+    const msg = (e as Error).name === "AbortError" ? `Request timed out after ${timeoutMs}ms` : (e as Error).message;
     return { ok: false, httpStatus: null, body: null, error: msg };
   } finally {
     clearTimeout(timer);

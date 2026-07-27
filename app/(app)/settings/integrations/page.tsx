@@ -22,6 +22,10 @@ import {
 
 export const dynamic = "force-dynamic";
 
+// The Pancake catalog lookup can take tens of seconds on a real shop, so this
+// page needs more than the default function budget.
+export const maxDuration = 60;
+
 export default async function IntegrationsSettingsPage({
   searchParams,
 }: {

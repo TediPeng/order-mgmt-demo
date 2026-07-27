@@ -2,6 +2,9 @@ import type { PancakeAccount } from "@/lib/types";
 import { mockMode } from "./config";
 import { pancakeFetch, resolvePath } from "./client";
 
+/** Generous by Pancake standards; still inside the page's maxDuration. */
+const LOOKUP_TIMEOUT_MS = 45_000;
+
 export interface PancakeVariation {
   variation_id: string;
   sku: string | null;
@@ -30,13 +33,19 @@ export async function listVariations(account: PancakeAccount, search = ""): Prom
     };
   }
 
-  // Variation rows are large (warehouses, price tables, images), so keep the
-  // page small — this runs inside a page render.
-  const query = new URLSearchParams({ page_size: "25", page_number: "1" });
+  // Variation rows are large (warehouses, price tables, images) and this
+  // endpoint is slow on real catalogs, so keep the page tiny and allow more
+  // time than a normal call — a lookup is interactive, not on the order path.
+  const query = new URLSearchParams({ page_size: "10", page_number: "1" });
   if (search.trim()) query.set("search", search.trim());
   const path = `${resolvePath("/shops/{shopId}/products/variations", account)}?${query.toString()}`;
-  const res = await pancakeFetch(account, path, { method: "GET" });
-  if (!res.ok) return { ok: false, error: res.error || "Lookup failed.", variations: [] };
+  const res = await pancakeFetch(account, path, { method: "GET", timeoutMs: LOOKUP_TIMEOUT_MS });
+  if (!res.ok) {
+    const hint = /timed out/i.test(res.error || "")
+      ? " Pancake's catalog endpoint is slow to respond — try again, and narrow the results with a search term."
+      : "";
+    return { ok: false, error: `${res.error || "Lookup failed."}${hint}`, variations: [] };
+  }
 
   const rows = ((res.body as { data?: unknown })?.data || []) as Record<string, unknown>[];
   return {
