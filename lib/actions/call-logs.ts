@@ -1,0 +1,163 @@
+"use server";
+
+import fs from "fs";
+import path from "path";
+import { redirect } from "next/navigation";
+import { readDb, writeDb, uuid, nowIso, UPLOADS_DIR } from "@/lib/db";
+import { logActivity } from "@/lib/activity";
+import { getRequestInfo } from "@/lib/request-info";
+import { requireUser, requirePermission } from "./guards";
+import { CALL_LOG_HEADERS, callLogRowSchema } from "@/lib/validation";
+import { parseSpreadsheetToRows } from "@/lib/call-log-parser";
+import { matchAgentByName } from "@/lib/agent-match";
+import type { CallLog, CallLogRecord } from "@/lib/types";
+
+const MAX_SIZE = 10 * 1024 * 1024;
+
+export async function uploadCallLogAction(formData: FormData) {
+  const { user, db } = await requireUser();
+  requirePermission(user, "call_logs", "upload", db, "/call-logs");
+
+  const file = formData.get("file") as File | null;
+  const fallbackAgentId = String(formData.get("fallback_agent_id") || "");
+
+  if (!file || file.size === 0) {
+    redirect(`/call-logs?error=${encodeURIComponent("Please choose a file to upload.")}`);
+  }
+
+  const ext = file!.name.toLowerCase().endsWith(".xlsx") ? "xlsx" : file!.name.toLowerCase().endsWith(".csv") ? "csv" : null;
+  if (!ext) {
+    redirect(`/call-logs?error=${encodeURIComponent("Invalid file type. Please upload a .xlsx or .csv file.")}`);
+  }
+  if (file!.size > MAX_SIZE) {
+    redirect(`/call-logs?error=${encodeURIComponent("File is too large. Maximum size is 10 MB.")}`);
+  }
+
+  const buffer = Buffer.from(await file!.arrayBuffer());
+  let rows: string[][];
+  try {
+    rows = parseSpreadsheetToRows(buffer, ext as "xlsx" | "csv");
+  } catch {
+    redirect(`/call-logs?error=${encodeURIComponent("Could not read this file. Please make sure it is not corrupted.")}`);
+  }
+
+  if (!rows! || rows.length === 0) {
+    redirect(`/call-logs?error=${encodeURIComponent("The uploaded file contains no records.")}`);
+  }
+
+  const headerRow = rows[0].map((h) => h.trim());
+  const headersOk = CALL_LOG_HEADERS.every((h, i) => headerRow[i] === h);
+  if (!headersOk) {
+    redirect(
+      `/call-logs?error=${encodeURIComponent("The file format is incorrect. Please download and use the official template.")}`
+    );
+  }
+
+  const dataRows = rows.slice(1).filter((r) => r.some((c) => c.trim() !== ""));
+  if (dataRows.length === 0) {
+    redirect(`/call-logs?error=${encodeURIComponent("The uploaded file contains no records.")}`);
+  }
+
+  const errors: string[] = [];
+  const parsedRecords: Omit<CallLogRecord, "id" | "call_log_id">[] = [];
+
+  dataRows.forEach((row, idx) => {
+    const raw = {
+      caller_name: row[0] || "",
+      phone_number: row[1] || "",
+      call_date: row[2] || "",
+      duration_seconds: row[3] === "" ? 0 : Number(row[3]),
+      call_type: row[4] || "",
+      notes: row[5] || "",
+      agent_name: row[6] || "",
+    };
+    const result = callLogRowSchema.safeParse(raw);
+    if (!result.success) {
+      errors.push(`Row ${idx + 2}: ${result.error.issues[0]?.message || "Invalid row"}`);
+      return;
+    }
+
+    let agentId: string | null = null;
+    if (result.data.agent_name) {
+      const match = matchAgentByName(result.data.agent_name, db.profiles);
+      if (!match) {
+        errors.push(`Row ${idx + 2}: Agent '${result.data.agent_name}' not found`);
+        return;
+      }
+      agentId = match.id;
+    } else if (fallbackAgentId) {
+      agentId = fallbackAgentId;
+    } else {
+      errors.push(`Row ${idx + 2}: Agent is required — select a fallback agent or add an Agent Name`);
+      return;
+    }
+
+    parsedRecords.push({
+      caller_name: result.data.caller_name,
+      phone_number: result.data.phone_number,
+      call_date: result.data.call_date,
+      duration_seconds: result.data.duration_seconds,
+      call_type: result.data.call_type,
+      notes: result.data.notes,
+      agent_id: agentId,
+    });
+  });
+
+  if (errors.length > 0) {
+    redirect(`/call-logs?error=${encodeURIComponent(`Some rows are invalid — ${errors.slice(0, 5).join("; ")}`)}`);
+  }
+
+  const storedName = `${uuid()}-${file!.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+  const storagePath = path.join(UPLOADS_DIR, storedName);
+  fs.writeFileSync(storagePath, buffer);
+
+  const callLog: CallLog = {
+    id: uuid(),
+    file_name: file!.name,
+    storage_path: storedName,
+    file_size_bytes: file!.size,
+    record_count: parsedRecords.length,
+    uploaded_by: user.id,
+    uploaded_at: nowIso(),
+  };
+  db.call_logs.push(callLog);
+  parsedRecords.forEach((r) => {
+    db.call_log_records.push({ id: uuid(), call_log_id: callLog.id, ...r });
+  });
+
+  const info = await getRequestInfo();
+  logActivity(
+    db,
+    user.id,
+    "CALL_LOG_UPLOADED",
+    "call_log",
+    callLog.id,
+    { file_name: callLog.file_name, record_count: callLog.record_count },
+    { module: "call_logs", ...info }
+  );
+  writeDb(db);
+  redirect(`/call-logs?uploaded=1`);
+}
+
+export async function deleteCallLogAction(callLogId: string) {
+  "use server";
+  const { user, db } = await requireUser();
+  requirePermission(user, "call_logs", "delete", db, "/call-logs");
+
+  const idx = db.call_logs.findIndex((c) => c.id === callLogId);
+  if (idx === -1) redirect("/call-logs");
+  const [removed] = db.call_logs.splice(idx, 1);
+  db.call_log_records = db.call_log_records.filter((r) => r.call_log_id !== callLogId);
+
+  const filePath = path.join(UPLOADS_DIR, removed.storage_path);
+  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
+  const info = await getRequestInfo();
+  logActivity(db, user.id, "CALL_LOG_DELETED", "call_log", callLogId, { file_name: removed.file_name }, {
+    module: "call_logs",
+    previous_value: removed,
+    ...info,
+  });
+  writeDb(db);
+  redirect("/call-logs?deleted=1");
+}

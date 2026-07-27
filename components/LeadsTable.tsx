@@ -1,0 +1,140 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { StatusBadge, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
+import { OrderDetailsModal } from "@/components/OrderDetailsModal";
+import { formatCurrency, formatDate, cn } from "@/lib/utils";
+import type { Order, OrderStatus } from "@/lib/types";
+
+export function LeadsTable({
+  orders: initialOrders,
+  agentUsernameById,
+  agentFullNameById,
+  productNameByOrderId,
+  latestStatusUpdateByOrderId,
+  activeProducts,
+  canEdit,
+  fullPageHrefBase,
+  initialOpenOrderNumber,
+}: {
+  orders: Order[];
+  agentUsernameById: Record<string, string>;
+  agentFullNameById: Record<string, string>;
+  productNameByOrderId: Record<string, string>;
+  latestStatusUpdateByOrderId: Record<string, { status: OrderStatus; at: string } | undefined>;
+  activeProducts: { id: string; name: string; code: string | null }[];
+  canEdit: boolean;
+  fullPageHrefBase: string | null;
+  initialOpenOrderNumber?: string;
+}) {
+  const router = useRouter();
+  const [orders, setOrders] = useState(initialOrders);
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setOrders(initialOrders);
+  }, [initialOrders]);
+
+  useEffect(() => {
+    if (!initialOpenOrderNumber) return;
+    const match = initialOrders.find((o) => o.order_number === initialOpenOrderNumber);
+    if (match) setOpenId(match.id);
+    // Only run for the initial deep-link, not on every orders refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialOpenOrderNumber]);
+
+  const openOrder = orders.find((o) => o.id === openId) || null;
+
+  function handleSaved(updated: Order) {
+    setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
+    router.refresh();
+  }
+
+  return (
+    <>
+      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <table className="w-full min-w-[2200px] text-left text-sm">
+          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+            <tr>
+              <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3">Order Number</th>
+              <th className="px-4 py-3">Order Date</th>
+              <th className="px-4 py-3">Agent</th>
+              <th className="px-4 py-3">Customer Name</th>
+              <th className="px-4 py-3">Phone Number</th>
+              <th className="px-4 py-3">Purok</th>
+              <th className="px-4 py-3">Barangay</th>
+              <th className="px-4 py-3">City</th>
+              <th className="px-4 py-3">Province</th>
+              <th className="px-4 py-3">Landmark</th>
+              <th className="px-4 py-3">Previous Order Date</th>
+              <th className="px-4 py-3">Previous Order Product</th>
+              <th className="px-4 py-3">Previous Order Amount</th>
+              <th className="px-4 py-3">New Product Order</th>
+              <th className="px-4 py-3">Unit Price</th>
+              <th className="px-4 py-3">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {orders.map((o) => {
+              const style = LEAD_STATUS_STYLES[o.status];
+              return (
+                <tr key={o.id} className={cn(style.row, style.rowHover)}>
+                  <td className={cn("sticky left-0 z-10 px-4 py-3", style.row)}>
+                    <button
+                      type="button"
+                      onClick={() => setOpenId(o.id)}
+                      className="font-medium text-[var(--brand-primary)] hover:underline"
+                    >
+                      {o.order_number}
+                    </button>
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">{o.order_date ? formatDate(o.order_date) : "—"}</td>
+                  <td className="px-4 py-3 text-slate-600">{agentUsernameById[o.agent_id] || "—"}</td>
+                  <td className="px-4 py-3 text-slate-600">{o.customer_name}</td>
+                  <td className="px-4 py-3 text-slate-600">{o.customer_phone || "—"}</td>
+                  <td className="px-4 py-3 text-slate-600">{o.purok || "—"}</td>
+                  <td className="px-4 py-3 text-slate-600">{o.barangay || "—"}</td>
+                  <td className="px-4 py-3 text-slate-600">{o.city || "—"}</td>
+                  <td className="px-4 py-3 text-slate-600">{o.province || "—"}</td>
+                  <td className="px-4 py-3 text-slate-600">{o.landmark || "—"}</td>
+                  <td className="px-4 py-3 text-slate-600">{o.previous_order_date ? formatDate(o.previous_order_date) : "—"}</td>
+                  <td className="px-4 py-3 text-slate-600">{o.previous_order_product || "—"}</td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {o.previous_order_amount != null ? formatCurrency(o.previous_order_amount) : "—"}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">{o.product_name || "—"}</td>
+                  <td className="px-4 py-3 text-slate-600">{o.unit_price != null ? formatCurrency(o.unit_price) : "—"}</td>
+                  <td className="px-4 py-3">
+                    <StatusBadge status={o.status} />
+                  </td>
+                </tr>
+              );
+            })}
+            {orders.length === 0 && (
+              <tr>
+                <td colSpan={16} className="px-4 py-10 text-center text-slate-400">
+                  No leads found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {openOrder && (
+        <OrderDetailsModal
+          order={openOrder}
+          agentName={agentFullNameById[openOrder.agent_id] || "—"}
+          productName={productNameByOrderId[openOrder.id] || openOrder.product_name}
+          latestStatusUpdate={latestStatusUpdateByOrderId[openOrder.id] || null}
+          activeProducts={activeProducts}
+          canEdit={canEdit}
+          fullPageHref={fullPageHrefBase ? `${fullPageHrefBase}/${openOrder.id}` : null}
+          onClose={() => setOpenId(null)}
+          onSaved={handleSaved}
+        />
+      )}
+    </>
+  );
+}

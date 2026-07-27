@@ -1,0 +1,330 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Input, Label, Select, Textarea, FieldError } from "@/components/ui/Field";
+import { Button, LinkButton } from "@/components/ui/Button";
+import { Alert } from "@/components/ui/Alert";
+import { ProductCombobox } from "@/components/ProductCombobox";
+import { LEAD_STATUSES, LEAD_STATUS_LABELS } from "@/lib/validation";
+import type { Order, Profile } from "@/lib/types";
+
+interface FormState {
+  customer_name: string;
+  customer_phone: string;
+  purok: string;
+  barangay: string;
+  city: string;
+  province: string;
+  landmark: string;
+  previous_order_date: string;
+  previous_order_product: string;
+  previous_order_amount: string;
+  product_id: string;
+  unit_price: string;
+  status: string;
+  agent_id: string;
+  notes: string;
+}
+
+function snapshotFrom(order: Order): FormState {
+  return {
+    customer_name: order.customer_name,
+    customer_phone: order.customer_phone,
+    purok: order.purok,
+    barangay: order.barangay,
+    city: order.city,
+    province: order.province,
+    landmark: order.landmark,
+    previous_order_date: order.previous_order_date || "",
+    previous_order_product: order.previous_order_product || "",
+    previous_order_amount: order.previous_order_amount != null ? String(order.previous_order_amount) : "",
+    product_id: order.product_id || "",
+    unit_price: order.unit_price != null ? String(order.unit_price) : "",
+    status: order.status,
+    agent_id: order.agent_id,
+    notes: order.notes,
+  };
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  customer_name: "Customer Name",
+  customer_phone: "Phone Number",
+  barangay: "Barangay",
+  city: "City",
+  province: "Province",
+  product_id: "New Product Order",
+  unit_price: "Unit Price",
+};
+
+export function LeadEditForm({
+  order,
+  action,
+  canEdit,
+  canReassign,
+  canSeePreviousOrderFields,
+  productName,
+  agents,
+  activeProducts,
+}: {
+  order: Order;
+  action: (formData: FormData) => void | Promise<void>;
+  canEdit: boolean;
+  canReassign: boolean;
+  canSeePreviousOrderFields: boolean;
+  productName: string;
+  agents: Pick<Profile, "id" | "full_name" | "username">[];
+  activeProducts: { id: string; name: string; code: string | null }[];
+}) {
+  const initial = useMemo(() => snapshotFrom(order), [order]);
+  const [form, setForm] = useState<FormState>(initial);
+  const [missing, setMissing] = useState<string[]>([]);
+  const isDirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(initial), [form, initial]);
+  const isDirtyRef = useRef(isDirty);
+  isDirtyRef.current = isDirty;
+
+  useEffect(() => {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (!isDirtyRef.current) return;
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    function handleClick(e: MouseEvent) {
+      if (!isDirtyRef.current) return;
+      const anchor = (e.target as HTMLElement)?.closest("a");
+      if (!anchor) return;
+      const href = anchor.getAttribute("href");
+      if (!href || href.startsWith("#")) return;
+      const ok = window.confirm("You have unsaved changes on this lead. Leave without saving?");
+      if (!ok) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("click", handleClick, true);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("click", handleClick, true);
+    };
+  }, []);
+
+  function update<K extends keyof FormState>(key: K, value: string) {
+    setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    if (form.status === "ready_to_ship") {
+      const missingFields: string[] = [];
+      if (!form.customer_name.trim()) missingFields.push("customer_name");
+      if (!form.customer_phone.trim()) missingFields.push("customer_phone");
+      if (!form.barangay.trim()) missingFields.push("barangay");
+      if (!form.city.trim()) missingFields.push("city");
+      if (!form.province.trim()) missingFields.push("province");
+      if (!form.product_id) missingFields.push("product_id");
+      if (!form.unit_price.trim()) missingFields.push("unit_price");
+      if (missingFields.length > 0) {
+        e.preventDefault();
+        setMissing(missingFields);
+        return;
+      }
+    }
+    setMissing([]);
+  }
+
+  const err = (key: string) => (missing.includes(key) ? "border-red-400 focus:border-red-500 focus:ring-red-500" : "");
+
+  return (
+    <form action={action} onSubmit={handleSubmit} className="space-y-4">
+      {missing.length > 0 && (
+        <Alert kind="error">
+          Missing required fields for Ready to Ship: {missing.map((k) => FIELD_LABELS[k] || k).join(", ")}
+        </Alert>
+      )}
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="customer_name">Customer name</Label>
+          <Input
+            id="customer_name"
+            name="customer_name"
+            value={form.customer_name}
+            onChange={(e) => update("customer_name", e.target.value)}
+            disabled={!canEdit}
+            className={err("customer_name")}
+            required
+          />
+        </div>
+        <div>
+          <Label htmlFor="customer_phone">Phone number</Label>
+          <Input
+            id="customer_phone"
+            name="customer_phone"
+            value={form.customer_phone}
+            onChange={(e) => update("customer_phone", e.target.value)}
+            disabled={!canEdit}
+            className={err("customer_phone")}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="purok">Purok</Label>
+          <Input id="purok" name="purok" value={form.purok} onChange={(e) => update("purok", e.target.value)} disabled={!canEdit} />
+        </div>
+        <div>
+          <Label htmlFor="barangay">Barangay</Label>
+          <Input
+            id="barangay"
+            name="barangay"
+            value={form.barangay}
+            onChange={(e) => update("barangay", e.target.value)}
+            disabled={!canEdit}
+            className={err("barangay")}
+          />
+        </div>
+        <div>
+          <Label htmlFor="city">City</Label>
+          <Input
+            id="city"
+            name="city"
+            value={form.city}
+            onChange={(e) => update("city", e.target.value)}
+            disabled={!canEdit}
+            className={err("city")}
+          />
+        </div>
+        <div>
+          <Label htmlFor="province">Province</Label>
+          <Input
+            id="province"
+            name="province"
+            value={form.province}
+            onChange={(e) => update("province", e.target.value)}
+            disabled={!canEdit}
+            className={err("province")}
+          />
+        </div>
+      </div>
+      <div>
+        <Label htmlFor="landmark">Landmark</Label>
+        <Input id="landmark" name="landmark" value={form.landmark} onChange={(e) => update("landmark", e.target.value)} disabled={!canEdit} />
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <div>
+          <Label htmlFor="previous_order_date">Previous order date</Label>
+          <Input
+            id="previous_order_date"
+            name="previous_order_date"
+            type="date"
+            value={form.previous_order_date}
+            onChange={(e) => update("previous_order_date", e.target.value)}
+            disabled={!canSeePreviousOrderFields}
+          />
+        </div>
+        <div>
+          <Label htmlFor="previous_order_product">Previous order product</Label>
+          <Input
+            id="previous_order_product"
+            name="previous_order_product"
+            value={form.previous_order_product}
+            onChange={(e) => update("previous_order_product", e.target.value)}
+            disabled={!canSeePreviousOrderFields}
+          />
+        </div>
+        <div>
+          <Label htmlFor="previous_order_amount">Previous order amount</Label>
+          <Input
+            id="previous_order_amount"
+            name="previous_order_amount"
+            type="number"
+            min={0}
+            step={0.01}
+            value={form.previous_order_amount}
+            onChange={(e) => update("previous_order_amount", e.target.value)}
+            disabled={!canSeePreviousOrderFields}
+          />
+        </div>
+      </div>
+      {!canSeePreviousOrderFields && (
+        <p className="-mt-2 text-xs text-slate-400">Previous order information is informational and can only be corrected by Management.</p>
+      )}
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="product_id">New Product Order</Label>
+          <ProductCombobox
+            name="product_id"
+            products={activeProducts}
+            defaultValue={form.product_id}
+            defaultLabel={productName}
+            disabled={!canEdit}
+            onChange={(id) => update("product_id", id)}
+          />
+          {missing.includes("product_id") && <FieldError>New Product Order is required.</FieldError>}
+        </div>
+        <div>
+          <Label htmlFor="unit_price">Unit price</Label>
+          <Input
+            id="unit_price"
+            name="unit_price"
+            type="number"
+            min={0}
+            step={0.01}
+            inputMode="decimal"
+            value={form.unit_price}
+            onChange={(e) => update("unit_price", e.target.value)}
+            disabled={!canEdit}
+            className={err("unit_price")}
+          />
+        </div>
+      </div>
+
+      <div>
+        <Label htmlFor="status">Status</Label>
+        <Select id="status" name="status" value={form.status} onChange={(e) => update("status", e.target.value)} disabled={!canEdit}>
+          {LEAD_STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {LEAD_STATUS_LABELS[s]}
+            </option>
+          ))}
+        </Select>
+      </div>
+
+      <div>
+        <Label htmlFor="agent_id">Agent</Label>
+        {canReassign ? (
+          <Select id="agent_id" name="agent_id" value={form.agent_id} onChange={(e) => update("agent_id", e.target.value)}>
+            {agents.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.full_name} ({a.username})
+              </option>
+            ))}
+          </Select>
+        ) : (
+          <>
+            <Input value={`${agents.find((a) => a.id === form.agent_id)?.full_name || "—"}`} disabled />
+            <input type="hidden" name="agent_id" value={form.agent_id} />
+          </>
+        )}
+        {!canReassign && <p className="mt-1 text-xs text-slate-400">Only Management or Administrator can reassign a lead to a different agent.</p>}
+      </div>
+
+      <div>
+        <Label htmlFor="notes">Notes</Label>
+        <Textarea id="notes" name="notes" rows={3} value={form.notes} onChange={(e) => update("notes", e.target.value)} disabled={!canEdit} />
+      </div>
+
+      <div className="flex items-center justify-between gap-2 pt-2">
+        <span className="text-xs text-slate-400">{isDirty ? "You have unsaved changes." : ""}</span>
+        <div className="flex gap-2">
+          <LinkButton href="/leads" variant="outline">
+            Back
+          </LinkButton>
+          {canEdit && <Button type="submit">Save Changes</Button>}
+        </div>
+      </div>
+    </form>
+  );
+}

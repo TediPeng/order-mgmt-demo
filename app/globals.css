@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+
+  /* Brand theme derived from the 4S RETENTION logo (gold). */
+  --brand-primary: #a9790f;
+  --brand-primary-hover: #8f660c;
+  --brand-secondary: #6b5310;
+  --brand-accent: #f0c000;
+  --brand-primary-10: rgba(169, 121, 15, 0.1);
+  --brand-primary-20: rgba(169, 121, 15, 0.2);
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* FullCalendar themed with the 4S RETENTION brand vars (Section 3/9). */
+.schedule-calendar {
+  --fc-button-bg-color: var(--brand-primary);
+  --fc-button-border-color: var(--brand-primary);
+  --fc-button-hover-bg-color: var(--brand-primary-hover);
+  --fc-button-hover-border-color: var(--brand-primary-hover);
+  --fc-button-active-bg-color: var(--brand-secondary);
+  --fc-button-active-border-color: var(--brand-secondary);
+  --fc-today-bg-color: var(--brand-primary-10);
+  --fc-border-color: #e2e8f0;
+  --fc-event-border-color: transparent;
+  font-family: Arial, Helvetica, sans-serif;
+}
+.schedule-calendar .fc-event {
+  cursor: pointer;
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+.schedule-calendar .fc-event:hover {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+@media (prefers-reduced-motion: reduce) {
+  .schedule-calendar .fc-event {
+    transition: none;
+  }
+}
+
+@media print {
+  aside,
+  header,
+  .schedule-calendar .fc-header-toolbar,
+  .no-print {
+    display: none !important;
+  }
+  main {
+    padding: 0 !important;
+  }
+}

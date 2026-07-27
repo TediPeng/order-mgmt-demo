@@ -1,0 +1,94 @@
+"use server";
+
+import { redirect } from "next/navigation";
+import { readDb, writeDb } from "@/lib/db";
+import { createSession, destroySession, getCurrentUser, hashPassword, verifyPassword } from "@/lib/auth";
+import { logActivity } from "@/lib/activity";
+import { getRequestInfo } from "@/lib/request-info";
+import { passwordChangeSchema } from "@/lib/validation";
+
+export async function loginAction(formData: FormData) {
+  const username = String(formData.get("username") || "").trim();
+  const password = String(formData.get("password") || "");
+  const info = await getRequestInfo();
+
+  if (!username || !password) {
+    redirect(`/login?error=${encodeURIComponent("Please enter your username and password.")}`);
+  }
+
+  const db = readDb();
+  const user = db.profiles.find((p) => p.username.toLowerCase() === username.toLowerCase());
+
+  if (!user || !verifyPassword(password, user.password_hash)) {
+    logActivity(db, user?.id ?? null, "LOGIN_FAILED", "auth", null, { username_attempted: username }, {
+      module: "settings",
+      ...info,
+    });
+    writeDb(db);
+    redirect(`/login?error=${encodeURIComponent("Incorrect username or password.")}`);
+  }
+
+  if (!user.is_active) {
+    logActivity(db, user.id, "LOGIN_FAILED", "auth", null, { reason: "deactivated" }, { module: "settings", ...info });
+    writeDb(db);
+    redirect(`/login?error=${encodeURIComponent("This account has been deactivated. Contact your administrator.")}`);
+  }
+
+  logActivity(db, user.id, "LOGIN", "auth", user.id, { username: user.username }, { module: "settings", ...info });
+  writeDb(db);
+  await createSession(user.id);
+  redirect("/dashboard");
+}
+
+export async function logoutAction() {
+  const user = await getCurrentUser();
+  if (user) {
+    const db = readDb();
+    const info = await getRequestInfo();
+    logActivity(db, user.id, "LOGOUT", "auth", user.id, { username: user.username }, { module: "settings", ...info });
+    writeDb(db);
+  }
+  await destroySession();
+  redirect("/login");
+}
+
+export async function requestPasswordResetAction(formData: FormData) {
+  const email = String(formData.get("email") || "").trim();
+  const db = readDb();
+  const user = db.profiles.find((p) => p.email.toLowerCase() === email.toLowerCase());
+  if (user) {
+    logActivity(db, user.id, "PASSWORD_RESET_REQUESTED", "auth", user.id, { email });
+    writeDb(db);
+  }
+  redirect(`/forgot-password?sent=1`);
+}
+
+export async function changeOwnPasswordAction(formData: FormData) {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+
+  const parsed = passwordChangeSchema.safeParse({
+    current_password: formData.get("current_password"),
+    new_password: formData.get("new_password"),
+    confirm_password: formData.get("confirm_password"),
+  });
+
+  if (!parsed.success) {
+    const msg = parsed.error.issues[0]?.message || "Invalid input.";
+    redirect(`/settings/password?error=${encodeURIComponent(msg)}`);
+  }
+
+  const db = readDb();
+  const profile = db.profiles.find((p) => p.id === user!.id)!;
+
+  if (!verifyPassword(parsed.data.current_password, profile.password_hash)) {
+    redirect(`/settings/password?error=${encodeURIComponent("Current password is incorrect.")}`);
+  }
+
+  profile.password_hash = hashPassword(parsed.data.new_password);
+  profile.must_change_password = false;
+  const info = await getRequestInfo();
+  logActivity(db, user!.id, "PASSWORD_CHANGED", "user", user!.id, { self: true }, { module: "settings", ...info });
+  writeDb(db);
+  redirect(`/settings/password?success=1`);
+}
