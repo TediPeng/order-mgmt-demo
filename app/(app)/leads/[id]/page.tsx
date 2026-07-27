@@ -11,6 +11,7 @@ import { formatDateTime } from "@/lib/utils";
 import { deleteLeadAction, updateLeadAction } from "@/lib/actions/leads";
 import { LeadEditForm } from "@/components/LeadEditForm";
 import { listSyncLogs, getAccount } from "@/lib/pancake/store";
+import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 
 function summarizeValue(v: unknown): string {
   if (v === null || v === undefined) return "—";
@@ -43,7 +44,9 @@ export default async function LeadDetailPage({
   const creator = db.profiles.find((p) => p.id === order.created_by);
   const updater = order.updated_by ? db.profiles.find((p) => p.id === order.updated_by) : null;
   const agents = db.profiles.filter((p) => p.is_active).map((p) => ({ id: p.id, full_name: p.full_name, username: p.username }));
-  const activeProducts = db.products.filter((p) => p.is_active).map((p) => ({ id: p.id, name: p.name, code: p.code }));
+  const activeProducts = db.products
+    .filter((p) => p.is_active)
+    .map((p) => ({ id: p.id, name: p.name, code: p.code, variants: p.variants }));
   const currentProductName = order.product_id ? db.products.find((p) => p.id === order.product_id)?.name || order.product_name : order.product_name;
 
   const byId = new Map(db.profiles.map((p) => [p.id, p.full_name]));
@@ -51,7 +54,10 @@ export default async function LeadDetailPage({
     .filter((e) => e.entity_id === order.id && e.module === "orders")
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
 
-  const wasForwarded = Boolean(order.pancake_order_id || order.forwarded_to_pancake_at || order.pancake_sync_status);
+  const wasForwarded =
+    order.status === "ready_to_ship" ||
+    Boolean(order.pancake_order_id || order.forwarded_to_pancake_at) ||
+    order.pancake_sync_status !== "not_synced";
   const syncLogs = wasForwarded ? await listSyncLogs({ order_id: order.id, limit: 25 }) : [];
   const pancakeAccount = order.pancake_pos_account_id ? await getAccount(order.pancake_pos_account_id) : null;
 
@@ -132,7 +138,10 @@ export default async function LeadDetailPage({
         <Card>
           <CardHeader className="flex items-center justify-between">
             <CardTitle>Pancake POS</CardTitle>
-            <SyncStatusChip status={order.pancake_sync_status} />
+            <SyncStatusChip
+              status={order.pancake_sync_status}
+              needsReview={order.pancake_sync_status === "sync_failed" && order.pancake_retry_count >= MAX_ATTEMPTS}
+            />
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-3 text-sm">
@@ -141,16 +150,30 @@ export default async function LeadDetailPage({
                 <p className="text-slate-800">{pancakeAccount?.account_name || "—"}</p>
               </div>
               <div>
-                <p className="text-xs uppercase text-slate-400">Pancake Order ID</p>
-                <p className="text-slate-800">{order.pancake_order_id || "—"}</p>
+                <p className="text-xs uppercase text-slate-400">Pancake POS Order ID</p>
+                {order.pancake_order_id ? (
+                  <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-800">{order.pancake_order_id}</code>
+                ) : (
+                  <p className="text-slate-400">—</p>
+                )}
+              </div>
+              <div>
+                <p className="text-xs uppercase text-slate-400">Pancake Status</p>
+                <p className="text-slate-800">{order.pancake_status || "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-slate-400">Last Sync Attempt</p>
+                <p className="text-slate-800">
+                  {order.pancake_last_sync_attempt_at ? formatDateTime(order.pancake_last_sync_attempt_at) : "—"}
+                </p>
               </div>
               <div>
                 <p className="text-xs uppercase text-slate-400">Forwarded At</p>
                 <p className="text-slate-800">{order.forwarded_to_pancake_at ? formatDateTime(order.forwarded_to_pancake_at) : "—"}</p>
               </div>
               <div>
-                <p className="text-xs uppercase text-slate-400">Last Synced</p>
-                <p className="text-slate-800">{order.pancake_last_synced_at ? formatDateTime(order.pancake_last_synced_at) : "—"}</p>
+                <p className="text-xs uppercase text-slate-400">Synced At</p>
+                <p className="text-slate-800">{order.pancake_synced_at ? formatDateTime(order.pancake_synced_at) : "—"}</p>
               </div>
             </div>
             {order.pancake_sync_error && <Alert kind="error">Last sync error: {order.pancake_sync_error}</Alert>}

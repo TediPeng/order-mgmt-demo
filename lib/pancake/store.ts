@@ -25,7 +25,8 @@ function mapOrder(o: Record<string, unknown>): Order {
     unit_price: numOrNull(o.unit_price),
     total_amount: Number(o.total_amount),
     shipping_fee: numOrNull(o.shipping_fee),
-    pancake_sync_attempts: Number(o.pancake_sync_attempts ?? 0),
+    discount: Number(o.discount ?? 0),
+    pancake_retry_count: Number(o.pancake_retry_count ?? 0),
   };
 }
 
@@ -206,23 +207,65 @@ export async function listOrdersForPolling(): Promise<Order[]> {
 }
 
 export async function listOrdersWithFailedSync(): Promise<Order[]> {
-  const { data, error } = await supabaseAdmin.from("orders").select("*").eq("pancake_sync_status", "failed");
+  const { data, error } = await supabaseAdmin.from("orders").select("*").eq("pancake_sync_status", "sync_failed");
   if (error) throw new Error(`orders read failed: ${error.message}`);
   return (data || []).map(mapOrder);
 }
 
-/** Orders left in `processing` by a forward that never finished — the request
- * was killed mid-flight (serverless timeout/instance recycle). Without this
- * they would sit in `processing` forever and the duplicate guard would skip
- * them, so the sweep releases them back to `failed` for the retry queue. */
-export async function listOrdersStuckProcessing(olderThanIso: string): Promise<Order[]> {
+/** Orders left in `syncing` by a forward that never finished — the request was
+ * killed mid-flight (serverless timeout/instance recycle). Without this they
+ * would sit in `syncing` forever and the duplicate guard would skip them, so
+ * the sweep releases them back to `sync_failed` for the retry queue. */
+export async function listOrdersStuckSyncing(olderThanIso: string): Promise<Order[]> {
   const { data, error } = await supabaseAdmin
     .from("orders")
     .select("*")
-    .eq("pancake_sync_status", "processing")
-    .lt("updated_at", olderThanIso);
+    .eq("pancake_sync_status", "syncing")
+    .lt("pancake_last_sync_attempt_at", olderThanIso);
   if (error) throw new Error(`orders read failed: ${error.message}`);
   return (data || []).map(mapOrder);
+}
+
+/** Atomically claims an order for sending: flips it to `syncing` only if it is
+ * NOT already syncing and has no Pancake order id. Postgres applies the
+ * predicate and the write in one statement, so two concurrent callers (a
+ * double-click, or a cron retry overlapping a manual one) cannot both win —
+ * the loser gets no row back and must not call Pancake.
+ *
+ * Returns the claimed row, or null when another caller holds the claim. */
+export async function claimOrderForSync(
+  id: string,
+  fields: { pancake_pos_account_id: string; pancake_retry_count: number; attemptAt: string }
+): Promise<Order | null> {
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .update({
+      pancake_sync_status: "syncing",
+      pancake_pos_account_id: fields.pancake_pos_account_id,
+      pancake_retry_count: fields.pancake_retry_count,
+      pancake_last_sync_attempt_at: fields.attemptAt,
+    })
+    .eq("id", id)
+    .neq("pancake_sync_status", "syncing")
+    .is("pancake_order_id", null)
+    .select("*")
+    .maybeSingle();
+  if (error) throw new Error(`orders claim failed: ${error.message}`);
+  return data ? mapOrder(data) : null;
+}
+
+/** True when a successful `forward` already exists for this order — the
+ * belt-and-braces duplicate check required before any create call. */
+export async function hasSuccessfulForward(orderId: string): Promise<boolean> {
+  const { data, error } = await supabaseAdmin
+    .from("pancake_sync_logs")
+    .select("id")
+    .eq("order_id", orderId)
+    .eq("result", "success")
+    .in("action", ["forward", "retry"])
+    .limit(1);
+  if (error) throw new Error(`pancake_sync_logs read failed: ${error.message}`);
+  return (data || []).length > 0;
 }
 
 /** Targeted update of sync/fulfillment fields only — never touches notes,
@@ -235,11 +278,15 @@ export async function updateOrderSyncFields(
       | "status"
       | "pancake_order_id"
       | "pancake_pos_account_id"
+      | "pancake_status"
       | "pancake_sync_status"
-      | "pancake_last_synced_at"
+      | "pancake_synced_at"
+      | "pancake_last_sync_attempt_at"
+      | "pancake_request_payload"
+      | "pancake_response_payload"
       | "pancake_sync_error"
       | "forwarded_to_pancake_at"
-      | "pancake_sync_attempts"
+      | "pancake_retry_count"
       | "updated_at"
     >
   >

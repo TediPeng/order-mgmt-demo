@@ -102,6 +102,17 @@ export default async function NewLeadPage({
 
             <div className="grid grid-cols-2 gap-4">
               <div>
+                <Label htmlFor="variant">Variant</Label>
+                <Input id="variant" name="variant" placeholder="Optional" />
+              </div>
+              <div>
+                <Label htmlFor="discount">Discount</Label>
+                <Input id="discount" name="discount" type="number" min={0} step={0.01} inputMode="decimal" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
                 <Label htmlFor="shipping_fee">Shipping fee</Label>
                 <Input id="shipping_fee" name="shipping_fee" type="number" min={0} step={0.01} inputMode="decimal" />
               </div>

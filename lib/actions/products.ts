@@ -35,6 +35,7 @@ export async function createProductAction(formData: FormData) {
     name: data.name,
     code,
     pancake_variation_id: data.pancake_variation_id.trim() || null,
+    variants: null,
     is_active: true,
     created_by: user.id,
     created_at: now,

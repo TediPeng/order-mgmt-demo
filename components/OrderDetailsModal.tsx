@@ -2,14 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronRight, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
 import { ProductCombobox } from "@/components/ProductCombobox";
 import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, PAYMENT_METHOD_SUGGESTIONS } from "@/lib/validation";
+import { computeOrderTotal, validateForPancake as computePancakeCheck } from "@/lib/pancake/validate";
+import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 import type { Order, OrderStatus } from "@/lib/types";
 
 interface EditForm {
@@ -21,8 +23,10 @@ interface EditForm {
   province: string;
   landmark: string;
   product_id: string;
+  variant: string;
   quantity: string;
   unit_price: string;
+  discount: string;
   shipping_fee: string;
   courier: string;
   payment_method: string;
@@ -41,8 +45,10 @@ function snapshotFrom(order: Order): EditForm {
     province: order.province,
     landmark: order.landmark,
     product_id: order.product_id || "",
+    variant: order.variant || "",
     quantity: String(order.quantity),
     unit_price: order.unit_price != null ? String(order.unit_price) : "",
+    discount: order.discount ? String(order.discount) : "",
     shipping_fee: order.shipping_fee != null ? String(order.shipping_fee) : "",
     courier: order.courier || "",
     payment_method: order.payment_method || "",
@@ -74,6 +80,8 @@ function buildRawFromOrder(o: Order, overrides: Record<string, unknown> = {}): R
     courier: o.courier || "",
     payment_method: o.payment_method || "",
     order_source: o.order_source || "",
+    discount: o.discount ?? 0,
+    variant: o.variant || "",
     ...overrides,
   };
 }
@@ -92,6 +100,12 @@ interface SyncHistoryEntry {
 
 const MISSING_PREFIX = "Missing required fields for Ready to Ship: ";
 
+const STEPS = [
+  { n: 1 as const, label: "Customer" },
+  { n: 2 as const, label: "Products & pricing" },
+  { n: 3 as const, label: "Review" },
+];
+
 export function OrderDetailsModal({
   order,
   agentName,
@@ -108,7 +122,7 @@ export function OrderDetailsModal({
   agentName: string;
   productName: string;
   latestStatusUpdate: { status: OrderStatus; at: string } | null;
-  activeProducts: { id: string; name: string; code: string | null }[];
+  activeProducts: { id: string; name: string; code: string | null; variants?: string[] | null }[];
   canEdit: boolean;
   canManageIntegrations?: boolean;
   fullPageHref: string | null;
@@ -116,6 +130,8 @@ export function OrderDetailsModal({
   onSaved: (updated: Order) => void;
 }) {
   const [mode, setMode] = useState<"view" | "edit">("view");
+  // Edit mode walks Customer info → Products & pricing → Review.
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const initial = useMemo(() => snapshotFrom(order), [order]);
   const [form, setForm] = useState<EditForm>(initial);
   const [statusDraft, setStatusDraft] = useState<string>(order.status);
@@ -127,12 +143,30 @@ export function OrderDetailsModal({
   const [pancakeAccountName, setPancakeAccountName] = useState<string | null>(null);
   const [syncActionRunning, setSyncActionRunning] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState(false);
 
-  const wasForwarded = Boolean(order.pancake_order_id || order.forwarded_to_pancake_at || order.pancake_sync_status);
+  // The sync panel appears once the order has reached Ready to Ship (Section 4
+  // step 5) — before that there is nothing to sync and nothing to report.
+  const showSyncPanel =
+    order.status === "ready_to_ship" ||
+    Boolean(order.pancake_order_id || order.forwarded_to_pancake_at) ||
+    order.pancake_sync_status !== "not_synced";
+  const syncNeedsReview = order.pancake_sync_status === "sync_failed" && order.pancake_retry_count >= MAX_ATTEMPTS;
+
+  async function copyPancakeOrderId() {
+    if (!order.pancake_order_id) return;
+    try {
+      await navigator.clipboard.writeText(order.pancake_order_id);
+      setCopiedId(true);
+      setTimeout(() => setCopiedId(false), 1500);
+    } catch {
+      /* clipboard unavailable — the id stays selectable on screen */
+    }
+  }
 
   useEffect(() => {
     // Load account name + history lazily whenever the Pancake section is relevant.
-    if (!wasForwarded) return;
+    if (!showSyncPanel) return;
     let cancelled = false;
     fetch(`/api/pancake/orders/${order.id}/sync`)
       .then((r) => r.json())
@@ -145,7 +179,7 @@ export function OrderDetailsModal({
     return () => {
       cancelled = true;
     };
-  }, [order.id, order.pancake_sync_status, order.pancake_last_synced_at, wasForwarded]);
+  }, [order.id, order.pancake_sync_status, order.pancake_synced_at, showSyncPanel]);
 
   async function runSyncAction(mode: "sync_now" | "retry") {
     setSyncActionRunning(true);
@@ -178,6 +212,35 @@ export function OrderDetailsModal({
   function update<K extends keyof EditForm>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
   }
+
+  // --- Live order economics (mirrors the server's computeOrderTotal) --------
+  const draftQuantity = Number(form.quantity) || 0;
+  const draftUnitPrice = form.unit_price.trim() === "" ? 0 : Number(form.unit_price) || 0;
+  const draftDiscount = form.discount.trim() === "" ? 0 : Number(form.discount) || 0;
+  const draftShipping = form.shipping_fee.trim() === "" ? 0 : Number(form.shipping_fee) || 0;
+  const lineTotal = draftUnitPrice * draftQuantity;
+  const grandTotal = computeOrderTotal({
+    unit_price: form.unit_price.trim() === "" ? null : draftUnitPrice,
+    quantity: draftQuantity,
+    discount: draftDiscount,
+    shipping_fee: form.shipping_fee.trim() === "" ? null : draftShipping,
+  });
+
+  // Review step: exactly what the server will check before sending.
+  const selectedProductName =
+    activeProducts.find((p) => p.id === form.product_id)?.name || (form.product_id ? productName : "");
+  const pancakeCheck = computePancakeCheck({
+    customer_name: form.customer_name,
+    customer_phone: form.customer_phone,
+    barangay: form.barangay,
+    city: form.city,
+    province: form.province,
+    product_name: selectedProductName,
+    quantity: draftQuantity,
+    unit_price: form.unit_price.trim() === "" ? null : draftUnitPrice,
+    discount: draftDiscount,
+    shipping_fee: form.shipping_fee.trim() === "" ? null : draftShipping,
+  });
 
   async function submit(raw: Record<string, unknown>) {
     setSaving(true);
@@ -226,8 +289,10 @@ export function OrderDetailsModal({
         province: form.province,
         landmark: form.landmark,
         product_id: form.product_id,
+        variant: form.variant,
         quantity: form.quantity.trim() === "" ? undefined : Number(form.quantity),
         unit_price: form.unit_price.trim() === "" ? null : Number(form.unit_price),
+        discount: form.discount.trim() === "" ? 0 : Number(form.discount),
         shipping_fee: form.shipping_fee.trim() === "" ? null : Number(form.shipping_fee),
         courier: form.courier,
         payment_method: form.payment_method,
@@ -242,6 +307,7 @@ export function OrderDetailsModal({
     setForm(initial);
     setMissing([]);
     setError(null);
+    setStep(1);
     setMode("view");
   }
 
@@ -254,8 +320,8 @@ export function OrderDetailsModal({
   }
 
   const style = LEAD_STATUS_STYLES[order.status];
-  const previewQuantity = Number(form.quantity) || order.quantity;
-  const previewUnitPrice = form.unit_price.trim() === "" ? 0 : Number(form.unit_price) || 0;
+  // Variants the selected product defines, if any; otherwise the field is free text.
+  const productVariants = activeProducts.find((p) => p.id === form.product_id)?.variants || [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={requestClose}>
@@ -344,127 +410,237 @@ export function OrderDetailsModal({
               </div>
             </div>
           ) : (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="m_customer_name">Customer name</Label>
-                  <Input id="m_customer_name" value={form.customer_name} onChange={(e) => update("customer_name", e.target.value)} />
+            <div className="space-y-4">
+              <ol className="flex items-center gap-1 text-xs font-medium">
+                {STEPS.map((s) => (
+                  <li key={s.n} className="flex flex-1 items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setStep(s.n)}
+                      className={cn(
+                        "flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 transition-colors",
+                        step === s.n
+                          ? "bg-[var(--brand-primary-10)] text-[var(--brand-primary)]"
+                          : "text-slate-500 hover:bg-slate-50"
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px]",
+                          step === s.n ? "bg-[var(--brand-primary)] text-white" : "bg-slate-200 text-slate-600"
+                        )}
+                      >
+                        {s.n}
+                      </span>
+                      {s.label}
+                    </button>
+                  </li>
+                ))}
+              </ol>
+
+              {step === 1 && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="m_customer_name">Customer name</Label>
+                      <Input id="m_customer_name" value={form.customer_name} onChange={(e) => update("customer_name", e.target.value)} />
+                    </div>
+                    <div>
+                      <Label htmlFor="m_customer_phone">Phone number</Label>
+                      <Input id="m_customer_phone" value={form.customer_phone} onChange={(e) => update("customer_phone", e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="m_purok">Purok</Label>
+                      <Input id="m_purok" value={form.purok} onChange={(e) => update("purok", e.target.value)} />
+                    </div>
+                    <div>
+                      <Label htmlFor="m_barangay">Barangay</Label>
+                      <Input id="m_barangay" value={form.barangay} onChange={(e) => update("barangay", e.target.value)} />
+                    </div>
+                    <div>
+                      <Label htmlFor="m_city">City</Label>
+                      <Input id="m_city" value={form.city} onChange={(e) => update("city", e.target.value)} />
+                    </div>
+                    <div>
+                      <Label htmlFor="m_province">Province</Label>
+                      <Input id="m_province" value={form.province} onChange={(e) => update("province", e.target.value)} />
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="m_landmark">Landmark</Label>
+                    <Input id="m_landmark" value={form.landmark} onChange={(e) => update("landmark", e.target.value)} />
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="m_customer_phone">Phone number</Label>
-                  <Input id="m_customer_phone" value={form.customer_phone} onChange={(e) => update("customer_phone", e.target.value)} />
+              )}
+
+              {step === 2 && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="col-span-2">
+                      <Label htmlFor="m_product_id">Product</Label>
+                      <ProductCombobox
+                        name="product_id"
+                        products={activeProducts}
+                        defaultValue={form.product_id}
+                        defaultLabel={productName}
+                        onChange={(id) => update("product_id", id)}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="m_variant">Variant</Label>
+                      {productVariants.length > 0 ? (
+                        <Select id="m_variant" value={form.variant} onChange={(e) => update("variant", e.target.value)}>
+                          <option value="">— none —</option>
+                          {productVariants.map((v) => (
+                            <option key={v} value={v}>
+                              {v}
+                            </option>
+                          ))}
+                        </Select>
+                      ) : (
+                        <Input
+                          id="m_variant"
+                          value={form.variant}
+                          onChange={(e) => update("variant", e.target.value)}
+                          placeholder="Optional"
+                        />
+                      )}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <Label htmlFor="m_quantity">Quantity</Label>
+                      <Input id="m_quantity" type="number" min={1} step={1} value={form.quantity} onChange={(e) => update("quantity", e.target.value)} />
+                    </div>
+                    <div>
+                      <Label htmlFor="m_unit_price">Unit Price</Label>
+                      <Input id="m_unit_price" type="number" min={0} step={0.01} value={form.unit_price} onChange={(e) => update("unit_price", e.target.value)} />
+                    </div>
+                    <div>
+                      <Label htmlFor="m_discount">Discount</Label>
+                      <Input id="m_discount" type="number" min={0} step={0.01} value={form.discount} onChange={(e) => update("discount", e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="m_shipping_fee">Shipping Fee</Label>
+                      <Input id="m_shipping_fee" type="number" min={0} step={0.01} value={form.shipping_fee} onChange={(e) => update("shipping_fee", e.target.value)} />
+                    </div>
+                    <div>
+                      <Label htmlFor="m_courier">Courier</Label>
+                      <Input id="m_courier" value={form.courier} onChange={(e) => update("courier", e.target.value)} />
+                    </div>
+                    <div>
+                      <Label htmlFor="m_payment_method">Payment Method</Label>
+                      <Input
+                        id="m_payment_method"
+                        list="m_payment_method_options"
+                        value={form.payment_method}
+                        onChange={(e) => update("payment_method", e.target.value)}
+                      />
+                      <datalist id="m_payment_method_options">
+                        {PAYMENT_METHOD_SUGGESTIONS.map((p) => (
+                          <option key={p} value={p} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <div>
+                      <Label htmlFor="m_order_source">Order Source</Label>
+                      <Input id="m_order_source" value={form.order_source} onChange={(e) => update("order_source", e.target.value)} />
+                    </div>
+                  </div>
+                  <dl className="space-y-1 rounded-lg bg-slate-50 p-3 text-sm">
+                    <div className="flex justify-between text-slate-600">
+                      <dt>Line total ({draftQuantity || 0} × {formatCurrency(draftUnitPrice)})</dt>
+                      <dd>{formatCurrency(lineTotal)}</dd>
+                    </div>
+                    <div className="flex justify-between text-slate-600">
+                      <dt>Discount</dt>
+                      <dd>− {formatCurrency(draftDiscount)}</dd>
+                    </div>
+                    <div className="flex justify-between text-slate-600">
+                      <dt>Shipping fee</dt>
+                      <dd>+ {formatCurrency(draftShipping)}</dd>
+                    </div>
+                    <div className="flex justify-between border-t border-slate-200 pt-1 font-semibold text-slate-900">
+                      <dt>Grand total</dt>
+                      <dd>{formatCurrency(grandTotal)}</dd>
+                    </div>
+                  </dl>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="m_purok">Purok</Label>
-                  <Input id="m_purok" value={form.purok} onChange={(e) => update("purok", e.target.value)} />
-                </div>
-                <div>
-                  <Label htmlFor="m_barangay">Barangay</Label>
-                  <Input id="m_barangay" value={form.barangay} onChange={(e) => update("barangay", e.target.value)} />
-                </div>
-                <div>
-                  <Label htmlFor="m_city">City</Label>
-                  <Input id="m_city" value={form.city} onChange={(e) => update("city", e.target.value)} />
-                </div>
-                <div>
-                  <Label htmlFor="m_province">Province</Label>
-                  <Input id="m_province" value={form.province} onChange={(e) => update("province", e.target.value)} />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="m_landmark">Landmark</Label>
-                <Input id="m_landmark" value={form.landmark} onChange={(e) => update("landmark", e.target.value)} />
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="col-span-2">
-                  <Label htmlFor="m_product_id">Product Ordered</Label>
-                  <ProductCombobox
-                    name="product_id"
-                    products={activeProducts}
-                    defaultValue={form.product_id}
-                    defaultLabel={productName}
-                    onChange={(id) => update("product_id", id)}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="m_unit_price">Unit Price</Label>
-                  <Input
-                    id="m_unit_price"
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    value={form.unit_price}
-                    onChange={(e) => update("unit_price", e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="m_quantity">Quantity</Label>
-                  <Input
-                    id="m_quantity"
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={form.quantity}
-                    onChange={(e) => update("quantity", e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label>Total Amount (preview)</Label>
-                  <Input value={formatCurrency(previewQuantity * previewUnitPrice)} disabled />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="m_shipping_fee">Shipping Fee</Label>
-                  <Input
-                    id="m_shipping_fee"
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    value={form.shipping_fee}
-                    onChange={(e) => update("shipping_fee", e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="m_courier">Courier</Label>
-                  <Input id="m_courier" value={form.courier} onChange={(e) => update("courier", e.target.value)} />
-                </div>
-                <div>
-                  <Label htmlFor="m_payment_method">Payment Method</Label>
-                  <Input
-                    id="m_payment_method"
-                    list="m_payment_method_options"
-                    value={form.payment_method}
-                    onChange={(e) => update("payment_method", e.target.value)}
-                  />
-                  <datalist id="m_payment_method_options">
-                    {PAYMENT_METHOD_SUGGESTIONS.map((p) => (
-                      <option key={p} value={p} />
+              )}
+
+              {step === 3 && (
+                <div className="space-y-3">
+                  {pancakeCheck.ok ? (
+                    <Alert kind="success">All required fields are present — this order is ready to send to Pancake POS.</Alert>
+                  ) : (
+                    <Alert kind="error">
+                      <p className="font-medium">Complete these before Ready to Ship:</p>
+                      <ul className="mt-1 list-inside list-disc">
+                        {pancakeCheck.errors.map((e) => (
+                          <li key={e.field}>{e.message}</li>
+                        ))}
+                      </ul>
+                    </Alert>
+                  )}
+
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border border-slate-200 p-3 text-sm">
+                    {[
+                      ["Customer", form.customer_name],
+                      ["Phone", form.customer_phone],
+                      ["Address", [form.purok, form.barangay, form.city, form.province].filter(Boolean).join(", ")],
+                      ["Landmark", form.landmark],
+                      ["Product", [selectedProductName, form.variant].filter(Boolean).join(" — ")],
+                      ["Quantity", String(draftQuantity || "")],
+                      ["Unit price", form.unit_price === "" ? "" : formatCurrency(draftUnitPrice)],
+                      ["Discount", formatCurrency(draftDiscount)],
+                      ["Shipping fee", form.shipping_fee === "" ? "" : formatCurrency(draftShipping)],
+                      ["Total amount", formatCurrency(grandTotal)],
+                      ["Payment method", form.payment_method],
+                      ["Courier", form.courier],
+                      ["Order source", form.order_source],
+                      ["Agent", agentName],
+                    ].map(([label, value]) => (
+                      <div key={label as string} className={label === "Address" ? "col-span-2" : undefined}>
+                        <dt className="text-xs uppercase text-slate-400">{label}</dt>
+                        <dd className={value ? "text-slate-800" : "text-slate-400"}>{value || "—"}</dd>
+                      </div>
                     ))}
-                  </datalist>
+                  </dl>
+
+                  <div>
+                    <Label htmlFor="m_status">Status</Label>
+                    <Select id="m_status" value={form.status} onChange={(e) => update("status", e.target.value)}>
+                      {LEAD_STATUSES.map((s) => (
+                        <option key={s} value={s} disabled={s === "ready_to_ship" && !pancakeCheck.ok}>
+                          {LEAD_STATUS_LABELS[s]}
+                          {s === "ready_to_ship" && !pancakeCheck.ok ? " (fields missing)" : ""}
+                        </option>
+                      ))}
+                    </Select>
+                    {form.status === "ready_to_ship" && (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Saving with Ready to Ship sends this order to Pancake POS.
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="m_notes">Notes</Label>
+                    <Textarea id="m_notes" rows={3} value={form.notes} onChange={(e) => update("notes", e.target.value)} />
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="m_order_source">Order Source</Label>
-                  <Input id="m_order_source" value={form.order_source} onChange={(e) => update("order_source", e.target.value)} />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="m_status">Status</Label>
-                <Select id="m_status" value={form.status} onChange={(e) => update("status", e.target.value)}>
-                  {LEAD_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {LEAD_STATUS_LABELS[s]}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="m_notes">Notes</Label>
-                <Textarea id="m_notes" rows={3} value={form.notes} onChange={(e) => update("notes", e.target.value)} />
+              )}
+
+              <div className="flex justify-between border-t border-slate-100 pt-3">
+                <Button type="button" variant="outline" size="sm" disabled={step === 1} onClick={() => setStep((s) => (s - 1) as 1 | 2 | 3)}>
+                  Back
+                </Button>
+                <Button type="button" variant="secondary" size="sm" disabled={step === 3} onClick={() => setStep((s) => (s + 1) as 1 | 2 | 3)}>
+                  Next
+                </Button>
               </div>
             </div>
           )}
@@ -493,11 +669,11 @@ export function OrderDetailsModal({
             </div>
           )}
 
-          {wasForwarded && (
+          {showSyncPanel && (
             <div className="space-y-3 rounded-lg border border-slate-200 p-3">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase text-slate-500">Pancake POS</p>
-                <SyncStatusChip status={order.pancake_sync_status} />
+                <p className="text-xs font-semibold uppercase text-slate-500">Pancake POS Sync</p>
+                <SyncStatusChip status={order.pancake_sync_status} needsReview={syncNeedsReview} />
               </div>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
@@ -505,21 +681,50 @@ export function OrderDetailsModal({
                   <p className="text-slate-800">{pancakeAccountName || "—"}</p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase text-slate-400">Pancake Order ID</p>
-                  <p className="text-slate-800">{order.pancake_order_id || "—"}</p>
+                  <p className="text-xs uppercase text-slate-400">Pancake POS Order ID</p>
+                  {order.pancake_order_id ? (
+                    <div className="flex items-center gap-1.5">
+                      <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-800">{order.pancake_order_id}</code>
+                      <button
+                        type="button"
+                        onClick={copyPancakeOrderId}
+                        className="text-slate-400 hover:text-[var(--brand-primary)]"
+                        aria-label="Copy Pancake POS Order ID"
+                        title="Copy"
+                      >
+                        {copiedId ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-slate-400">—</p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-slate-400">Pancake Status</p>
+                  <p className="text-slate-800">{order.pancake_status || "—"}</p>
                 </div>
                 <div>
                   <p className="text-xs uppercase text-slate-400">Internal Status</p>
                   <StatusBadge status={order.status} />
                 </div>
                 <div>
-                  <p className="text-xs uppercase text-slate-400">Last Synced</p>
-                  <p className="text-slate-800">{order.pancake_last_synced_at ? formatDateTime(order.pancake_last_synced_at) : "—"}</p>
+                  <p className="text-xs uppercase text-slate-400">Last Sync Attempt</p>
+                  <p className="text-slate-800">
+                    {order.pancake_last_sync_attempt_at ? formatDateTime(order.pancake_last_sync_attempt_at) : "—"}
+                  </p>
                 </div>
-                <div className="col-span-2">
-                  <p className="text-xs uppercase text-slate-400">Forwarded At</p>
-                  <p className="text-slate-800">{order.forwarded_to_pancake_at ? formatDateTime(order.forwarded_to_pancake_at) : "—"}</p>
+                <div>
+                  <p className="text-xs uppercase text-slate-400">Synced At</p>
+                  <p className="text-slate-800">{order.pancake_synced_at ? formatDateTime(order.pancake_synced_at) : "—"}</p>
                 </div>
+                {order.pancake_retry_count > 0 && (
+                  <div className="col-span-2">
+                    <p className="text-xs uppercase text-slate-400">Attempts</p>
+                    <p className="text-slate-800">
+                      {order.pancake_retry_count} of {MAX_ATTEMPTS}
+                    </p>
+                  </div>
+                )}
               </div>
               {order.pancake_sync_error && <Alert kind="error">Last sync error: {order.pancake_sync_error}</Alert>}
               {syncMessage && <Alert kind="info">{syncMessage}</Alert>}
@@ -555,7 +760,7 @@ export function OrderDetailsModal({
                   <Button type="button" variant="outline" size="sm" disabled={syncActionRunning} onClick={() => runSyncAction("sync_now")}>
                     {syncActionRunning ? "Working…" : "Sync Now"}
                   </Button>
-                  {(order.pancake_sync_status === "failed" || order.pancake_sync_status === "needs_review") && (
+                  {order.pancake_sync_status === "sync_failed" && (
                     <Button type="button" variant="secondary" size="sm" disabled={syncActionRunning} onClick={() => runSyncAction("retry")}>
                       Retry Sync
                     </Button>

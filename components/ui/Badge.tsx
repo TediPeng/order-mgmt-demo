@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import type { LeaveStatus, OrderStatus, PancakeSyncStatus } from "@/lib/types";
+import { PANCAKE_SYNC_STATUS_LABELS } from "@/lib/types";
 import { LEAD_STATUS_LABELS } from "@/lib/validation";
 
 interface LeadStatusStyle {
@@ -74,21 +75,34 @@ export function StatusBadge({ status }: { status: OrderStatus }) {
 
 // Small colored indicator chip used everywhere a Pancake sync status appears
 // (leads table column, Order Details popup, sync logs page).
-const PANCAKE_SYNC_STATUS_STYLES: Record<PancakeSyncStatus, { chip: string; dot: string; label: string }> = {
-  pending: { chip: "bg-amber-100 text-amber-800", dot: "bg-amber-500", label: "Pending" },
-  processing: { chip: "bg-blue-100 text-blue-700", dot: "bg-blue-500", label: "Processing" },
-  synced: { chip: "bg-green-100 text-green-700", dot: "bg-green-500", label: "Synced" },
-  failed: { chip: "bg-red-100 text-red-700", dot: "bg-red-500", label: "Failed" },
-  needs_review: { chip: "bg-orange-100 text-orange-800", dot: "bg-orange-500", label: "Needs Review" },
+const PANCAKE_SYNC_STATUS_STYLES: Record<PancakeSyncStatus, { chip: string; dot: string }> = {
+  not_synced: { chip: "bg-slate-100 text-slate-600", dot: "bg-slate-400" },
+  syncing: { chip: "bg-blue-100 text-blue-700", dot: "bg-blue-500" },
+  synced: { chip: "bg-green-100 text-green-700", dot: "bg-green-500" },
+  sync_failed: { chip: "bg-red-100 text-red-700", dot: "bg-red-500" },
 };
 
-export function SyncStatusChip({ status, className }: { status: PancakeSyncStatus | null; className?: string }) {
+/** `needsReview` renders the exhausted-retry case as "Sync Failed — needs
+ * review"; it is a qualifier on sync_failed, not a status of its own. */
+export function SyncStatusChip({
+  status,
+  needsReview = false,
+  className,
+}: {
+  status: PancakeSyncStatus | null;
+  needsReview?: boolean;
+  className?: string;
+}) {
   if (!status) return <span className={cn("text-xs text-slate-400", className)}>—</span>;
   const style = PANCAKE_SYNC_STATUS_STYLES[status];
+  const label =
+    status === "sync_failed" && needsReview
+      ? `${PANCAKE_SYNC_STATUS_LABELS.sync_failed} — needs review`
+      : PANCAKE_SYNC_STATUS_LABELS[status];
   return (
     <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium", style.chip, className)}>
-      <span className={cn("h-1.5 w-1.5 rounded-full", style.dot)} />
-      {style.label}
+      <span className={cn("h-1.5 w-1.5 rounded-full", style.dot, status === "syncing" && "animate-pulse")} />
+      {label}
     </span>
   );
 }

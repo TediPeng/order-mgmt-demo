@@ -6,7 +6,7 @@ import { MAX_ATTEMPTS, nextRetryDueAt } from "./retry";
 import {
   getAccount,
   listOrdersForPolling,
-  listOrdersStuckProcessing,
+  listOrdersStuckSyncing,
   listOrdersWithFailedSync,
   listSyncLogs,
   updateOrderSyncFields,
@@ -31,8 +31,8 @@ export interface SweepOptions {
 }
 
 const POLL_BATCH_LIMIT = 20;
-/** A forward stuck in `processing` this long was killed mid-flight. */
-const PROCESSING_STALE_MINUTES = 10;
+/** A sync stuck in `syncing` this long was killed mid-flight. */
+const SYNCING_STALE_MINUTES = 10;
 /** Don't re-poll an order that synced more recently than this. */
 const MIN_POLL_INTERVAL_MINUTES = 10;
 
@@ -53,13 +53,14 @@ export async function runPancakeSync(opts: SweepOptions = {}): Promise<SweepSumm
   const maxPolls = opts.maxPolls ?? POLL_BATCH_LIMIT;
   const summary: SweepSummary = { released: 0, retried: 0, movedToNeedsReview: 0, polled: 0, pollApplied: 0, errors: [] };
 
-  // --- 1. Release stuck `processing` forwards --------------------------------
+  // --- 1. Release stuck `syncing` orders ------------------------------------
   try {
-    for (const order of await listOrdersStuckProcessing(minutesAgoIso(PROCESSING_STALE_MINUTES))) {
-      await updateOrderSyncFields(order.id, {
-        pancake_sync_status: "failed",
-        pancake_sync_error: `Forward did not complete within ${PROCESSING_STALE_MINUTES} minutes — released for retry.`,
-      });
+    for (const order of await listOrdersStuckSyncing(minutesAgoIso(SYNCING_STALE_MINUTES))) {
+      // Never release one that actually reached Pancake — that would risk a
+      // second order. Those are left alone for manual inspection.
+      if (order.pancake_order_id) continue;
+      const reason = `Sync did not complete within ${SYNCING_STALE_MINUTES} minutes — released for retry.`;
+      await updateOrderSyncFields(order.id, { pancake_sync_status: "sync_failed", pancake_sync_error: reason });
       await insertSyncLog({
         order_id: order.id,
         pancake_account_id: order.pancake_pos_account_id,
@@ -67,22 +68,25 @@ export async function runPancakeSync(opts: SweepOptions = {}): Promise<SweepSumm
         source: "auto_retry",
         request_at: new Date().toISOString(),
         result: "failed",
-        error_message: `Stuck in processing for over ${PROCESSING_STALE_MINUTES} minutes — released for retry.`,
+        error_message: reason,
       });
       summary.released++;
     }
   } catch (e) {
-    summary.errors.push(`stuck-processing sweep: ${(e as Error).message}`);
+    summary.errors.push(`stuck-syncing sweep: ${(e as Error).message}`);
   }
 
   // --- 2. Retry queue -------------------------------------------------------
   try {
     for (const order of await listOrdersWithFailedSync()) {
       try {
-        if (order.pancake_sync_attempts >= MAX_ATTEMPTS) {
+        if (order.pancake_retry_count >= MAX_ATTEMPTS) {
+          // The order stays sync_failed: "needs review" is that state plus an
+          // exhausted retry budget, not a status of its own. Mark and notify
+          // once, the first time the budget runs out.
+          if (/needs review/i.test(order.pancake_sync_error || "")) continue;
           await updateOrderSyncFields(order.id, {
-            pancake_sync_status: "needs_review",
-            pancake_sync_error: `${order.pancake_sync_error || "Forward failed"} (max ${MAX_ATTEMPTS} attempts reached)`,
+            pancake_sync_error: `${order.pancake_sync_error || "Sync failed"} — needs review (max ${MAX_ATTEMPTS} attempts reached)`,
           });
           await insertSyncLog({
             order_id: order.id,
@@ -90,12 +94,12 @@ export async function runPancakeSync(opts: SweepOptions = {}): Promise<SweepSumm
             source: "auto_retry",
             request_at: new Date().toISOString(),
             result: "failed",
-            error_message: `Max ${MAX_ATTEMPTS} attempts reached — moved to Needs Review.`,
+            error_message: `Max ${MAX_ATTEMPTS} attempts reached — needs review.`,
           });
           await notifyManagement(
             "pancake_needs_review",
             `Pancake sync needs review: ${order.order_number}`,
-            `Forwarding failed ${MAX_ATTEMPTS} times. Manual attention required (Retry Sync stays available).`,
+            `Syncing failed ${MAX_ATTEMPTS} times. Manual attention required (Retry Sync stays available).`,
             `/leads?open=${encodeURIComponent(order.order_number)}`
           );
           summary.movedToNeedsReview++;
@@ -122,7 +126,7 @@ export async function runPancakeSync(opts: SweepOptions = {}): Promise<SweepSumm
   try {
     const staleBefore = minutesAgoIso(MIN_POLL_INTERVAL_MINUTES);
     const candidates = (await listOrdersForPolling()).filter(
-      (o) => !o.pancake_last_synced_at || o.pancake_last_synced_at < staleBefore
+      (o) => !o.pancake_synced_at || o.pancake_synced_at < staleBefore
     );
     for (const order of candidates.slice(0, maxPolls)) {
       try {
@@ -150,7 +154,7 @@ export async function runPancakeSync(opts: SweepOptions = {}): Promise<SweepSumm
         const applied = await applyIncomingUpdate(
           {
             pancakeOrderId: order.pancake_order_id,
-            externalReference: order.id,
+            externalReference: order.system_order_id || order.order_number,
             orderNumber: order.order_number,
             phone: null,
             rawStatus: res.rawStatus,

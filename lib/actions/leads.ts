@@ -18,6 +18,7 @@ import {
   fulfillmentOverrideBlockReason,
 } from "@/lib/lead-workflow";
 import { forwardOrderToPancake } from "@/lib/pancake/forward";
+import { computeOrderTotal, validateForPancake } from "@/lib/pancake/validate";
 import { insertSyncLog } from "@/lib/pancake/store";
 import type { DbShape, Order, Profile } from "@/lib/types";
 import { ORDER_PANCAKE_DEFAULTS } from "@/lib/types";
@@ -43,6 +44,8 @@ function buildLeadFieldErrors(formData: FormData): Record<string, unknown> {
     courier: formData.get("courier"),
     payment_method: formData.get("payment_method"),
     order_source: formData.get("order_source"),
+    discount: formData.get("discount") || null,
+    variant: formData.get("variant"),
   };
 }
 
@@ -96,7 +99,12 @@ export async function createLeadAction(formData: FormData) {
     product_name: product?.name || "",
     quantity: 1,
     unit_price: data.unit_price ?? null,
-    total_amount: data.unit_price ?? 0,
+    total_amount: computeOrderTotal({
+      unit_price: data.unit_price ?? null,
+      quantity: 1,
+      discount: data.discount ?? 0,
+      shipping_fee: data.shipping_fee ?? null,
+    }),
     status: data.status,
     order_date: data.status === "ready_to_ship" ? today : null,
     source: "manual",
@@ -105,6 +113,8 @@ export async function createLeadAction(formData: FormData) {
     courier: data.courier || null,
     payment_method: data.payment_method || null,
     order_source: data.order_source || null,
+    discount: data.discount ?? 0,
+    variant: data.variant || null,
     notes: data.notes || "",
     created_by: user.id,
     updated_by: null,
@@ -113,6 +123,8 @@ export async function createLeadAction(formData: FormData) {
     created_at: now,
     updated_at: now,
   };
+  // Stable external reference Pancake echoes back on status updates.
+  order.system_order_id = order.order_number;
   db.orders.push(order);
   const info = await getRequestInfo();
   logActivity(db, user.id, "LEAD_CREATED", "order", order.id, { order_number: order.order_number }, {
@@ -186,6 +198,29 @@ export async function applyLeadUpdate(
         error: `Missing required fields for Ready to Ship: ${missing.join(", ")}`,
       };
     }
+    // Second gate: Pancake's own requirements. Checking here means a status
+    // change that would fail at the API is refused up front, so the order is
+    // never left mid-sync with a fixable field missing.
+    const candidateProduct = data.product_id ? db.products.find((p) => p.id === data.product_id) : undefined;
+    const pancakeCheck = validateForPancake({
+      customer_name: data.customer_name,
+      customer_phone: data.customer_phone || "",
+      barangay: data.barangay || "",
+      city: data.city || "",
+      province: data.province || "",
+      product_name: candidateProduct?.name || order.product_name,
+      quantity: order.quantity,
+      unit_price: data.unit_price ?? null,
+      discount: data.discount ?? 0,
+      shipping_fee: data.shipping_fee ?? null,
+    });
+    if (!pancakeCheck.ok) {
+      return {
+        ok: false,
+        code: "validation",
+        error: `Missing required Pancake fields: ${pancakeCheck.errors.map((e) => e.message).join(", ")}`,
+      };
+    }
   }
 
   const before = { ...order };
@@ -221,16 +256,24 @@ export async function applyLeadUpdate(
     order.product_name = "";
   }
   order.product_id = data.product_id || null;
+  order.variant = data.variant || null;
   order.quantity = quantity;
   order.unit_price = data.unit_price ?? null;
-  order.total_amount = quantity * (data.unit_price ?? 0);
+  order.discount = data.discount ?? 0;
+  order.shipping_fee = data.shipping_fee ?? null;
+  order.total_amount = computeOrderTotal({
+    unit_price: order.unit_price,
+    quantity,
+    discount: order.discount,
+    shipping_fee: order.shipping_fee,
+  });
   order.status = data.status;
   order.order_date = newOrderDate;
-  order.shipping_fee = data.shipping_fee ?? null;
   order.courier = data.courier || null;
   order.payment_method = data.payment_method || null;
   order.order_source = data.order_source || null;
   order.notes = data.notes || "";
+  if (!order.system_order_id) order.system_order_id = order.order_number;
   if (isReassignment) {
     order.agent_id = data.agent_id;
     order.assigned_agent_email = db.profiles.find((p) => p.id === data.agent_id)?.email || "";
@@ -496,6 +539,7 @@ export async function importLeadsAction(
       created_at: now,
       updated_at: now,
     };
+    order.system_order_id = order.order_number;
     db.orders.push(order);
     results.push({ row, category: "imported", reason: "", data: raw });
   }

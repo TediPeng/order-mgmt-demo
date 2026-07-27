@@ -91,26 +91,14 @@ export async function applyIncomingUpdate(update: IncomingUpdate, source: Pancak
     return { applied: false, reason, orderId: order.id };
   }
 
-  // Out-of-order protection: events older than the last applied sync are logged, not applied.
-  if (update.eventTimestamp && order.pancake_last_synced_at && update.eventTimestamp <= order.pancake_last_synced_at) {
-    const reason = `Out-of-order event (${update.eventTimestamp} <= last synced ${order.pancake_last_synced_at}) — logged, not applied.`;
-    await insertSyncLog({
-      ...base,
-      order_id: order.id,
-      old_status: order.status,
-      new_status: update.rawStatus,
-      result: "failed",
-      error_message: reason,
-    });
-    return { applied: false, reason, orderId: order.id };
-  }
-
   // Unknown incoming status: do NOT touch the lead; surface for review (Section 5).
   const statusMap = await listStatusMap();
   const internalStatus = mapStatus(update.rawStatus, statusMap);
   if (!internalStatus) {
     const reason = `Unknown Pancake status "${update.rawStatus}" — lead untouched, mapping needed.`;
-    await updateOrderSyncFields(order.id, { pancake_sync_status: "needs_review", pancake_sync_error: reason });
+    // The outbound sync succeeded; only the mapping is missing, so the sync
+    // status is left alone and the raw Pancake status is still recorded.
+    await updateOrderSyncFields(order.id, { pancake_status: update.rawStatus, pancake_sync_error: reason });
     await insertSyncLog({ ...base, order_id: order.id, old_status: order.status, new_status: update.rawStatus, result: "failed", error_message: reason });
     await notifyManagement(
       "pancake_needs_review",
@@ -121,22 +109,40 @@ export async function applyIncomingUpdate(update: IncomingUpdate, source: Pancak
     return { applied: false, reason, orderId: order.id };
   }
 
+  // Nothing changed. This is the common case when polling — Pancake keeps
+  // reporting the same status — so it is recorded quietly and, crucially,
+  // BEFORE the out-of-order check: an unchanged order's updated_at is always
+  // older than our own synced-at stamp, and treating that as an anomaly would
+  // write a failure row on every single poll.
   if (internalStatus === order.status) {
+    await updateOrderSyncFields(order.id, {
+      pancake_status: update.rawStatus,
+      pancake_sync_status: "synced",
+      // "We checked just now" — not Pancake's older updated_at, which would
+      // walk the anchor backwards.
+      pancake_synced_at: new Date().toISOString(),
+      pancake_sync_error: null,
+    });
+    return { applied: false, reason: "Status unchanged.", orderId: order.id };
+  }
+
+  // Out-of-order protection: an event older than the last applied one is
+  // logged, never applied. Both sides are parsed to a real instant first —
+  // Pancake sends a naive timestamp while ours carries an offset, so comparing
+  // the strings would give the wrong answer.
+  const eventMs = update.eventTimestamp ? Date.parse(update.eventTimestamp) : NaN;
+  const lastMs = order.pancake_synced_at ? Date.parse(order.pancake_synced_at) : NaN;
+  if (Number.isFinite(eventMs) && Number.isFinite(lastMs) && eventMs < lastMs) {
+    const reason = `Out-of-order event (${update.eventTimestamp} is older than last applied ${order.pancake_synced_at}) — logged, not applied.`;
     await insertSyncLog({
       ...base,
       order_id: order.id,
       old_status: order.status,
-      new_status: internalStatus,
-      result: "success",
-      error_message: null,
-      payload_summary: { note: "No-op: status unchanged", matched_by: matchedBy },
+      new_status: update.rawStatus,
+      result: "failed",
+      error_message: reason,
     });
-    await updateOrderSyncFields(order.id, {
-      pancake_sync_status: "synced",
-      pancake_last_synced_at: update.eventTimestamp || new Date().toISOString(),
-      pancake_sync_error: null,
-    });
-    return { applied: false, reason: "Status unchanged.", orderId: order.id };
+    return { applied: false, reason, orderId: order.id };
   }
 
   // Terminal statuses never move backward automatically; terminal-to-terminal
@@ -158,8 +164,9 @@ export async function applyIncomingUpdate(update: IncomingUpdate, source: Pancak
   const appliedAt = update.eventTimestamp || new Date().toISOString();
   await updateOrderSyncFields(order.id, {
     status: internalStatus as Order["status"],
+    pancake_status: update.rawStatus,
     pancake_sync_status: "synced",
-    pancake_last_synced_at: appliedAt,
+    pancake_synced_at: appliedAt,
     pancake_sync_error: null,
     updated_at: new Date().toISOString(),
   });

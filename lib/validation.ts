@@ -77,6 +77,8 @@ export const leadFormSchema = z.object({
   courier: z.string().trim().optional().default(""),
   payment_method: z.string().trim().optional().default(""),
   order_source: z.string().trim().optional().default(""),
+  discount: z.coerce.number().nonnegative("Discount must be zero or more").optional().nullable(),
+  variant: z.string().trim().optional().default(""),
 });
 
 // Suggested values for the free-text Payment Method field (not enforced).

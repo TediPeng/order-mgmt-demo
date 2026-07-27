@@ -48,7 +48,17 @@ export type OrderStatus =
   | "returned"
   | "cancelled";
 
-export type PancakeSyncStatus = "pending" | "processing" | "synced" | "failed" | "needs_review";
+/** Outbound sync state. "Needs review" is not a status of its own — it is the
+ * sync_failed state once the retry budget is exhausted, rendered as
+ * "Sync Failed — needs review". */
+export type PancakeSyncStatus = "not_synced" | "syncing" | "synced" | "sync_failed";
+
+export const PANCAKE_SYNC_STATUS_LABELS: Record<PancakeSyncStatus, string> = {
+  not_synced: "Not Synced",
+  syncing: "Syncing",
+  synced: "Synced",
+  sync_failed: "Sync Failed",
+};
 
 /** Field defaults for a brand-new order that has never been forwarded to
  * Pancake POS — spread into every order-creation site (form, import, seed). */
@@ -57,13 +67,20 @@ export const ORDER_PANCAKE_DEFAULTS = {
   courier: null,
   payment_method: null,
   order_source: null,
+  discount: 0,
+  variant: null,
+  system_order_id: null,
   pancake_order_id: null,
   pancake_pos_account_id: null,
-  pancake_sync_status: null,
-  pancake_last_synced_at: null,
+  pancake_status: null,
+  pancake_sync_status: "not_synced",
+  pancake_synced_at: null,
+  pancake_last_sync_attempt_at: null,
+  pancake_request_payload: null,
+  pancake_response_payload: null,
   pancake_sync_error: null,
   forwarded_to_pancake_at: null,
-  pancake_sync_attempts: 0,
+  pancake_retry_count: 0,
 } satisfies Partial<Order>;
 
 export interface Order {
@@ -81,8 +98,11 @@ export interface Order {
   previous_order_amount: number | null;
   product_id: string | null; // source of truth for the selected product going forward
   product_name: string; // denormalized display text (legacy free-text for old rows)
-  quantity: number; // always 1 for leads created under the new workflow; hidden from the UI
+  variant: string | null; // selected variant, when the product defines any
+  quantity: number;
   unit_price: number | null; // blank until the agent fills it in
+  discount: number; // per-order discount, subtracted from the line total
+  // Grand total: unit_price * quantity - discount + shipping_fee.
   total_amount: number;
   status: OrderStatus;
   // Date the lead most recently entered ready_to_ship; overwritten each time it
@@ -99,13 +119,22 @@ export interface Order {
   order_source: string | null;
   // Pancake POS sync state. Managed by lib/pancake/*; the DbShape write path
   // carries these along unchanged.
+  // Stable external reference sent to Pancake (defaults to order_number).
+  system_order_id: string | null;
+  // Pancake's own order id, stored exactly as returned — never generated here.
   pancake_order_id: string | null;
   pancake_pos_account_id: string | null;
-  pancake_sync_status: PancakeSyncStatus | null;
-  pancake_last_synced_at: string | null;
+  // Raw Pancake-side status label (Packaging, then fulfillment statuses).
+  pancake_status: string | null;
+  pancake_sync_status: PancakeSyncStatus;
+  pancake_synced_at: string | null;
+  pancake_last_sync_attempt_at: string | null;
+  // Full request/response bodies, redacted of credentials, for troubleshooting.
+  pancake_request_payload: Record<string, unknown> | null;
+  pancake_response_payload: Record<string, unknown> | null;
   pancake_sync_error: string | null;
   forwarded_to_pancake_at: string | null;
-  pancake_sync_attempts: number;
+  pancake_retry_count: number;
   notes: string;
   created_by: string;
   updated_by: string | null;
@@ -123,6 +152,8 @@ export interface Product {
   // items[].variation_id on every forwarded order; `code` is used as a
   // fallback since Pancake accepts a SKU in the same field.
   pancake_variation_id: string | null;
+  /** Optional variant names; when set, an order using this product picks one. */
+  variants: string[] | null;
   is_active: boolean;
   created_by: string;
   created_at: string;

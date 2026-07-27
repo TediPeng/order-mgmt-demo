@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { OrderDetailsModal } from "@/components/OrderDetailsModal";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
+import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 import type { Order, OrderStatus } from "@/lib/types";
 
 export function LeadsTable({
@@ -112,7 +113,10 @@ export function LeadsTable({
                     <StatusBadge status={o.status} />
                   </td>
                   <td className="px-4 py-3">
-                    <SyncStatusChip status={o.pancake_sync_status} />
+                    <SyncStatusChip
+                      status={o.pancake_sync_status}
+                      needsReview={o.pancake_sync_status === "sync_failed" && o.pancake_retry_count >= MAX_ATTEMPTS}
+                    />
                   </td>
                 </tr>
               );

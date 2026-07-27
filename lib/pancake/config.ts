@@ -39,11 +39,19 @@ export const AUTH_QUERY_PARAM = "api_key";
 export const CREATE_ORDER_PATH = "/shops/{shopId}/orders";
 export const GET_ORDER_PATH = "/shops/{shopId}/orders/{orderId}";
 
+/** Pancake-side status every order must land in on creation. Pancake's create
+ * -order body takes an integer `status`, and 8 = "Packaging" (Đang đóng hàng)
+ * per the spec's own enum — so it is set at creation, no follow-up call. The
+ * response is checked against it and any discrepancy is surfaced. */
+export const CREATE_STATUS_PACKAGING = 8;
+export const CREATE_STATUS_PACKAGING_LABEL = "Packaging";
+
 /** Response/webhook field names, from the official Order schema. */
 export const RESPONSE_FIELDS = {
   order_id: "id", // integer Pancake order id
   external_reference: "custom_id", // we store our internal order id here
   status: "status", // INTEGER status code
+  status_name: "status_name", // Pancake's own label for that code
   updated_at: "updated_at", // ISO timestamp, used for out-of-order protection
   phone: "bill_phone_number",
   shop_id: "shop_id",

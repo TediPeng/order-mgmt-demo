@@ -1,4 +1,4 @@
-import { Download } from "lucide-react";
+﻿import { Download } from "lucide-react";
 import { readDb } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
@@ -47,7 +47,7 @@ export default async function LeadsPage({
 
   let orders = scopeOrders(user, db.orders, db).sort((a, b) => b.created_at.localeCompare(a.created_at));
 
-  // Dashboard cards deep-link agents into a pre-filtered status view — that's
+  // Dashboard cards deep-link agents into a pre-filtered status view â€” that's
   // internal navigation, not a search control, so status stays honored for
   // everyone. Every other filter param is Agent-only-rejected per Section 3.
   if (sp.status) orders = orders.filter((o) => o.status === sp.status);
@@ -100,7 +100,7 @@ export default async function LeadsPage({
   const canManageIntegrations = can(user.role, "integrations", "manage", db.role_permissions);
   const agentUsernameById = Object.fromEntries(db.profiles.map((p) => [p.id, p.username]));
   const agentFullNameById = Object.fromEntries(db.profiles.map((p) => [p.id, p.full_name]));
-  const activeProducts = db.products.filter((p) => p.is_active).map((p) => ({ id: p.id, name: p.name, code: p.code }));
+  const activeProducts = db.products.filter((p) => p.is_active).map((p) => ({ id: p.id, name: p.name, code: p.code, variants: p.variants }));
   const productNameByOrderId = Object.fromEntries(
     pageOrders.map((o) => [o.id, o.product_id ? db.products.find((p) => p.id === o.product_id)?.name || o.product_name : o.product_name])
   );

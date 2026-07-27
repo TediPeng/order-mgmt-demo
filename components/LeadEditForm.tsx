@@ -21,6 +21,8 @@ interface FormState {
   previous_order_amount: string;
   product_id: string;
   unit_price: string;
+  discount: string;
+  variant: string;
   shipping_fee: string;
   courier: string;
   payment_method: string;
@@ -44,6 +46,8 @@ function snapshotFrom(order: Order): FormState {
     previous_order_amount: order.previous_order_amount != null ? String(order.previous_order_amount) : "",
     product_id: order.product_id || "",
     unit_price: order.unit_price != null ? String(order.unit_price) : "",
+    discount: order.discount ? String(order.discount) : "",
+    variant: order.variant || "",
     shipping_fee: order.shipping_fee != null ? String(order.shipping_fee) : "",
     courier: order.courier || "",
     payment_method: order.payment_method || "",
@@ -285,6 +289,34 @@ export function LeadEditForm({
             onChange={(e) => update("unit_price", e.target.value)}
             disabled={!canEdit}
             className={err("unit_price")}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="variant">Variant</Label>
+          <Input
+            id="variant"
+            name="variant"
+            value={form.variant}
+            onChange={(e) => update("variant", e.target.value)}
+            disabled={!canEdit}
+            placeholder="Optional"
+          />
+        </div>
+        <div>
+          <Label htmlFor="discount">Discount</Label>
+          <Input
+            id="discount"
+            name="discount"
+            type="number"
+            min={0}
+            step={0.01}
+            inputMode="decimal"
+            value={form.discount}
+            onChange={(e) => update("discount", e.target.value)}
+            disabled={!canEdit}
           />
         </div>
       </div>
