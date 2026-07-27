@@ -491,7 +491,10 @@ export async function readDb(): Promise<DbShape> {
       unit_price: numOrNull(o.unit_price),
       total_amount: num(o.total_amount),
       shipping_fee: numOrNull(o.shipping_fee),
-      pancake_sync_attempts: num(o.pancake_sync_attempts ?? 0),
+      discount: num(o.discount ?? 0),
+      // Must match the column exactly: writeDb upserts these objects back, so
+      // a key that is not a real column fails the whole write.
+      pancake_retry_count: num(o.pancake_retry_count ?? 0),
     })) as DbShape["orders"],
     products: (productsRes.data || []) as DbShape["products"],
     attendance: (attendanceRes.data || []).map((a) => ({
