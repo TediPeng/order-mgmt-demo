@@ -9,6 +9,16 @@ export interface PancakeHttpResult {
   error: string | null;
 }
 
+/** Compact, human-readable form of a Pancake error response for sync logs. */
+function summarizeErrorBody(body: unknown, rawText: string): string {
+  const b = body as Record<string, unknown> | null;
+  const candidate =
+    (b && (b.message || b.error || b.error_message || b.errors || b.detail)) ?? (rawText ? rawText.trim() : "");
+  const text = typeof candidate === "string" ? candidate : JSON.stringify(candidate);
+  if (!text) return "(no error details returned)";
+  return text.length > 400 ? `${text.slice(0, 400)}…` : text;
+}
+
 function baseUrl(account: PancakeAccount): string {
   return (account.api_endpoint || DEFAULT_API_BASE_URL).replace(/\/+$/, "");
 }
@@ -48,9 +58,10 @@ export async function pancakeFetch(
       signal: controller.signal,
       cache: "no-store",
     });
+    const text = await res.text();
     let body: unknown = null;
     try {
-      body = await res.json();
+      body = JSON.parse(text);
     } catch {
       /* non-JSON body */
     }
@@ -58,7 +69,10 @@ export async function pancakeFetch(
       ok: res.ok,
       httpStatus: res.status,
       body,
-      error: res.ok ? null : `Pancake API responded ${res.status}`,
+      // Pancake explains rejections in the response body, so surface it —
+      // without it a 4xx is undiagnosable. The body is Pancake's own output
+      // and never contains our credentials.
+      error: res.ok ? null : `Pancake API responded ${res.status}: ${summarizeErrorBody(body, text)}`,
     };
   } catch (e) {
     const msg = (e as Error).name === "AbortError" ? `Request timed out after ${REQUEST_TIMEOUT_MS}ms` : (e as Error).message;

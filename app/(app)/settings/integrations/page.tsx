@@ -10,6 +10,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { listAccounts } from "@/lib/pancake/store";
+import { listVariations } from "@/lib/pancake/listVariations";
 import { maskStoredSecret } from "@/lib/pancake/crypto";
 import { mockMode } from "@/lib/pancake/config";
 import {
@@ -24,7 +25,7 @@ export const dynamic = "force-dynamic";
 export default async function IntegrationsSettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; error?: string; tested?: string; note?: string }>;
+  searchParams: Promise<{ saved?: string; error?: string; tested?: string; note?: string; catalog?: string; q?: string }>;
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
@@ -39,6 +40,12 @@ export default async function IntegrationsSettingsPage({
   // Shown verbatim so it can be pasted straight into Pancake's Webhook URL field.
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
   const webhookUrl = `${appUrl || "https://<your-domain>"}/api/webhooks/pancake`;
+
+  // Catalog lookup: `?catalog=<account id>` reads that shop's variations so a
+  // real variation ID can be copied into a product (Pancake rejects orders
+  // whose items reference an unknown variation).
+  const catalogAccount = sp.catalog ? accounts.find((a) => a.id === sp.catalog) : undefined;
+  const catalog = catalogAccount ? await listVariations(catalogAccount, sp.q || "") : null;
 
   const agents = db.profiles.filter((p) => p.is_active);
   const teamLeads = db.profiles.filter((p) => p.is_active && p.role === "team_lead");
@@ -194,6 +201,69 @@ export default async function IntegrationsSettingsPage({
           </CardContent>
         </Card>
       ))}
+
+      {canManage && accounts.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Pancake product catalog</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-slate-500">
+              Pancake rejects an order unless each line references a product in its own catalog. Look yours up here, then
+              paste the <strong>Variation ID</strong> into the matching product under Products → (product) → Pancake
+              variation ID / SKU.
+            </p>
+            <form className="flex flex-wrap items-center gap-2">
+              <Select name="catalog" defaultValue={sp.catalog || accounts[0].id} className="w-56">
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.account_name}
+                  </option>
+                ))}
+              </Select>
+              <Input name="q" placeholder="Search product name…" defaultValue={sp.q} className="w-64" />
+              <Button type="submit" variant="secondary">
+                Look up
+              </Button>
+            </form>
+
+            {catalog && !catalog.ok && <Alert kind="error">{catalog.error}</Alert>}
+            {catalog && catalog.ok && (
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Product</th>
+                      <th className="px-3 py-2">Variation ID (paste this)</th>
+                      <th className="px-3 py-2">SKU</th>
+                      <th className="px-3 py-2">Price</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {catalog.variations.map((v) => (
+                      <tr key={v.variation_id}>
+                        <td className="px-3 py-2 text-slate-700">{v.product_name}</td>
+                        <td className="px-3 py-2">
+                          <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">{v.variation_id}</code>
+                        </td>
+                        <td className="px-3 py-2 text-slate-600">{v.sku || "—"}</td>
+                        <td className="px-3 py-2 text-slate-600">{v.retail_price ?? "—"}</td>
+                      </tr>
+                    ))}
+                    {catalog.variations.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="px-3 py-6 text-center text-slate-400">
+                          No products returned. Try a different search term.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {canManage && (
         <Card>
