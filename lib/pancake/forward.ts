@@ -92,10 +92,13 @@ export async function forwardOrderToPancake(
 
   const requestAt = new Date().toISOString();
   const attempt = order.pancake_sync_attempts + 1;
+  // updated_at doubles as the "processing since" marker the sweep uses to
+  // release orders whose forward was killed mid-flight (see listOrdersStuckProcessing).
   await updateOrderSyncFields(order.id, {
     pancake_sync_status: "processing",
     pancake_pos_account_id: account.id,
     pancake_sync_attempts: attempt,
+    updated_at: requestAt,
   });
 
   const payload = buildForwardPayload(

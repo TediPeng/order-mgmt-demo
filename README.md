@@ -25,7 +25,12 @@ documented Order schema bare or wrapped in `data`/`order`.
 
 - Forward-on-Ready-to-Ship: `lib/pancake/forward.ts` (idempotency key = internal order id; exactly-once guards).
 - Incoming updates: webhook `/api/webhooks/pancake` (HMAC-verified) → polling fallback → manual Sync Now.
-- Retry queue + polling: Vercel Cron hits `/api/cron/pancake-sync` every 10 min (`vercel.json`).
+- Retry queue + polling: `lib/pancake/sweep.ts`. It runs two ways — lazily (throttled,
+  fire-and-forget) from the authenticated layout on page loads, and from
+  `/api/cron/pancake-sync` via Vercel Cron. The cron is deliberately scheduled daily so it
+  deploys on any Vercel plan (sub-daily schedules are a paid-plan feature); the lazy sweep is
+  what keeps retries and polling timely, so the integration never depends on cron frequency.
+  On a paid plan you can tighten `vercel.json` to `*/10 * * * *`.
 - Settings (Management-only): `/settings/integrations` (accounts, encrypted credentials, Test Connection), `/settings/integrations/status-map`, `/settings/integrations/logs`.
 
 ## Getting Started

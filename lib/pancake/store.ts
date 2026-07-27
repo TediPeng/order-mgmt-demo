@@ -211,6 +211,20 @@ export async function listOrdersWithFailedSync(): Promise<Order[]> {
   return (data || []).map(mapOrder);
 }
 
+/** Orders left in `processing` by a forward that never finished — the request
+ * was killed mid-flight (serverless timeout/instance recycle). Without this
+ * they would sit in `processing` forever and the duplicate guard would skip
+ * them, so the sweep releases them back to `failed` for the retry queue. */
+export async function listOrdersStuckProcessing(olderThanIso: string): Promise<Order[]> {
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .select("*")
+    .eq("pancake_sync_status", "processing")
+    .lt("updated_at", olderThanIso);
+  if (error) throw new Error(`orders read failed: ${error.message}`);
+  return (data || []).map(mapOrder);
+}
+
 /** Targeted update of sync/fulfillment fields only — never touches notes,
  * agent assignment, or any other internally-owned column (Section 6). */
 export async function updateOrderSyncFields(

@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { readDb, writeDb } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { sweepAutoAbsences } from "@/lib/attendance-sweep";
+import { maybeSweepPancakeSync } from "@/lib/pancake/sweep";
 import { MODULES } from "@/lib/types";
 import type { ModuleKey } from "@/lib/types";
 import { AppShell } from "@/components/AppShell";
@@ -13,6 +14,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const db = await readDb();
   if (sweepAutoAbsences(db)) await writeDb(db);
+  // Throttled, fire-and-forget: drives Pancake retries/polling without
+  // depending on the Vercel Cron frequency available on the current plan.
+  maybeSweepPancakeSync();
   const access = {} as Record<ModuleKey, boolean>;
   for (const m of MODULES) {
     access[m] = can(user.role, m, "view", db.role_permissions);
