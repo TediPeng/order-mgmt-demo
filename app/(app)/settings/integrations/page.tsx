@@ -36,6 +36,9 @@ export default async function IntegrationsSettingsPage({
   const accounts = await listAccounts();
   const hasActiveDefault = accounts.some((a) => a.is_active && a.is_default);
   const encryptionConfigured = Boolean(process.env.ENCRYPTION_KEY && process.env.ENCRYPTION_KEY.length >= 16);
+  // Shown verbatim so it can be pasted straight into Pancake's Webhook URL field.
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
+  const webhookUrl = `${appUrl || "https://<your-domain>"}/api/webhooks/pancake`;
 
   const agents = db.profiles.filter((p) => p.is_active);
   const teamLeads = db.profiles.filter((p) => p.is_active && p.role === "team_lead");
@@ -215,10 +218,16 @@ export default async function IntegrationsSettingsPage({
           the browser or written to logs.
         </p>
         <p>
-          <strong>Pancake setup:</strong> create the API key in Pancake at <em>Setting → Advance → Third-party connection
-          → Webhook/API</em>. For real-time status updates, set a Webhook secret here and register this URL in Pancake&apos;s
-          webhook settings: <code>https://&lt;your-domain&gt;/api/webhooks/pancake?token=&lt;webhook secret&gt;</code>.
-          Without a webhook secret, statuses are polled every 10 minutes instead.
+          <strong>Pancake setup</strong> — everything lives on one screen in Pancake:{" "}
+          <em>Setting → Advance → Third-party connection → Webhook/API</em>. In the <code>API KEY</code> box click{" "}
+          <code>Create</code> and paste the key above.
+        </p>
+        <p>
+          <strong>Real-time updates (optional):</strong> put any random string in Webhook secret above, then on that same
+          Pancake screen set <strong>Webhook URL</strong> to <code>{webhookUrl}</code>, tick the{" "}
+          <strong>orders</strong> webhook type, add a <strong>Request Header</strong> of{" "}
+          <code>X-API-KEY</code> = your webhook secret, and enable the webhook. Leave the Webhook secret blank and
+          statuses are polled automatically instead — same result, just not instant.
         </p>
       </div>
     </div>

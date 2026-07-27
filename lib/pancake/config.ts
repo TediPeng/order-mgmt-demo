@@ -74,16 +74,25 @@ export const PANCAKE_STATUS_HINTS: Record<string, string> = {
   "7": "Deleted recently",
 };
 
-/** Webhook contract. Pancake's public docs describe no HMAC signing, so the
- * endpoint accepts EITHER a valid HMAC-SHA256 signature (if Pancake ever sends
- * one) OR the account's webhook secret passed as a `?token=` query parameter
- * on the registered URL — register the webhook in Pancake as:
- *   https://<your-domain>/api/webhooks/pancake?token=<webhook secret>
+/** Webhook contract. Pancake does not sign webhook payloads, but its webhook
+ * settings DO let you attach custom Request Headers (their own docs example
+ * uses `X-API-KEY`), so the preferred proof is a secret header. Three forms are
+ * accepted, any one of which authenticates the request:
+ *   1. `X-API-KEY: <webhook secret>` request header  (recommended — configure
+ *      under Request Headers in Pancake's Webhook/API settings)
+ *   2. HMAC-SHA256 hex of the raw body in `x-pancake-signature` (future-proof)
+ *   3. `?token=<webhook secret>` on the registered URL (fallback when headers
+ *      are inconvenient)
+ * Pancake's `orders` webhook posts the bare Order object (id, status,
+ * custom_id, updated_at, ...), which is what parseWebhookPayload reads.
  */
 export const WEBHOOK = {
+  secret_header: "x-api-key", // Pancake "Request Headers" — the recommended mechanism
   signature_header: "x-pancake-signature", // accepted if present (HMAC-SHA256 hex of raw body)
   token_query_param: "token",
   algorithm: "sha256" as const,
+  /** Webhook type to enable in Pancake so order status changes are delivered. */
+  order_webhook_type: "orders",
   // Payload field names follow the documented Order schema (RESPONSE_FIELDS).
   fields: {
     order_id: RESPONSE_FIELDS.order_id,

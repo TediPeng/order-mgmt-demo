@@ -16,12 +16,13 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 Two-way order sync lives in `lib/pancake/`. `lib/pancake/config.ts` is wired against the
 **official Pancake POS OpenAPI spec** (base URL `https://pos.pages.fm/api/v1`, `api_key`
 query-param auth, `POST/GET /shops/{SHOP_ID}/orders`, integer status codes). The API key is
-created in Pancake at *Setting → Advance → Third-party connection → Webhook/API*. Webhooks:
-Pancake doesn't document payload signing, so the receiver accepts either an HMAC-SHA256
-signature or the account's webhook secret as `?token=` on the registered URL
-(`/api/webhooks/pancake?token=<secret>`); with no webhook secret configured, the cron polls
-instead. One residual unknown: the exact webhook payload wrapper — the parser handles the
-documented Order schema bare or wrapped in `data`/`order`.
+created in Pancake at *Setting → Advance → Third-party connection → Webhook/API* — the same
+screen configures webhooks (Webhook URL, webhook types, and custom Request Headers).
+Pancake does not sign webhook payloads, so the receiver authenticates a request by any of:
+an `X-API-KEY` request header matching the account's webhook secret (recommended — set it
+under Request Headers in Pancake), an HMAC-SHA256 signature, or `?token=<secret>` on the URL.
+With no webhook secret configured, the sweep polls instead. The `orders` webhook posts the
+bare Order object; the parser also tolerates a `data`/`order` wrapper.
 
 - Forward-on-Ready-to-Ship: `lib/pancake/forward.ts` (idempotency key = internal order id; exactly-once guards).
 - Incoming updates: webhook `/api/webhooks/pancake` (HMAC-verified) → polling fallback → manual Sync Now.

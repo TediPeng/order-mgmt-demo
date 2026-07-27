@@ -9,15 +9,18 @@ export const dynamic = "force-dynamic";
 
 /** Pancake POS webhook receiver (Section 4). Exempt from session auth
  * (middleware PUBLIC_PATHS) but protected by secret verification: the request
- * must carry either an HMAC-SHA256 signature of the raw body or the account's
- * webhook secret as the `?token=` query parameter (register the webhook in
- * Pancake as https://<domain>/api/webhooks/pancake?token=<secret>). The
- * matching account also identifies the sender, so nothing in the
- * (unauthenticated) payload is trusted for account identity. */
+ * must prove knowledge of an account's webhook secret via a secret request
+ * header (Pancake's "Request Headers" setting, recommended), an HMAC
+ * signature, or a `?token=` URL parameter. The account whose secret matches is
+ * also what identifies the sender, so nothing in the (unauthenticated) payload
+ * is trusted for account identity. */
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
-  const signature = req.headers.get(WEBHOOK.signature_header);
-  const token = req.nextUrl.searchParams.get(WEBHOOK.token_query_param);
+  const proof = {
+    secretHeader: req.headers.get(WEBHOOK.secret_header),
+    signatureHeader: req.headers.get(WEBHOOK.signature_header),
+    tokenParam: req.nextUrl.searchParams.get(WEBHOOK.token_query_param),
+  };
 
   // Identify the sending account by which stored secret validates the request.
   const accounts = (await listAccounts()).filter((a) => a.is_active && a.webhook_secret_encrypted);
@@ -29,7 +32,7 @@ export async function POST(req: NextRequest) {
     } catch {
       continue; // undecryptable secret (rotated key) — skip
     }
-    if (verifyWebhookRequest(rawBody, signature, token, secret)) {
+    if (verifyWebhookRequest(rawBody, proof, secret)) {
       matchedAccount = account;
       break;
     }
@@ -44,8 +47,13 @@ export async function POST(req: NextRequest) {
       error_message:
         accounts.length === 0
           ? "Webhook received but no active account has a webhook secret configured."
-          : "Invalid webhook signature/token — rejected.",
-      payload_summary: { signature_present: Boolean(signature), token_present: Boolean(token), body_bytes: rawBody.length },
+          : "Invalid webhook secret — rejected.",
+      payload_summary: {
+        secret_header_present: Boolean(proof.secretHeader),
+        signature_present: Boolean(proof.signatureHeader),
+        token_present: Boolean(proof.tokenParam),
+        body_bytes: rawBody.length,
+      },
     });
     return NextResponse.json({ ok: false, error: "Invalid signature" }, { status: 401 });
   }

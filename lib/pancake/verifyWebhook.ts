@@ -8,28 +8,26 @@ function safeEqual(a: string, b: string): boolean {
   return ba.length === bb.length && timingSafeEqual(ba, bb);
 }
 
-/** Verifies an incoming webhook against the account's stored secret.
- * Pancake's public docs describe no payload signing, so two proofs are
- * accepted (either passes):
- *  1. HMAC-SHA256 hex of the raw body in the signature header (future-proof,
- *     also what a signing-capable sender would use), or
- *  2. the secret itself as the `?token=` query parameter of the registered
- *     webhook URL — the standard shared-token pattern for unsigned senders.
- * Both comparisons are timing-safe. */
-export function verifyWebhookRequest(
-  rawBody: string,
-  signatureHeader: string | null,
-  tokenParam: string | null,
-  webhookSecret: string
-): boolean {
-  if (signatureHeader) {
+export interface WebhookProof {
+  /** Value of the secret request header (Pancake "Request Headers", e.g. X-API-KEY). */
+  secretHeader: string | null;
+  /** HMAC-SHA256 signature header, if the sender ever provides one. */
+  signatureHeader: string | null;
+  /** `?token=` query parameter on the registered webhook URL. */
+  tokenParam: string | null;
+}
+
+/** Verifies an incoming webhook against the account's stored secret. Pancake
+ * does not sign payloads but does support custom request headers, so any one
+ * of three proofs authenticates the request (see WEBHOOK in config.ts). All
+ * comparisons are timing-safe. */
+export function verifyWebhookRequest(rawBody: string, proof: WebhookProof, webhookSecret: string): boolean {
+  if (proof.secretHeader && safeEqual(webhookSecret, proof.secretHeader.trim())) return true;
+  if (proof.signatureHeader) {
     const expected = createHmac(WEBHOOK.algorithm, webhookSecret).update(rawBody, "utf8").digest("hex");
-    const provided = signatureHeader.replace(/^sha256=/i, "").trim();
-    if (safeEqual(expected, provided)) return true;
+    if (safeEqual(expected, proof.signatureHeader.replace(/^sha256=/i, "").trim())) return true;
   }
-  if (tokenParam) {
-    if (safeEqual(webhookSecret, tokenParam)) return true;
-  }
+  if (proof.tokenParam && safeEqual(webhookSecret, proof.tokenParam)) return true;
   return false;
 }
 
