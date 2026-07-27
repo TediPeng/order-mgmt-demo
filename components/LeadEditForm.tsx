@@ -5,7 +5,7 @@ import { Input, Label, Select, Textarea, FieldError } from "@/components/ui/Fiel
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { ProductCombobox } from "@/components/ProductCombobox";
-import { LEAD_STATUSES, LEAD_STATUS_LABELS } from "@/lib/validation";
+import { LEAD_STATUSES, LEAD_STATUS_LABELS, PAYMENT_METHOD_SUGGESTIONS } from "@/lib/validation";
 import type { Order, Profile } from "@/lib/types";
 
 interface FormState {
@@ -21,6 +21,10 @@ interface FormState {
   previous_order_amount: string;
   product_id: string;
   unit_price: string;
+  shipping_fee: string;
+  courier: string;
+  payment_method: string;
+  order_source: string;
   status: string;
   agent_id: string;
   notes: string;
@@ -40,6 +44,10 @@ function snapshotFrom(order: Order): FormState {
     previous_order_amount: order.previous_order_amount != null ? String(order.previous_order_amount) : "",
     product_id: order.product_id || "",
     unit_price: order.unit_price != null ? String(order.unit_price) : "",
+    shipping_fee: order.shipping_fee != null ? String(order.shipping_fee) : "",
+    courier: order.courier || "",
+    payment_method: order.payment_method || "",
+    order_source: order.order_source || "",
     status: order.status,
     agent_id: order.agent_id,
     notes: order.notes,
@@ -277,6 +285,54 @@ export function LeadEditForm({
             onChange={(e) => update("unit_price", e.target.value)}
             disabled={!canEdit}
             className={err("unit_price")}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="shipping_fee">Shipping fee</Label>
+          <Input
+            id="shipping_fee"
+            name="shipping_fee"
+            type="number"
+            min={0}
+            step={0.01}
+            inputMode="decimal"
+            value={form.shipping_fee}
+            onChange={(e) => update("shipping_fee", e.target.value)}
+            disabled={!canEdit}
+          />
+        </div>
+        <div>
+          <Label htmlFor="courier">Courier</Label>
+          <Input id="courier" name="courier" value={form.courier} onChange={(e) => update("courier", e.target.value)} disabled={!canEdit} />
+        </div>
+        <div>
+          <Label htmlFor="payment_method">Payment method</Label>
+          <Input
+            id="payment_method"
+            name="payment_method"
+            list="payment_method_options"
+            value={form.payment_method}
+            onChange={(e) => update("payment_method", e.target.value)}
+            disabled={!canEdit}
+          />
+          <datalist id="payment_method_options">
+            {PAYMENT_METHOD_SUGGESTIONS.map((p) => (
+              <option key={p} value={p} />
+            ))}
+          </datalist>
+        </div>
+        <div>
+          <Label htmlFor="order_source">Order source</Label>
+          <Input
+            id="order_source"
+            name="order_source"
+            value={form.order_source}
+            onChange={(e) => update("order_source", e.target.value)}
+            disabled={!canEdit}
+            placeholder="Optional Pancake routing tag"
           />
         </div>
       </div>

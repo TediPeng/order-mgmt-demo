@@ -8,7 +8,8 @@ import { Button, LinkButton } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
 import { LeadsTable } from "@/components/LeadsTable";
-import { LEAD_STATUSES, LEAD_STATUS_LABELS } from "@/lib/validation";
+import { StatusBadge } from "@/components/ui/Badge";
+import { LEAD_STATUSES, LEAD_STATUS_LABELS, PRE_SALE_STATUSES } from "@/lib/validation";
 import type { OrderStatus } from "@/lib/types";
 
 const PAGE_SIZE = 25;
@@ -96,6 +97,7 @@ export default async function LeadsPage({
   const scopedAgents = db.profiles.filter((p) => p.is_active);
 
   const canEdit = can(user.role, "orders", "edit", db.role_permissions);
+  const canManageIntegrations = can(user.role, "integrations", "manage", db.role_permissions);
   const agentUsernameById = Object.fromEntries(db.profiles.map((p) => [p.id, p.username]));
   const agentFullNameById = Object.fromEntries(db.profiles.map((p) => [p.id, p.full_name]));
   const activeProducts = db.products.filter((p) => p.is_active).map((p) => ({ id: p.id, name: p.name, code: p.code }));
@@ -236,6 +238,21 @@ export default async function LeadsPage({
         </form>
       )}
 
+      <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
+          <span className="font-semibold uppercase tracking-wide text-slate-400">Pre-sale:</span>
+          {PRE_SALE_STATUSES.map((s) => (
+            <StatusBadge key={s} status={s} />
+          ))}
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
+          <span className="font-semibold uppercase tracking-wide text-slate-400">Fulfillment (Pancake POS):</span>
+          {LEAD_STATUSES.filter((s) => !(PRE_SALE_STATUSES as readonly string[]).includes(s)).map((s) => (
+            <StatusBadge key={s} status={s} />
+          ))}
+        </div>
+      </div>
+
       <LeadsTable
         orders={pageOrders}
         agentUsernameById={agentUsernameById}
@@ -244,6 +261,7 @@ export default async function LeadsPage({
         latestStatusUpdateByOrderId={latestStatusUpdateByOrderId}
         activeProducts={activeProducts}
         canEdit={canEdit}
+        canManageIntegrations={canManageIntegrations}
         fullPageHrefBase={isFullAccess(user.role) ? "/leads" : null}
         initialOpenOrderNumber={sp.open}
       />

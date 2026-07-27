@@ -303,6 +303,20 @@ export function computeAgentDashboardStats(db: DbShape, agentId: string, from: s
   };
 }
 
+/** Per-status counts for the "In Fulfillment" dashboard card: fulfillment
+ * stages that don't already have their own card (Delivered/Returned do).
+ * Bucketed by order_date like the other fulfillment aggregations. */
+export function computeFulfillmentBreakdown(
+  orders: Order[],
+  from: string,
+  to: string
+): { status: Order["status"]; count: number }[] {
+  const statuses: Order["status"][] = ["confirmed", "printed", "shipped", "in_transit", "failed_delivery", "cancelled"];
+  return statuses
+    .map((status) => ({ status, count: aggregateByStatusAndOrderDate(orders, status, from, to).count }))
+    .filter((r) => r.count > 0);
+}
+
 export interface ManagementKpiStats {
   totalLeads: number;
   newOrders: number;

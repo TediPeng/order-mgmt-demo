@@ -1,0 +1,296 @@
+import { v4 as uuid } from "uuid";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import type {
+  Order,
+  PancakeAccount,
+  PancakeStatusMapEntry,
+  PancakeSyncLog,
+  PancakeSyncAction,
+  PancakeSyncSource,
+} from "@/lib/types";
+
+// Targeted supabaseAdmin access for the Pancake tables + order sync fields.
+// Deliberately NOT part of the whole-DbShape read/write cycle: sync logs are
+// append-only and potentially large, and webhook/cron writers must touch only
+// their own rows instead of racing user requests over the full table set.
+
+function numOrNull(v: unknown): number | null {
+  return v === null || v === undefined ? null : Number(v);
+}
+
+function mapOrder(o: Record<string, unknown>): Order {
+  return {
+    ...(o as unknown as Order),
+    previous_order_amount: numOrNull(o.previous_order_amount),
+    unit_price: numOrNull(o.unit_price),
+    total_amount: Number(o.total_amount),
+    shipping_fee: numOrNull(o.shipping_fee),
+    pancake_sync_attempts: Number(o.pancake_sync_attempts ?? 0),
+  };
+}
+
+// --- accounts ---------------------------------------------------------------
+
+export async function listAccounts(): Promise<PancakeAccount[]> {
+  const { data, error } = await supabaseAdmin.from("pancake_accounts").select("*").order("created_at", { ascending: true });
+  if (error) throw new Error(`pancake_accounts read failed: ${error.message}`);
+  return (data || []) as PancakeAccount[];
+}
+
+export async function getAccount(id: string): Promise<PancakeAccount | null> {
+  const { data, error } = await supabaseAdmin.from("pancake_accounts").select("*").eq("id", id).maybeSingle();
+  if (error) throw new Error(`pancake_accounts read failed: ${error.message}`);
+  return (data as PancakeAccount) || null;
+}
+
+export async function insertAccount(row: PancakeAccount): Promise<void> {
+  const { error } = await supabaseAdmin.from("pancake_accounts").insert(row);
+  if (error) throw new Error(`pancake_accounts insert failed: ${error.message}`);
+}
+
+export async function updateAccount(id: string, fields: Partial<PancakeAccount>): Promise<void> {
+  const { error } = await supabaseAdmin.from("pancake_accounts").update(fields).eq("id", id);
+  if (error) throw new Error(`pancake_accounts update failed: ${error.message}`);
+}
+
+export async function deleteAccount(id: string): Promise<void> {
+  const { error } = await supabaseAdmin.from("pancake_accounts").delete().eq("id", id);
+  if (error) throw new Error(`pancake_accounts delete failed: ${error.message}`);
+}
+
+/** Resolution order (Section 0.3): assigned Agent -> agent's Team Lead ->
+ * lead's order_source tag -> the active default account. Only active accounts
+ * participate. Returns null when nothing resolves (caller sets needs_review). */
+export function resolveAccount(
+  accounts: PancakeAccount[],
+  order: Pick<Order, "agent_id" | "order_source">,
+  agentTeamLeadId: string | null
+): PancakeAccount | null {
+  const active = accounts.filter((a) => a.is_active);
+  return (
+    active.find((a) => a.assigned_agent_id === order.agent_id) ||
+    (agentTeamLeadId ? active.find((a) => a.assigned_team_lead_id === agentTeamLeadId) : undefined) ||
+    (order.order_source ? active.find((a) => a.assigned_order_source && a.assigned_order_source === order.order_source) : undefined) ||
+    active.find((a) => a.is_default) ||
+    null
+  );
+}
+
+// --- status map -------------------------------------------------------------
+
+export async function listStatusMap(): Promise<PancakeStatusMapEntry[]> {
+  const { data, error } = await supabaseAdmin.from("pancake_status_map").select("*").order("pancake_status", { ascending: true });
+  if (error) throw new Error(`pancake_status_map read failed: ${error.message}`);
+  return (data || []) as PancakeStatusMapEntry[];
+}
+
+export async function upsertStatusMapEntry(entry: PancakeStatusMapEntry): Promise<void> {
+  const { error } = await supabaseAdmin.from("pancake_status_map").upsert(entry, { onConflict: "id" });
+  if (error) throw new Error(`pancake_status_map upsert failed: ${error.message}`);
+}
+
+export async function deleteStatusMapEntry(id: string): Promise<void> {
+  const { error } = await supabaseAdmin.from("pancake_status_map").delete().eq("id", id);
+  if (error) throw new Error(`pancake_status_map delete failed: ${error.message}`);
+}
+
+// --- sync logs --------------------------------------------------------------
+
+export interface SyncLogInput {
+  order_id?: string | null;
+  pancake_order_id?: string | null;
+  pancake_account_id?: string | null;
+  action: PancakeSyncAction;
+  old_status?: string | null;
+  new_status?: string | null;
+  request_at?: string | null;
+  response_at?: string | null;
+  http_status?: number | null;
+  result?: "success" | "failed" | null;
+  error_message?: string | null;
+  triggered_by?: string | null;
+  source?: PancakeSyncSource | null;
+  /** REDACTED summary only — never tokens/keys/secrets/full payloads. */
+  payload_summary?: Record<string, unknown> | null;
+}
+
+export async function insertSyncLog(input: SyncLogInput): Promise<void> {
+  const row: PancakeSyncLog = {
+    id: uuid(),
+    order_id: input.order_id ?? null,
+    pancake_order_id: input.pancake_order_id ?? null,
+    pancake_account_id: input.pancake_account_id ?? null,
+    action: input.action,
+    old_status: input.old_status ?? null,
+    new_status: input.new_status ?? null,
+    request_at: input.request_at ?? null,
+    response_at: input.response_at ?? null,
+    http_status: input.http_status ?? null,
+    result: input.result ?? null,
+    error_message: input.error_message ?? null,
+    triggered_by: input.triggered_by ?? null,
+    source: input.source ?? null,
+    payload_summary: input.payload_summary ?? null,
+  };
+  const { error } = await supabaseAdmin.from("pancake_sync_logs").insert(row);
+  if (error) throw new Error(`pancake_sync_logs insert failed: ${error.message}`);
+}
+
+export interface SyncLogFilters {
+  order_id?: string;
+  pancake_account_id?: string;
+  result?: "success" | "failed";
+  source?: PancakeSyncSource;
+  date_from?: string; // YYYY-MM-DD
+  date_to?: string;
+  limit?: number;
+}
+
+export async function listSyncLogs(filters: SyncLogFilters = {}): Promise<PancakeSyncLog[]> {
+  let q = supabaseAdmin.from("pancake_sync_logs").select("*").order("request_at", { ascending: false, nullsFirst: false });
+  if (filters.order_id) q = q.eq("order_id", filters.order_id);
+  if (filters.pancake_account_id) q = q.eq("pancake_account_id", filters.pancake_account_id);
+  if (filters.result) q = q.eq("result", filters.result);
+  if (filters.source) q = q.eq("source", filters.source);
+  if (filters.date_from) q = q.gte("request_at", `${filters.date_from}T00:00:00Z`);
+  if (filters.date_to) q = q.lte("request_at", `${filters.date_to}T23:59:59Z`);
+  q = q.limit(filters.limit ?? 200);
+  const { data, error } = await q;
+  if (error) throw new Error(`pancake_sync_logs read failed: ${error.message}`);
+  return (data || []) as PancakeSyncLog[];
+}
+
+// --- orders (targeted) ------------------------------------------------------
+
+export async function getOrderRow(id: string): Promise<Order | null> {
+  const { data, error } = await supabaseAdmin.from("orders").select("*").eq("id", id).maybeSingle();
+  if (error) throw new Error(`orders read failed: ${error.message}`);
+  return data ? mapOrder(data) : null;
+}
+
+export async function findOrderByPancakeId(pancakeOrderId: string): Promise<Order | null> {
+  const { data, error } = await supabaseAdmin.from("orders").select("*").eq("pancake_order_id", pancakeOrderId).limit(2);
+  if (error) throw new Error(`orders read failed: ${error.message}`);
+  return data && data.length === 1 ? mapOrder(data[0]) : null;
+}
+
+export async function findOrderByOrderNumber(orderNumber: string): Promise<Order | null> {
+  const { data, error } = await supabaseAdmin.from("orders").select("*").eq("order_number", orderNumber).limit(2);
+  if (error) throw new Error(`orders read failed: ${error.message}`);
+  return data && data.length === 1 ? mapOrder(data[0]) : null;
+}
+
+/** Phone fallback: only FORWARDED orders count, and the match must be unique —
+ * anything else returns null and the caller records needs_review. */
+export async function findForwardedOrdersByPhone(phone: string): Promise<Order[]> {
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .select("*")
+    .eq("customer_phone", phone)
+    .not("forwarded_to_pancake_at", "is", null);
+  if (error) throw new Error(`orders read failed: ${error.message}`);
+  return (data || []).map(mapOrder);
+}
+
+/** Orders the polling cron should check: forwarded, in a non-terminal
+ * fulfillment state (or still ready_to_ship awaiting confirmation). */
+export async function listOrdersForPolling(): Promise<Order[]> {
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .select("*")
+    .eq("pancake_sync_status", "synced")
+    .not("pancake_order_id", "is", null)
+    .in("status", ["ready_to_ship", "confirmed", "printed", "shipped", "in_transit", "failed_delivery"]);
+  if (error) throw new Error(`orders read failed: ${error.message}`);
+  return (data || []).map(mapOrder);
+}
+
+export async function listOrdersWithFailedSync(): Promise<Order[]> {
+  const { data, error } = await supabaseAdmin.from("orders").select("*").eq("pancake_sync_status", "failed");
+  if (error) throw new Error(`orders read failed: ${error.message}`);
+  return (data || []).map(mapOrder);
+}
+
+/** Targeted update of sync/fulfillment fields only — never touches notes,
+ * agent assignment, or any other internally-owned column (Section 6). */
+export async function updateOrderSyncFields(
+  id: string,
+  fields: Partial<
+    Pick<
+      Order,
+      | "status"
+      | "pancake_order_id"
+      | "pancake_pos_account_id"
+      | "pancake_sync_status"
+      | "pancake_last_synced_at"
+      | "pancake_sync_error"
+      | "forwarded_to_pancake_at"
+      | "pancake_sync_attempts"
+      | "updated_at"
+    >
+  >
+): Promise<void> {
+  const { error } = await supabaseAdmin.from("orders").update(fields).eq("id", id);
+  if (error) throw new Error(`orders sync-field update failed: ${error.message}`);
+}
+
+// --- notifications + audit log (standalone, no DbShape) ---------------------
+
+export async function activeManagementIds(): Promise<string[]> {
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("id, role, is_active")
+    .in("role", ["management", "administrator"])
+    .eq("is_active", true);
+  if (error) throw new Error(`profiles read failed: ${error.message}`);
+  return (data || []).map((p) => p.id as string);
+}
+
+export async function notifyManagement(type: string, title: string, body: string | null, link: string | null): Promise<void> {
+  const ids = await activeManagementIds();
+  if (ids.length === 0) return;
+  const now = new Date().toISOString();
+  const rows = ids.map((recipient_id) => ({
+    id: uuid(),
+    recipient_id,
+    type,
+    title,
+    body,
+    link,
+    is_read: false,
+    created_at: now,
+  }));
+  const { error } = await supabaseAdmin.from("notifications").insert(rows);
+  if (error) throw new Error(`notifications insert failed: ${error.message}`);
+}
+
+export async function logActivityDirect(
+  userId: string | null,
+  action: string,
+  entityType: string | null,
+  entityId: string | null,
+  details: Record<string, unknown> | null,
+  extra: { module?: string; previous_value?: unknown; updated_value?: unknown } = {}
+): Promise<void> {
+  let userEmail: string | null = null;
+  if (userId) {
+    const { data } = await supabaseAdmin.from("profiles").select("email").eq("id", userId).maybeSingle();
+    userEmail = (data?.email as string) || null;
+  }
+  const { error } = await supabaseAdmin.from("activity_log").insert({
+    id: uuid(),
+    user_id: userId,
+    user_email: userEmail,
+    action,
+    entity_type: entityType,
+    entity_id: entityId,
+    details,
+    module: extra.module ?? "integrations",
+    previous_value: extra.previous_value ?? null,
+    updated_value: extra.updated_value ?? null,
+    ip_address: null,
+    device_info: null,
+    created_at: new Date().toISOString(),
+  });
+  if (error) throw new Error(`activity_log insert failed: ${error.message}`);
+}

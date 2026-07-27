@@ -19,6 +19,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   reports: "Reports",
   audit_logs: "Audit Logs",
   settings: "System Settings",
+  integrations: "Integrations (Pancake POS)",
   file_uploads: "File Uploads",
 };
 
@@ -52,6 +53,10 @@ export const MODULE_ACTIONS: Record<ModuleKey, ActionKey[]> = {
   reports: ["view", "export"],
   audit_logs: ["view", "export"],
   settings: ["view", "manage"],
+  // Management-only by default: no team_lead/agent grants below, so only
+  // full-access roles (or an explicit matrix grant) can see/manage the
+  // Pancake POS integration settings, manual sync/retry, and sync logs.
+  integrations: ["view", "manage"],
   file_uploads: ["view", "upload", "download"],
 };
 

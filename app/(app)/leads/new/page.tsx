@@ -8,7 +8,7 @@ import { allowedAssigneeIds } from "@/lib/order-access";
 import { getCurrentUser } from "@/lib/auth";
 import { readDb } from "@/lib/db";
 import { isFullAccess } from "@/lib/permissions";
-import { LEAD_STATUSES, LEAD_STATUS_LABELS } from "@/lib/validation";
+import { PRE_SALE_STATUSES, LEAD_STATUS_LABELS, PAYMENT_METHOD_SUGGESTIONS } from "@/lib/validation";
 
 export default async function NewLeadPage({
   searchParams,
@@ -100,10 +100,36 @@ export default async function NewLeadPage({
               </div>
             </div>
 
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="shipping_fee">Shipping fee</Label>
+                <Input id="shipping_fee" name="shipping_fee" type="number" min={0} step={0.01} inputMode="decimal" />
+              </div>
+              <div>
+                <Label htmlFor="courier">Courier</Label>
+                <Input id="courier" name="courier" />
+              </div>
+              <div>
+                <Label htmlFor="payment_method">Payment method</Label>
+                <Input id="payment_method" name="payment_method" list="payment_method_options" />
+                <datalist id="payment_method_options">
+                  {PAYMENT_METHOD_SUGGESTIONS.map((p) => (
+                    <option key={p} value={p} />
+                  ))}
+                </datalist>
+              </div>
+              <div>
+                <Label htmlFor="order_source">Order source</Label>
+                <Input id="order_source" name="order_source" placeholder="Optional Pancake routing tag" />
+              </div>
+            </div>
+
             <div>
               <Label htmlFor="status">Status</Label>
+              {/* Fulfillment statuses are Pancake-driven and require a prior
+                  Ready to Ship — a brand-new lead can only start pre-sale. */}
               <Select id="status" name="status" defaultValue="new">
-                {LEAD_STATUSES.map((s) => (
+                {PRE_SALE_STATUSES.map((s) => (
                   <option key={s} value={s}>
                     {LEAD_STATUS_LABELS[s]}
                   </option>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { StatusBadge, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
+import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { OrderDetailsModal } from "@/components/OrderDetailsModal";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import type { Order, OrderStatus } from "@/lib/types";
@@ -15,6 +15,7 @@ export function LeadsTable({
   latestStatusUpdateByOrderId,
   activeProducts,
   canEdit,
+  canManageIntegrations = false,
   fullPageHrefBase,
   initialOpenOrderNumber,
 }: {
@@ -25,6 +26,7 @@ export function LeadsTable({
   latestStatusUpdateByOrderId: Record<string, { status: OrderStatus; at: string } | undefined>;
   activeProducts: { id: string; name: string; code: string | null }[];
   canEdit: boolean;
+  canManageIntegrations?: boolean;
   fullPageHrefBase: string | null;
   initialOpenOrderNumber?: string;
 }) {
@@ -73,6 +75,7 @@ export function LeadsTable({
               <th className="px-4 py-3">New Product Order</th>
               <th className="px-4 py-3">Unit Price</th>
               <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Pancake Sync</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -108,12 +111,15 @@ export function LeadsTable({
                   <td className="px-4 py-3">
                     <StatusBadge status={o.status} />
                   </td>
+                  <td className="px-4 py-3">
+                    <SyncStatusChip status={o.pancake_sync_status} />
+                  </td>
                 </tr>
               );
             })}
             {orders.length === 0 && (
               <tr>
-                <td colSpan={16} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={17} className="px-4 py-10 text-center text-slate-400">
                   No leads found.
                 </td>
               </tr>
@@ -130,6 +136,7 @@ export function LeadsTable({
           latestStatusUpdate={latestStatusUpdateByOrderId[openOrder.id] || null}
           activeProducts={activeProducts}
           canEdit={canEdit}
+          canManageIntegrations={canManageIntegrations}
           fullPageHref={fullPageHrefBase ? `${fullPageHrefBase}/${openOrder.id}` : null}
           onClose={() => setOpenId(null)}
           onSaved={handleSaved}

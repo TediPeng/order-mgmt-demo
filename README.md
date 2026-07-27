@@ -1,5 +1,33 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Environment variables
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `SUPABASE_URL` | yes | Supabase project URL (server-side only). |
+| `SUPABASE_SERVICE_ROLE_KEY` | yes | Service-role key; all DB access goes through it (RLS has zero policies). |
+| `ENCRYPTION_KEY` | for Pancake POS | Encrypts Pancake API keys / webhook secrets at rest (AES-256-GCM; the string is SHA-256-hashed into the AES key). Any random string ≥16 chars; generate with `openssl rand -hex 32`. Rotating it invalidates stored credentials — they must be re-entered in Settings → Integrations. |
+| `CRON_SECRET` | for Pancake POS | Bearer token protecting `/api/cron/pancake-sync`. On Vercel, setting this env var makes Vercel Cron send it automatically. |
+| `PANCAKE_MOCK_MODE` | optional | `success` / `fail` simulates the Pancake POS API locally (no real credentials needed); unset for real HTTP calls. |
+| `APP_TIMEZONE` | optional | Defaults to `Asia/Manila`. |
+
+## Pancake POS integration
+
+Two-way order sync lives in `lib/pancake/`. `lib/pancake/config.ts` is wired against the
+**official Pancake POS OpenAPI spec** (base URL `https://pos.pages.fm/api/v1`, `api_key`
+query-param auth, `POST/GET /shops/{SHOP_ID}/orders`, integer status codes). The API key is
+created in Pancake at *Setting → Advance → Third-party connection → Webhook/API*. Webhooks:
+Pancake doesn't document payload signing, so the receiver accepts either an HMAC-SHA256
+signature or the account's webhook secret as `?token=` on the registered URL
+(`/api/webhooks/pancake?token=<secret>`); with no webhook secret configured, the cron polls
+instead. One residual unknown: the exact webhook payload wrapper — the parser handles the
+documented Order schema bare or wrapped in `data`/`order`.
+
+- Forward-on-Ready-to-Ship: `lib/pancake/forward.ts` (idempotency key = internal order id; exactly-once guards).
+- Incoming updates: webhook `/api/webhooks/pancake` (HMAC-verified) → polling fallback → manual Sync Now.
+- Retry queue + polling: Vercel Cron hits `/api/cron/pancake-sync` every 10 min (`vercel.json`).
+- Settings (Management-only): `/settings/integrations` (accounts, encrypted credentials, Test Connection), `/settings/integrations/status-map`, `/settings/integrations/logs`.
+
 ## Getting Started
 
 First, run the development server:

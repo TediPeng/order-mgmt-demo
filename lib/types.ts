@@ -26,20 +26,45 @@ export interface Profile {
   created_at: string;
 }
 
-// Call-workflow statuses (new/hung_up/ringing/cbr/rsrv) precede a sale; a lead
-// becomes a sale on entering ready_to_ship, then moves through the fulfillment
-// pipeline (printed/shipped/delivered), with returned as a possible final state.
+// Pre-sale statuses (new/ringing/hung_up/cbr/rsrv/ready_to_ship) are
+// agent-driven; a lead becomes a sale on entering ready_to_ship (which also
+// forwards it to Pancake POS), then the fulfillment statuses
+// (confirmed/printed/shipped/in_transit/failed_delivery/delivered/returned/
+// cancelled) are normally driven by Pancake sync — Management may override
+// manually (audit-logged with source internal_user).
 export type OrderStatus =
   | "new"
+  | "ringing"
+  | "hung_up"
+  | "cbr"
+  | "rsrv"
   | "ready_to_ship"
+  | "confirmed"
   | "printed"
   | "shipped"
+  | "in_transit"
+  | "failed_delivery"
   | "delivered"
   | "returned"
-  | "hung_up"
-  | "ringing"
-  | "cbr"
-  | "rsrv";
+  | "cancelled";
+
+export type PancakeSyncStatus = "pending" | "processing" | "synced" | "failed" | "needs_review";
+
+/** Field defaults for a brand-new order that has never been forwarded to
+ * Pancake POS — spread into every order-creation site (form, import, seed). */
+export const ORDER_PANCAKE_DEFAULTS = {
+  shipping_fee: null,
+  courier: null,
+  payment_method: null,
+  order_source: null,
+  pancake_order_id: null,
+  pancake_pos_account_id: null,
+  pancake_sync_status: null,
+  pancake_last_synced_at: null,
+  pancake_sync_error: null,
+  forwarded_to_pancake_at: null,
+  pancake_sync_attempts: 0,
+} satisfies Partial<Order>;
 
 export interface Order {
   id: string;
@@ -64,6 +89,23 @@ export interface Order {
   // re-enters. Blank until then, regardless of created_at.
   order_date: string | null;
   source: "manual" | "import";
+  // Optional order fields included in the Pancake forward payload; NOT part of
+  // the Ready-to-Ship required-field validation.
+  shipping_fee: number | null;
+  courier: string | null;
+  payment_method: string | null;
+  // Optional routing tag: resolves which Pancake account receives the order
+  // (priority: assigned agent -> agent's team -> order_source -> default).
+  order_source: string | null;
+  // Pancake POS sync state. Managed by lib/pancake/*; the DbShape write path
+  // carries these along unchanged.
+  pancake_order_id: string | null;
+  pancake_pos_account_id: string | null;
+  pancake_sync_status: PancakeSyncStatus | null;
+  pancake_last_synced_at: string | null;
+  pancake_sync_error: string | null;
+  forwarded_to_pancake_at: string | null;
+  pancake_sync_attempts: number;
   notes: string;
   created_by: string;
   updated_by: string | null;
@@ -259,6 +301,7 @@ export const MODULES = [
   "reports",
   "audit_logs",
   "settings",
+  "integrations",
   "file_uploads",
 ] as const;
 export type ModuleKey = (typeof MODULES)[number];
@@ -291,6 +334,65 @@ export interface PerformanceThresholds {
   top_performer_min_ratio: number; // vs team average, e.g. 1.2 = 120% of average
   needs_improvement_max_ratio: number; // e.g. 0.8 = 80% of average
   rts_warning_threshold_pct: number; // RTS % (Returned Qty / Delivered Qty) above this is styled as a warning
+}
+
+// --- Pancake POS integration ------------------------------------------------
+// These tables are intentionally NOT part of DbShape: sync logs are
+// append-only and potentially large, and webhook/cron writers must not race
+// the whole-DbShape read/write cycle. Access goes through lib/pancake/store.ts
+// (targeted supabaseAdmin queries) instead.
+
+export interface PancakeAccount {
+  id: string;
+  account_name: string;
+  shop_or_page_id: string;
+  api_endpoint: string;
+  api_key_encrypted: string; // AES-256-GCM via lib/pancake/crypto.ts — never plaintext, never sent to the client
+  webhook_secret_encrypted: string | null;
+  assigned_agent_id: string | null;
+  assigned_team_lead_id: string | null;
+  assigned_order_source: string | null;
+  is_default: boolean;
+  is_active: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface PancakeStatusMapEntry {
+  id: string;
+  pancake_status: string; // exact code from the Pancake API (seeded values are TODO placeholders)
+  internal_status: string; // must be a valid OrderStatus
+  is_active: boolean;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export type PancakeSyncAction = "forward" | "status_update" | "poll" | "manual_sync" | "retry";
+export type PancakeSyncSource =
+  | "webhook"
+  | "api_polling"
+  | "manual_sync"
+  | "internal_user"
+  | "auto_retry"
+  | "ready_to_ship_event";
+
+export interface PancakeSyncLog {
+  id: string;
+  order_id: string | null;
+  pancake_order_id: string | null;
+  pancake_account_id: string | null;
+  action: PancakeSyncAction;
+  old_status: string | null;
+  new_status: string | null;
+  request_at: string | null;
+  response_at: string | null;
+  http_status: number | null;
+  result: "success" | "failed" | null;
+  error_message: string | null;
+  triggered_by: string | null; // null for webhook/cron
+  source: PancakeSyncSource | null;
+  payload_summary: Record<string, unknown> | null; // REDACTED: never tokens/keys/secrets
 }
 
 export interface DbShape {

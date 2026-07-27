@@ -38,6 +38,19 @@ export function pipelineBlockReason(order: Pick<Order, "order_date">, newStatus:
   return null;
 }
 
+/** Once an order has been forwarded to Pancake POS, its status is normally
+ * driven by Pancake sync — manual changes are Management-only (Section 0.1).
+ * Pre-forward leads are unaffected. */
+export function fulfillmentOverrideBlockReason(
+  order: Pick<Order, "pancake_order_id" | "forwarded_to_pancake_at" | "status">,
+  newStatus: OrderStatus,
+  userIsFullAccess: boolean
+): string | null {
+  const forwarded = Boolean(order.pancake_order_id || order.forwarded_to_pancake_at);
+  if (!forwarded || newStatus === order.status || userIsFullAccess) return null;
+  return "This order was forwarded to Pancake POS; its status is managed by sync. Only Management can change it manually.";
+}
+
 /** Order Date is stamped/overwritten only when entering ready_to_ship (including
  * re-entry — latest Ready-to-Ship date wins); every other transition leaves it untouched. */
 export function computeOrderDate(order: Pick<Order, "order_date">, newStatus: OrderStatus, today: string): string | null {

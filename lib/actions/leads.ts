@@ -10,8 +10,17 @@ import { requireUser, requirePermission } from "./guards";
 import { leadFormSchema, leadImportRowSchema } from "@/lib/validation";
 import { matchAgentByUsername } from "@/lib/agent-match";
 import { todayInTz } from "@/lib/utils";
-import { validateReadyToShip, pipelineBlockReason, computeOrderDate, findPreviousOrderInfo } from "@/lib/lead-workflow";
+import {
+  validateReadyToShip,
+  pipelineBlockReason,
+  computeOrderDate,
+  findPreviousOrderInfo,
+  fulfillmentOverrideBlockReason,
+} from "@/lib/lead-workflow";
+import { forwardOrderToPancake } from "@/lib/pancake/forward";
+import { insertSyncLog } from "@/lib/pancake/store";
 import type { DbShape, Order, Profile } from "@/lib/types";
+import { ORDER_PANCAKE_DEFAULTS } from "@/lib/types";
 
 function buildLeadFieldErrors(formData: FormData): Record<string, unknown> {
   return {
@@ -30,6 +39,10 @@ function buildLeadFieldErrors(formData: FormData): Record<string, unknown> {
     status: formData.get("status") || "new",
     notes: formData.get("notes"),
     agent_id: formData.get("agent_id"),
+    shipping_fee: formData.get("shipping_fee") || null,
+    courier: formData.get("courier"),
+    payment_method: formData.get("payment_method"),
+    order_source: formData.get("order_source"),
   };
 }
 
@@ -87,6 +100,11 @@ export async function createLeadAction(formData: FormData) {
     status: data.status,
     order_date: data.status === "ready_to_ship" ? today : null,
     source: "manual",
+    ...ORDER_PANCAKE_DEFAULTS,
+    shipping_fee: data.shipping_fee ?? null,
+    courier: data.courier || null,
+    payment_method: data.payment_method || null,
+    order_source: data.order_source || null,
     notes: data.notes || "",
     created_by: user.id,
     updated_by: null,
@@ -102,11 +120,23 @@ export async function createLeadAction(formData: FormData) {
     ...info,
   });
   await writeDb(db);
+  if (order.status === "ready_to_ship") {
+    // Forward AFTER persisting; the handler has its own duplicate/idempotency guards.
+    await forwardOrderToPancake(order.id, { source: "ready_to_ship_event", triggeredBy: user.id });
+  }
   redirect(`/leads/${order.id}?created=1`);
 }
 
 export type ApplyLeadUpdateResult =
-  | { ok: true; order: Order }
+  | {
+      ok: true;
+      order: Order;
+      /** Status transitioned INTO ready_to_ship — callers trigger the Pancake forward after writeDb(). */
+      enteredReadyToShip: boolean;
+      /** Management manually changed the status of an already-forwarded order —
+       * callers add a pancake_sync_logs entry with source internal_user. */
+      manualFulfillmentOverride: { oldStatus: string; newStatus: string } | null;
+    }
   | { ok: false; code: "not_found" | "forbidden" | "validation"; error: string };
 
 /** Core of a lead edit/status-update: validation, RTS gating, field writes, and
@@ -143,6 +173,9 @@ export async function applyLeadUpdate(
 
   const blocked = pipelineBlockReason(order, data.status);
   if (blocked) return { ok: false, code: "validation", error: blocked };
+
+  const fulfillmentBlocked = fulfillmentOverrideBlockReason(order, data.status, isFullAccess(user.role));
+  if (fulfillmentBlocked) return { ok: false, code: "validation", error: fulfillmentBlocked };
 
   if (data.status === "ready_to_ship") {
     const missing = validateReadyToShip({ ...data, product_id: data.product_id || null });
@@ -193,6 +226,10 @@ export async function applyLeadUpdate(
   order.total_amount = quantity * (data.unit_price ?? 0);
   order.status = data.status;
   order.order_date = newOrderDate;
+  order.shipping_fee = data.shipping_fee ?? null;
+  order.courier = data.courier || null;
+  order.payment_method = data.payment_method || null;
+  order.order_source = data.order_source || null;
   order.notes = data.notes || "";
   if (isReassignment) {
     order.agent_id = data.agent_id;
@@ -228,7 +265,42 @@ export async function applyLeadUpdate(
     { module: "orders", previous_value: before, updated_value: order, ...info }
   );
 
-  return { ok: true, order };
+  const forwarded = Boolean(before.pancake_order_id || before.forwarded_to_pancake_at);
+  return {
+    ok: true,
+    order,
+    enteredReadyToShip: before.status !== "ready_to_ship" && order.status === "ready_to_ship",
+    manualFulfillmentOverride:
+      forwarded && before.status !== order.status ? { oldStatus: before.status, newStatus: order.status } : null,
+  };
+}
+
+/** Post-persist hook shared by the form action and the modal PATCH route:
+ * records Management's manual override of a forwarded order (source
+ * internal_user) and fires the exactly-once Pancake forward on entering
+ * Ready to Ship. Call only AFTER writeDb() succeeded. */
+export async function afterLeadUpdatePersisted(
+  user: Profile,
+  result: Extract<ApplyLeadUpdateResult, { ok: true }>
+): Promise<void> {
+  if (result.manualFulfillmentOverride) {
+    await insertSyncLog({
+      order_id: result.order.id,
+      pancake_order_id: result.order.pancake_order_id,
+      pancake_account_id: result.order.pancake_pos_account_id,
+      action: "status_update",
+      old_status: result.manualFulfillmentOverride.oldStatus,
+      new_status: result.manualFulfillmentOverride.newStatus,
+      request_at: nowIso(),
+      result: "success",
+      triggered_by: user.id,
+      source: "internal_user",
+      payload_summary: { note: "Manual status change by Management on a forwarded order" },
+    });
+  }
+  if (result.enteredReadyToShip) {
+    await forwardOrderToPancake(result.order.id, { source: "ready_to_ship_event", triggeredBy: user.id });
+  }
 }
 
 export async function updateLeadAction(orderId: string, formData: FormData) {
@@ -242,6 +314,7 @@ export async function updateLeadAction(orderId: string, formData: FormData) {
     redirect(`${target}?error=${encodeURIComponent(result.error)}`);
   }
   await writeDb(db);
+  await afterLeadUpdatePersisted(user, result);
   redirect(`/leads/${orderId}?updated=1`);
 }
 
@@ -414,6 +487,7 @@ export async function importLeadsAction(
       status: "new",
       order_date: null,
       source: "import",
+      ...ORDER_PANCAKE_DEFAULTS,
       notes: "",
       created_by: user.id,
       updated_by: null,

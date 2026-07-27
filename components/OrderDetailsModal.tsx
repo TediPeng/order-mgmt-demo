@@ -1,15 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { X } from "lucide-react";
+import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
 import { ProductCombobox } from "@/components/ProductCombobox";
-import { StatusBadge, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
+import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
-import { LEAD_STATUSES, LEAD_STATUS_LABELS } from "@/lib/validation";
+import { LEAD_STATUSES, LEAD_STATUS_LABELS, PAYMENT_METHOD_SUGGESTIONS } from "@/lib/validation";
 import type { Order, OrderStatus } from "@/lib/types";
 
 interface EditForm {
@@ -23,6 +23,10 @@ interface EditForm {
   product_id: string;
   quantity: string;
   unit_price: string;
+  shipping_fee: string;
+  courier: string;
+  payment_method: string;
+  order_source: string;
   notes: string;
   status: string;
 }
@@ -39,6 +43,10 @@ function snapshotFrom(order: Order): EditForm {
     product_id: order.product_id || "",
     quantity: String(order.quantity),
     unit_price: order.unit_price != null ? String(order.unit_price) : "",
+    shipping_fee: order.shipping_fee != null ? String(order.shipping_fee) : "",
+    courier: order.courier || "",
+    payment_method: order.payment_method || "",
+    order_source: order.order_source || "",
     notes: order.notes,
     status: order.status,
   };
@@ -62,8 +70,24 @@ function buildRawFromOrder(o: Order, overrides: Record<string, unknown> = {}): R
     notes: o.notes,
     agent_id: o.agent_id,
     quantity: o.quantity,
+    shipping_fee: o.shipping_fee,
+    courier: o.courier || "",
+    payment_method: o.payment_method || "",
+    order_source: o.order_source || "",
     ...overrides,
   };
+}
+
+interface SyncHistoryEntry {
+  id: string;
+  action: string;
+  old_status: string | null;
+  new_status: string | null;
+  request_at: string | null;
+  http_status: number | null;
+  result: "success" | "failed" | null;
+  error_message: string | null;
+  source: string | null;
 }
 
 const MISSING_PREFIX = "Missing required fields for Ready to Ship: ";
@@ -75,6 +99,7 @@ export function OrderDetailsModal({
   latestStatusUpdate,
   activeProducts,
   canEdit,
+  canManageIntegrations = false,
   fullPageHref,
   onClose,
   onSaved,
@@ -85,6 +110,7 @@ export function OrderDetailsModal({
   latestStatusUpdate: { status: OrderStatus; at: string } | null;
   activeProducts: { id: string; name: string; code: string | null }[];
   canEdit: boolean;
+  canManageIntegrations?: boolean;
   fullPageHref: string | null;
   onClose: () => void;
   onSaved: (updated: Order) => void;
@@ -96,6 +122,55 @@ export function OrderDetailsModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [missing, setMissing] = useState<string[]>([]);
+  const [syncHistoryOpen, setSyncHistoryOpen] = useState(false);
+  const [syncHistory, setSyncHistory] = useState<SyncHistoryEntry[] | null>(null);
+  const [pancakeAccountName, setPancakeAccountName] = useState<string | null>(null);
+  const [syncActionRunning, setSyncActionRunning] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+
+  const wasForwarded = Boolean(order.pancake_order_id || order.forwarded_to_pancake_at || order.pancake_sync_status);
+
+  useEffect(() => {
+    // Load account name + history lazily whenever the Pancake section is relevant.
+    if (!wasForwarded) return;
+    let cancelled = false;
+    fetch(`/api/pancake/orders/${order.id}/sync`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (cancelled || !json.ok) return;
+        setSyncHistory(json.logs as SyncHistoryEntry[]);
+        setPancakeAccountName(json.account_name);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [order.id, order.pancake_sync_status, order.pancake_last_synced_at, wasForwarded]);
+
+  async function runSyncAction(mode: "sync_now" | "retry") {
+    setSyncActionRunning(true);
+    setSyncMessage(null);
+    try {
+      const res = await fetch(`/api/pancake/orders/${order.id}/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+      });
+      const json = await res.json();
+      setSyncMessage(json.message || json.error || "Done.");
+      // Pull the fresh order row so chips/status update in place.
+      const fresh = await fetch(`/api/pancake/orders/${order.id}/sync`).then((r) => r.json());
+      if (fresh.ok) {
+        setSyncHistory(fresh.logs as SyncHistoryEntry[]);
+        setPancakeAccountName(fresh.account_name);
+      }
+      onSaved({ ...order }); // triggers router.refresh() upstream
+    } catch {
+      setSyncMessage("Network error. Please try again.");
+    } finally {
+      setSyncActionRunning(false);
+    }
+  }
 
   const isDirty = mode === "edit" && JSON.stringify(form) !== JSON.stringify(initial);
   const hasUnsavedChanges = isDirty || statusDraft !== order.status;
@@ -153,6 +228,10 @@ export function OrderDetailsModal({
         product_id: form.product_id,
         quantity: form.quantity.trim() === "" ? undefined : Number(form.quantity),
         unit_price: form.unit_price.trim() === "" ? null : Number(form.unit_price),
+        shipping_fee: form.shipping_fee.trim() === "" ? null : Number(form.shipping_fee),
+        courier: form.courier,
+        payment_method: form.payment_method,
+        order_source: form.order_source,
         status: form.status,
         notes: form.notes,
       })
@@ -247,6 +326,22 @@ export function OrderDetailsModal({
                 <p className="text-xs uppercase text-slate-400">Total Amount</p>
                 <p className="text-slate-800">{formatCurrency(order.total_amount)}</p>
               </div>
+              <div>
+                <p className="text-xs uppercase text-slate-400">Shipping Fee</p>
+                <p className="text-slate-800">{order.shipping_fee != null ? formatCurrency(order.shipping_fee) : "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-slate-400">Courier</p>
+                <p className="text-slate-800">{order.courier || "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-slate-400">Payment Method</p>
+                <p className="text-slate-800">{order.payment_method || "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-slate-400">Order Source</p>
+                <p className="text-slate-800">{order.order_source || "—"}</p>
+              </div>
             </div>
           ) : (
             <div className="space-y-3">
@@ -322,6 +417,41 @@ export function OrderDetailsModal({
                   <Input value={formatCurrency(previewQuantity * previewUnitPrice)} disabled />
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="m_shipping_fee">Shipping Fee</Label>
+                  <Input
+                    id="m_shipping_fee"
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={form.shipping_fee}
+                    onChange={(e) => update("shipping_fee", e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="m_courier">Courier</Label>
+                  <Input id="m_courier" value={form.courier} onChange={(e) => update("courier", e.target.value)} />
+                </div>
+                <div>
+                  <Label htmlFor="m_payment_method">Payment Method</Label>
+                  <Input
+                    id="m_payment_method"
+                    list="m_payment_method_options"
+                    value={form.payment_method}
+                    onChange={(e) => update("payment_method", e.target.value)}
+                  />
+                  <datalist id="m_payment_method_options">
+                    {PAYMENT_METHOD_SUGGESTIONS.map((p) => (
+                      <option key={p} value={p} />
+                    ))}
+                  </datalist>
+                </div>
+                <div>
+                  <Label htmlFor="m_order_source">Order Source</Label>
+                  <Input id="m_order_source" value={form.order_source} onChange={(e) => update("order_source", e.target.value)} />
+                </div>
+              </div>
               <div>
                 <Label htmlFor="m_status">Status</Label>
                 <Select id="m_status" value={form.status} onChange={(e) => update("status", e.target.value)}>
@@ -360,6 +490,78 @@ export function OrderDetailsModal({
             <div>
               <p className="text-xs uppercase text-slate-400">Notes</p>
               <p className="whitespace-pre-wrap text-sm text-slate-700">{order.notes || "—"}</p>
+            </div>
+          )}
+
+          {wasForwarded && (
+            <div className="space-y-3 rounded-lg border border-slate-200 p-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase text-slate-500">Pancake POS</p>
+                <SyncStatusChip status={order.pancake_sync_status} />
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-xs uppercase text-slate-400">Pancake Account</p>
+                  <p className="text-slate-800">{pancakeAccountName || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-slate-400">Pancake Order ID</p>
+                  <p className="text-slate-800">{order.pancake_order_id || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-slate-400">Internal Status</p>
+                  <StatusBadge status={order.status} />
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-slate-400">Last Synced</p>
+                  <p className="text-slate-800">{order.pancake_last_synced_at ? formatDateTime(order.pancake_last_synced_at) : "—"}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs uppercase text-slate-400">Forwarded At</p>
+                  <p className="text-slate-800">{order.forwarded_to_pancake_at ? formatDateTime(order.forwarded_to_pancake_at) : "—"}</p>
+                </div>
+              </div>
+              {order.pancake_sync_error && <Alert kind="error">Last sync error: {order.pancake_sync_error}</Alert>}
+              {syncMessage && <Alert kind="info">{syncMessage}</Alert>}
+
+              <button
+                type="button"
+                onClick={() => setSyncHistoryOpen((v) => !v)}
+                className="flex items-center gap-1 text-xs font-medium text-[var(--brand-primary)] hover:underline"
+              >
+                {syncHistoryOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                Sync History {syncHistory ? `(${syncHistory.length})` : ""}
+              </button>
+              {syncHistoryOpen && (
+                <ul className="max-h-48 space-y-1.5 overflow-y-auto text-xs text-slate-600">
+                  {(syncHistory || []).map((h) => (
+                    <li key={h.id} className="rounded border border-slate-100 px-2 py-1.5">
+                      <span className={h.result === "failed" ? "font-medium text-red-600" : "font-medium text-green-700"}>
+                        {h.action.replaceAll("_", " ")}
+                      </span>{" "}
+                      · {h.source ? h.source.replaceAll("_", " ") : "—"} · {formatDateTime(h.request_at)}
+                      {h.old_status || h.new_status ? (
+                        <> · {h.old_status || "—"} → {h.new_status || "—"}</>
+                      ) : null}
+                      {h.error_message && <p className="mt-0.5 text-red-500">{h.error_message}</p>}
+                    </li>
+                  ))}
+                  {(!syncHistory || syncHistory.length === 0) && <li className="text-slate-400">No sync history yet.</li>}
+                </ul>
+              )}
+
+              {canManageIntegrations && (
+                <div className="flex gap-2 border-t border-slate-100 pt-2">
+                  <Button type="button" variant="outline" size="sm" disabled={syncActionRunning} onClick={() => runSyncAction("sync_now")}>
+                    {syncActionRunning ? "Working…" : "Sync Now"}
+                  </Button>
+                  {(order.pancake_sync_status === "failed" || order.pancake_sync_status === "needs_review") && (
+                    <Button type="button" variant="secondary" size="sm" disabled={syncActionRunning} onClick={() => runSyncAction("retry")}>
+                      Retry Sync
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

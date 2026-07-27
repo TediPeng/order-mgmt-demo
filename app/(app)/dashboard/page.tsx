@@ -17,8 +17,10 @@ import {
   totalsByAgent,
   computeAgentDashboardStats,
   computeManagementKpiStats,
+  computeFulfillmentBreakdown,
   resolveDateRange,
 } from "@/lib/performance";
+import { LEAD_STATUS_LABELS } from "@/lib/validation";
 import { scopeOrders } from "@/lib/order-access";
 import { formatCurrency, todayInTz } from "@/lib/utils";
 
@@ -42,6 +44,8 @@ export default async function DashboardPage({
   const dashboardRange = resolveDateRange(sp.range, sp.from, sp.to);
   const agentStats = isAgent ? computeAgentDashboardStats(db, user.id, dashboardRange.from, dashboardRange.to) : null;
   const kpiStats = !isAgent ? computeManagementKpiStats(orders, dashboardRange.from, dashboardRange.to) : null;
+  const fulfillmentBreakdown = computeFulfillmentBreakdown(orders, dashboardRange.from, dashboardRange.to);
+  const fulfillmentTotal = fulfillmentBreakdown.reduce((s, r) => s + r.count, 0);
   const rtsWarn = (pct: number | null) => pct !== null && pct > db.performance_thresholds.rts_warning_threshold_pct;
 
   const canViewRanking = isAgent && can(user.role, "ranking", "view", db.role_permissions);
@@ -135,6 +139,17 @@ export default async function DashboardPage({
               value={agentStats.rtsPercentage === null ? "—" : `${agentStats.rtsPercentage}%`}
             />
             <StatCard label="Ringing Leads" value={agentStats.ringingLeads} href="/leads?status=ringing" />
+            <StatCard
+              label="In Fulfillment"
+              value={fulfillmentTotal}
+              href="/leads"
+              accent="text-indigo-700"
+              extra={fulfillmentBreakdown.map((r) => (
+                <p key={r.status}>
+                  {LEAD_STATUS_LABELS[r.status]}: {r.count}
+                </p>
+              ))}
+            />
           </div>
         </>
       ) : (
@@ -163,6 +178,17 @@ export default async function DashboardPage({
                 href="/leads?status=delivered"
                 accent="text-teal-700"
                 extra={<p>Qty: {kpiStats.delivered.quantity}</p>}
+              />
+              <StatCard
+                label="In Fulfillment"
+                value={fulfillmentTotal}
+                href="/leads"
+                accent="text-indigo-700"
+                extra={fulfillmentBreakdown.map((r) => (
+                  <p key={r.status}>
+                    {LEAD_STATUS_LABELS[r.status]}: {r.count}
+                  </p>
+                ))}
               />
               <StatCard label="Overall AOV" value={kpiStats.aov === null ? "—" : formatCurrency(kpiStats.aov)} />
               <StatCard

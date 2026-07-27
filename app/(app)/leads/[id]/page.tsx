@@ -6,10 +6,11 @@ import { orderInScope } from "@/lib/order-access";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Alert } from "@/components/ui/Alert";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
-import { StatusBadge, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
+import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { formatDateTime } from "@/lib/utils";
 import { deleteLeadAction, updateLeadAction } from "@/lib/actions/leads";
 import { LeadEditForm } from "@/components/LeadEditForm";
+import { listSyncLogs, getAccount } from "@/lib/pancake/store";
 
 function summarizeValue(v: unknown): string {
   if (v === null || v === undefined) return "—";
@@ -49,6 +50,10 @@ export default async function LeadDetailPage({
   const history = db.activity_log
     .filter((e) => e.entity_id === order.id && e.module === "orders")
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
+
+  const wasForwarded = Boolean(order.pancake_order_id || order.forwarded_to_pancake_at || order.pancake_sync_status);
+  const syncLogs = wasForwarded ? await listSyncLogs({ order_id: order.id, limit: 25 }) : [];
+  const pancakeAccount = order.pancake_pos_account_id ? await getAccount(order.pancake_pos_account_id) : null;
 
   const boundUpdate = updateLeadAction.bind(null, order.id);
   const boundDelete = async () => {
@@ -122,6 +127,52 @@ export default async function LeadDetailPage({
           />
         </CardContent>
       </Card>
+
+      {wasForwarded && (
+        <Card>
+          <CardHeader className="flex items-center justify-between">
+            <CardTitle>Pancake POS</CardTitle>
+            <SyncStatusChip status={order.pancake_sync_status} />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <p className="text-xs uppercase text-slate-400">Pancake Account</p>
+                <p className="text-slate-800">{pancakeAccount?.account_name || "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-slate-400">Pancake Order ID</p>
+                <p className="text-slate-800">{order.pancake_order_id || "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-slate-400">Forwarded At</p>
+                <p className="text-slate-800">{order.forwarded_to_pancake_at ? formatDateTime(order.forwarded_to_pancake_at) : "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-slate-400">Last Synced</p>
+                <p className="text-slate-800">{order.pancake_last_synced_at ? formatDateTime(order.pancake_last_synced_at) : "—"}</p>
+              </div>
+            </div>
+            {order.pancake_sync_error && <Alert kind="error">Last sync error: {order.pancake_sync_error}</Alert>}
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase text-slate-500">Sync History</p>
+              <ul className="max-h-56 space-y-1.5 overflow-y-auto text-xs text-slate-600">
+                {syncLogs.map((h) => (
+                  <li key={h.id} className="rounded border border-slate-100 px-2 py-1.5">
+                    <span className={h.result === "failed" ? "font-medium text-red-600" : "font-medium text-green-700"}>
+                      {h.action.replaceAll("_", " ")}
+                    </span>{" "}
+                    · {h.source ? h.source.replaceAll("_", " ") : "—"} · {formatDateTime(h.request_at)}
+                    {h.old_status || h.new_status ? <> · {h.old_status || "—"} → {h.new_status || "—"}</> : null}
+                    {h.error_message && <p className="mt-0.5 text-red-500">{h.error_message}</p>}
+                  </li>
+                ))}
+                {syncLogs.length === 0 && <li className="text-slate-400">No sync history yet.</li>}
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

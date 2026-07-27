@@ -1,39 +1,60 @@
 import { z } from "zod";
 
-export const LEAD_STATUSES = [
-  "new",
-  "ready_to_ship",
+// Pre-sale statuses are agent-driven; fulfillment statuses are normally set by
+// Pancake POS sync after the order is forwarded on Ready to Ship (Management
+// can override manually — enforced in lib/lead-workflow.ts).
+export const PRE_SALE_STATUSES = ["new", "ringing", "hung_up", "cbr", "rsrv", "ready_to_ship"] as const;
+export const FULFILLMENT_STATUSES = [
+  "confirmed",
   "printed",
   "shipped",
+  "in_transit",
+  "failed_delivery",
   "delivered",
   "returned",
-  "hung_up",
-  "ringing",
-  "cbr",
-  "rsrv",
+  "cancelled",
 ] as const;
+
+export const LEAD_STATUSES = [...PRE_SALE_STATUSES, ...FULFILLMENT_STATUSES] as const;
 
 export const LEAD_STATUS_LABELS: Record<(typeof LEAD_STATUSES)[number], string> = {
   new: "New",
-  ready_to_ship: "Ready to Ship",
-  printed: "Printed",
-  shipped: "Shipped",
-  delivered: "Delivered",
-  returned: "Returned",
-  hung_up: "Hung Up",
   ringing: "Ringing",
+  hung_up: "Hung Up",
   cbr: "CBR",
   rsrv: "RSRV",
+  ready_to_ship: "Ready to Ship",
+  confirmed: "Confirmed",
+  printed: "Printed",
+  shipped: "Shipped",
+  in_transit: "In Transit",
+  failed_delivery: "Failed Delivery",
+  delivered: "Delivered",
+  returned: "Returned",
+  cancelled: "Cancelled",
 };
 
 // Statuses that represent a converted sale (Ready to Ship and every
-// downstream fulfillment stage) — used for Order Qty / Total Order Amount.
-export const SALE_STATUSES = ["ready_to_ship", "printed", "shipped", "delivered"] as const;
+// downstream in-flight fulfillment stage) — used for Order Qty / Total Order
+// Amount. Returned and Cancelled are failed sales and stay excluded.
+export const SALE_STATUSES = [
+  "ready_to_ship",
+  "confirmed",
+  "printed",
+  "shipped",
+  "in_transit",
+  "failed_delivery",
+  "delivered",
+] as const;
 
-// Printed/Shipped/Delivered/Returned are downstream of Ready to Ship; a lead
-// must have passed through it at least once (i.e. already have an order_date)
-// before it can move into any of these.
-export const REQUIRES_PRIOR_READY_TO_SHIP = ["printed", "shipped", "delivered", "returned"] as const;
+// Every fulfillment status is downstream of Ready to Ship; a lead must have
+// passed through it at least once (i.e. already have an order_date) before it
+// can move into any of these.
+export const REQUIRES_PRIOR_READY_TO_SHIP = FULFILLMENT_STATUSES;
+
+// Terminal fulfillment statuses: Pancake sync never moves these backward
+// automatically; terminal-to-terminal changes are allowed with a full log.
+export const TERMINAL_STATUSES = ["delivered", "returned", "cancelled"] as const;
 
 export const leadFormSchema = z.object({
   customer_name: z.string().trim().min(1, "Customer name is required"),
@@ -51,7 +72,15 @@ export const leadFormSchema = z.object({
   status: z.enum(LEAD_STATUSES).default("new"),
   notes: z.string().trim().optional().default(""),
   agent_id: z.string().trim().min(1, "Agent is required"),
+  // Optional Pancake-forward fields (Section 0.2) — NOT required for Ready to Ship.
+  shipping_fee: z.coerce.number().nonnegative("Shipping fee must be zero or more").optional().nullable(),
+  courier: z.string().trim().optional().default(""),
+  payment_method: z.string().trim().optional().default(""),
+  order_source: z.string().trim().optional().default(""),
 });
+
+// Suggested values for the free-text Payment Method field (not enforced).
+export const PAYMENT_METHOD_SUGGESTIONS = ["COD", "GCash", "Bank Transfer"] as const;
 
 export type LeadFormInput = z.infer<typeof leadFormSchema>;
 

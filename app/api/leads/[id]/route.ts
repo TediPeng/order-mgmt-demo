@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { readDb, writeDb } from "@/lib/db";
 import { can } from "@/lib/permissions";
-import { applyLeadUpdate } from "@/lib/actions/leads";
+import { applyLeadUpdate, afterLeadUpdatePersisted } from "@/lib/actions/leads";
+import { getOrderRow } from "@/lib/pancake/store";
 
 /** Powers the Order Details modal's Edit/Update Status flows -- same
  * validation, RTS gating, and activity logging as the full-page form
@@ -32,5 +33,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   await writeDb(db);
-  return NextResponse.json({ ok: true, order: result.order });
+  await afterLeadUpdatePersisted(user, result);
+  // The forward may have just updated sync fields — return the fresh row so
+  // the modal's sync chip is current without an extra refresh.
+  const fresh = result.enteredReadyToShip ? await getOrderRow(id) : null;
+  return NextResponse.json({ ok: true, order: fresh || result.order });
 }

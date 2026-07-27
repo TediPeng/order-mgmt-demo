@@ -1,6 +1,7 @@
-import bcrypt from "bcryptjs";
+﻿import bcrypt from "bcryptjs";
 import { v4 as uuid } from "uuid";
 import type { DbShape, Profile, RolePermission, RoleDef, WorkSchedule } from "./types";
+import { ORDER_PANCAKE_DEFAULTS } from "./types";
 import { buildDefaultRows } from "./permissions";
 import { supabaseAdmin } from "./supabaseAdmin";
 
@@ -178,6 +179,7 @@ function seedDb(): DbShape {
       quantity: 1,
       unit_price: 450,
       total_amount: 450,
+      ...ORDER_PANCAKE_DEFAULTS,
       status: "ready_to_ship" as const,
       order_date: ymd(today),
       source: "manual" as const,
@@ -207,6 +209,7 @@ function seedDb(): DbShape {
       quantity: 1,
       unit_price: null,
       total_amount: 0,
+      ...ORDER_PANCAKE_DEFAULTS,
       status: "ringing" as const,
       order_date: null,
       source: "manual" as const,
@@ -236,6 +239,7 @@ function seedDb(): DbShape {
       quantity: 1,
       unit_price: null,
       total_amount: 0,
+      ...ORDER_PANCAKE_DEFAULTS,
       status: "new" as const,
       order_date: null,
       source: "manual" as const,
@@ -265,6 +269,7 @@ function seedDb(): DbShape {
       quantity: 1,
       unit_price: 899,
       total_amount: 899,
+      ...ORDER_PANCAKE_DEFAULTS,
       status: "hung_up" as const,
       order_date: null,
       source: "manual" as const,
@@ -479,6 +484,8 @@ export async function readDb(): Promise<DbShape> {
       previous_order_amount: numOrNull(o.previous_order_amount),
       unit_price: numOrNull(o.unit_price),
       total_amount: num(o.total_amount),
+      shipping_fee: numOrNull(o.shipping_fee),
+      pancake_sync_attempts: num(o.pancake_sync_attempts ?? 0),
     })) as DbShape["orders"],
     products: (productsRes.data || []) as DbShape["products"],
     attendance: (attendanceRes.data || []).map((a) => ({
