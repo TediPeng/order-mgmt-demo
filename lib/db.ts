@@ -390,6 +390,7 @@ function seedDb(): DbShape {
     suspensions: [],
     order_seq: { [ymd(today)]: 4 },
     performance_thresholds: { top_performer_min_ratio: 1.2, needs_improvement_max_ratio: 0.8, rts_warning_threshold_pct: 15 },
+    operations: { allow_status_import: false, min_call_seconds: 0 },
     work_schedule: DEFAULT_WORK_SCHEDULE,
   };
 }
@@ -528,6 +529,10 @@ export async function readDb(): Promise<DbShape> {
       needs_improvement_max_ratio: num(settings.needs_improvement_max_ratio),
       rts_warning_threshold_pct: num(settings.rts_warning_threshold_pct),
     },
+    operations: {
+      allow_status_import: Boolean(settings.allow_status_import),
+      min_call_seconds: num(settings.min_call_seconds ?? 0),
+    },
     work_schedule: {
       work_start: time5(settings.work_start),
       work_end: time5(settings.work_end),
@@ -577,6 +582,8 @@ export async function writeDb(db: DbShape): Promise<void> {
       top_performer_min_ratio: db.performance_thresholds.top_performer_min_ratio,
       needs_improvement_max_ratio: db.performance_thresholds.needs_improvement_max_ratio,
       rts_warning_threshold_pct: db.performance_thresholds.rts_warning_threshold_pct,
+      allow_status_import: db.operations.allow_status_import,
+      min_call_seconds: db.operations.min_call_seconds,
     })
     .eq("id", 1);
   if (settingsError) throw new Error(`Supabase app_settings update failed: ${settingsError.message}`);

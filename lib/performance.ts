@@ -10,7 +10,12 @@ export type Granularity = "daily" | "weekly" | "monthly";
 export interface AgentDailyRow {
   agent_id: string;
   date: string; // YYYY-MM-DD, bucket start for weekly/monthly
+  /** Completed calling sessions — the basis for Calls Made and Conversion Rate.
+   * Work actually done in the system, which a spreadsheet cannot inflate. */
   calls: number;
+  /** Rows from uploaded call logs. Kept as a separate compliance figure, NOT
+   * used in any rate, so the two numbers can be compared rather than conflated. */
+  uploaded_call_logs: number;
   orders: number;
   quantity: number; // sum of order.quantity for sale-status orders -- AOV's denominator (Section 0.3)
   amount: number;
@@ -58,7 +63,16 @@ export function scopeAgentsForRanking(db: DbShape, user: Profile): Profile[] {
 }
 
 /** One row per agent per calendar date, for the given date range (inclusive, YYYY-MM-DD). */
-export function computeDailyAgentStats(db: DbShape, agentIds: string[], from: string, to: string): AgentDailyRow[] {
+export function computeDailyAgentStats(
+  db: DbShape,
+  agentIds: string[],
+  from: string,
+  to: string,
+  /** Completed sessions keyed `agentId|YYYY-MM-DD`, from lib/call-sessions.
+   * Passed in because sessions live outside DbShape; omitted, Calls Made is 0
+   * rather than silently falling back to uploaded logs. */
+  sessionCounts?: Map<string, number>
+): AgentDailyRow[] {
   const rowMap = new Map<string, AgentDailyRow>();
   const key = (agentId: string, date: string) => `${agentId}|${date}`;
   const agentIdSet = new Set(agentIds);
@@ -74,6 +88,7 @@ export function computeDailyAgentStats(db: DbShape, agentIds: string[], from: st
       agent_id: rec.agent_id,
       date,
       calls: 0,
+      uploaded_call_logs: 0,
       orders: 0,
       quantity: 0,
       amount: 0,
@@ -82,8 +97,30 @@ export function computeDailyAgentStats(db: DbShape, agentIds: string[], from: st
       time_out: null,
       total_hours: null,
     };
-    row.calls++;
+    row.uploaded_call_logs++;
     rowMap.set(k, row);
+  }
+
+  if (sessionCounts) {
+    for (const [k, count] of sessionCounts) {
+      const [agentId, date] = k.split("|");
+      if (!agentIdSet.has(agentId) || date < from || date > to) continue;
+      const row = rowMap.get(k) || {
+        agent_id: agentId,
+        date,
+        calls: 0,
+        uploaded_call_logs: 0,
+        orders: 0,
+        quantity: 0,
+        amount: 0,
+        returned: 0,
+        time_in: null,
+        time_out: null,
+        total_hours: null,
+      };
+      row.calls = count;
+      rowMap.set(k, row);
+    }
   }
 
   for (const order of db.orders) {
@@ -98,6 +135,7 @@ export function computeDailyAgentStats(db: DbShape, agentIds: string[], from: st
       agent_id: order.agent_id,
       date,
       calls: 0,
+      uploaded_call_logs: 0,
       orders: 0,
       quantity: 0,
       amount: 0,
@@ -123,6 +161,7 @@ export function computeDailyAgentStats(db: DbShape, agentIds: string[], from: st
       agent_id: att.user_id,
       date: att.work_date,
       calls: 0,
+      uploaded_call_logs: 0,
       orders: 0,
       quantity: 0,
       amount: 0,
@@ -177,6 +216,7 @@ export function aggregateByPeriod(rows: AgentDailyRow[], granularity: Granularit
       agent_id: row.agent_id,
       date: bucket,
       calls: 0,
+      uploaded_call_logs: 0,
       orders: 0,
       quantity: 0,
       amount: 0,
@@ -186,6 +226,7 @@ export function aggregateByPeriod(rows: AgentDailyRow[], granularity: Granularit
       total_hours: 0,
     };
     acc.calls += row.calls;
+    acc.uploaded_call_logs += row.uploaded_call_logs;
     acc.orders += row.orders;
     acc.quantity += row.quantity;
     acc.amount += row.amount;
@@ -215,6 +256,7 @@ export function totalsByAgent(rows: AgentDailyRow[]): AgentTotals[] {
     const acc = map.get(row.agent_id) || {
       agent_id: row.agent_id,
       calls: 0,
+      uploaded_call_logs: 0,
       orders: 0,
       quantity: 0,
       amount: 0,

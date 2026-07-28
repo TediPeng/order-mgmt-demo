@@ -8,8 +8,8 @@ import { orderInScope, allowedAssigneeIds } from "@/lib/order-access";
 import { getActiveSessionForOrder, endSession } from "@/lib/call-sessions";
 import { isFullAccess } from "@/lib/permissions";
 import { requireUser, requirePermission } from "./guards";
-import { leadFormSchema, leadImportRowSchema, PACKAGING_STATUS } from "@/lib/validation";
-import { matchAgentByUsername } from "@/lib/agent-match";
+import { leadFormSchema, leadImportRowSchema, PACKAGING_STATUS, PRE_SALE_STATUSES } from "@/lib/validation";
+import { matchAgentByCallName } from "@/lib/agent-match";
 import { todayInTz } from "@/lib/utils";
 import {
   validatePackaging,
@@ -462,6 +462,15 @@ export async function deleteLeadAction(orderId: string) {
   redirect("/leads?deleted=1");
 }
 
+/** The status an imported row lands on. Honours a file's status column only
+ * when Management has opted in, and even then only for pre-sale statuses —
+ * a spreadsheet must never place a lead into the fulfillment pipeline. */
+function importedStatus(raw: Record<string, unknown>, allowStatusImport: boolean): Order["status"] {
+  if (!allowStatusImport) return "new";
+  const requested = String(raw.status ?? "").trim().toLowerCase().replace(/s+/g, "_");
+  return (PRE_SALE_STATUSES as readonly string[]).includes(requested) ? (requested as Order["status"]) : "new";
+}
+
 export interface LeadImportRowResult {
   row: number;
   category: "imported" | "duplicate" | "invalid" | "missing_info" | "unrecognized_agent";
@@ -577,9 +586,14 @@ export async function importLeadsAction(
       results.push({ row, category: "duplicate", reason: "Identical to an existing lead or another row in this file", data: raw });
       continue;
     }
-    const match = matchAgentByUsername(agentName, db.profiles);
+    const match = matchAgentByCallName(agentName, db.profiles);
     if (!match || !allowedIds.has(match.id)) {
-      results.push({ row, category: "unrecognized_agent", reason: `Agent username '${agentName}' not recognized`, data: raw });
+      results.push({
+        row,
+        category: "unrecognized_agent",
+        reason: `No agent has the Call Name (or username) '${agentName}'`,
+        data: raw,
+      });
       continue;
     }
 
@@ -605,7 +619,11 @@ export async function importLeadsAction(
       quantity: 1,
       unit_price: null,
       total_amount: 0,
-      status: "new",
+      // Imported leads start at New. A file is not allowed to dictate status
+      // unless Management turns on allow_status_import: a status column could
+      // otherwise push rows straight into the sale pipeline, stamping order
+      // dates and firing Pancake forwards for orders nobody has called yet.
+      status: importedStatus(raw, db.operations.allow_status_import),
       order_date: null,
       source: "import",
       ...ORDER_PANCAKE_DEFAULTS,

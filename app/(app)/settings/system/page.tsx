@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Input, Label } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
-import { updateThresholdsAction, updateWorkScheduleAction } from "@/lib/actions/settings";
+import { updateThresholdsAction, updateWorkScheduleAction, updateOperationsAction } from "@/lib/actions/settings";
 
 export default async function SystemSettingsPage({
   searchParams,
@@ -26,6 +26,54 @@ export default async function SystemSettingsPage({
 
       {sp.saved && <Alert kind="success">Settings updated.</Alert>}
       {sp.error && <Alert kind="error">{sp.error}</Alert>}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Operations</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form action={updateOperationsAction} className="space-y-4">
+            <label className="flex items-start gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                name="allow_status_import"
+                defaultChecked={db.operations.allow_status_import}
+                disabled={!canManage}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300"
+              />
+              <span>
+                Let lead imports set a status
+                <span className="block text-xs text-slate-400">
+                  Off by default: imported leads always start at New. Even when on, a file may only set pre-sale
+                  statuses — a spreadsheet can never place a lead into the fulfillment pipeline.
+                </span>
+              </span>
+            </label>
+            <div>
+              <Label htmlFor="min_call_seconds">Minimum call length to count (seconds)</Label>
+              <Input
+                id="min_call_seconds"
+                name="min_call_seconds"
+                type="number"
+                min={0}
+                max={3600}
+                defaultValue={db.operations.min_call_seconds}
+                disabled={!canManage}
+                required
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                0 counts every completed calling session towards Calls Made. Raise it once real session data shows what
+                an accidental click looks like.
+              </p>
+            </div>
+            {canManage && (
+              <div className="flex justify-end">
+                <Button type="submit">Save operations settings</Button>
+              </div>
+            )}
+          </form>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

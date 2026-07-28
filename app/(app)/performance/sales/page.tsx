@@ -3,6 +3,7 @@ import { readDb } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { scopeAgentsForUser, computeDailyAgentStats, resolveDateRange } from "@/lib/performance";
+import { countCompletedSessions } from "@/lib/call-sessions";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { SalesChartClient } from "@/components/SalesChartClient";
 
@@ -20,7 +21,7 @@ export default async function SalesMonitoringPage({
   const scopedAgents = scopeAgentsForUser(db, user);
   const agentIds = scopedAgents.map((a) => a.id);
   const range = resolveDateRange(sp.range || "this_month", sp.from, sp.to);
-  const daily = computeDailyAgentStats(db, agentIds, range.from, range.to);
+  const daily = computeDailyAgentStats(db, agentIds, range.from, range.to, await countCompletedSessions(agentIds, range.from, range.to, db.operations.min_call_seconds));
   const agents = scopedAgents.map((a) => ({ id: a.id, name: a.full_name }));
 
   return (

@@ -81,3 +81,30 @@ export async function updateThresholdsAction(formData: FormData) {
   await writeDb(db);
   redirect("/settings/system?saved=1");
 }
+
+/** Operations settings: how imports treat status, and what counts as a call. */
+export async function updateOperationsAction(formData: FormData) {
+  const { user, db } = await requireUser();
+  requirePermission(user, "settings", "manage", db, "/settings/system");
+
+  const minCallSeconds = Number(formData.get("min_call_seconds"));
+  if (!Number.isFinite(minCallSeconds) || minCallSeconds < 0 || minCallSeconds > 3600) {
+    redirect(`/settings/system?error=${encodeURIComponent("Minimum call length must be between 0 and 3600 seconds.")}`);
+  }
+
+  const before = { ...db.operations };
+  db.operations = {
+    allow_status_import: formData.get("allow_status_import") === "on",
+    min_call_seconds: Math.round(minCallSeconds),
+  };
+
+  const info = await getRequestInfo();
+  logActivity(db, user.id, "SETTINGS_UPDATED", "settings", "operations", { before, after: db.operations }, {
+    module: "settings",
+    previous_value: before,
+    updated_value: db.operations,
+    ...info,
+  });
+  await writeDb(db);
+  redirect("/settings/system?saved=1");
+}

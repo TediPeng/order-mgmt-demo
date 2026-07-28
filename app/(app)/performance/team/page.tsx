@@ -3,6 +3,7 @@ import { readDb } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { scopeAgentsForUser, computeDailyAgentStats, totalsByAgent, resolveDateRange } from "@/lib/performance";
+import { countCompletedSessions } from "@/lib/call-sessions";
 import { formatCurrency } from "@/lib/utils";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -21,7 +22,7 @@ export default async function TeamPerformancePage({
   const scopedAgents = scopeAgentsForUser(db, user);
   const agentIds = scopedAgents.map((a) => a.id);
   const range = resolveDateRange(sp.range, sp.from, sp.to);
-  const daily = computeDailyAgentStats(db, agentIds, range.from, range.to);
+  const daily = computeDailyAgentStats(db, agentIds, range.from, range.to, await countCompletedSessions(agentIds, range.from, range.to, db.operations.min_call_seconds));
   const totals = totalsByAgent(daily);
   const byId = new Map(db.profiles.map((p) => [p.id, p.full_name]));
 

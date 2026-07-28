@@ -4,6 +4,7 @@ import { readDb } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { scopeAgentsForRanking, computeDailyAgentStats, totalsByAgent, resolveDateRange, type AgentTotals } from "@/lib/performance";
+import { countCompletedSessions } from "@/lib/call-sessions";
 import { formatCurrency } from "@/lib/utils";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { RankingBars } from "@/components/RankingBars";
@@ -42,7 +43,7 @@ export default async function RankingPage({
   const scopedAgents = scopeAgentsForRanking(db, user);
   const agentIds = scopedAgents.map((a) => a.id);
   const range = resolveDateRange(sp.range, sp.from, sp.to);
-  const daily = computeDailyAgentStats(db, agentIds, range.from, range.to);
+  const daily = computeDailyAgentStats(db, agentIds, range.from, range.to, await countCompletedSessions(agentIds, range.from, range.to, db.operations.min_call_seconds));
   const totals = totalsByAgent(daily);
   const profileById = new Map(db.profiles.map((p) => [p.id, p]));
 

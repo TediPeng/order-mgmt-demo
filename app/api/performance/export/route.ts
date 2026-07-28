@@ -6,6 +6,7 @@ import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { buildBrandedCsv } from "@/lib/csv";
 import { scopeAgentsForUser, computeDailyAgentStats, aggregateByPeriod, resolveDateRange, type Granularity } from "@/lib/performance";
+import { countCompletedSessions } from "@/lib/call-sessions";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
 export async function GET(req: NextRequest) {
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
   const range = resolveDateRange(searchParams.get("range") || undefined, searchParams.get("from") || undefined, searchParams.get("to") || undefined);
   const granularity = (searchParams.get("view") as Granularity) || "daily";
 
-  const daily = computeDailyAgentStats(db, agentIds, range.from, range.to);
+  const daily = computeDailyAgentStats(db, agentIds, range.from, range.to, await countCompletedSessions(agentIds, range.from, range.to, db.operations.min_call_seconds));
   const rows = aggregateByPeriod(daily, granularity);
   const byId = new Map(db.profiles.map((p) => [p.id, p.full_name]));
 

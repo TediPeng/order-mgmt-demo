@@ -20,6 +20,7 @@ import {
   computeFulfillmentBreakdown,
   resolveDateRange,
 } from "@/lib/performance";
+import { countCompletedSessions } from "@/lib/call-sessions";
 import { LEAD_STATUS_LABELS } from "@/lib/validation";
 import { scopeOrders } from "@/lib/order-access";
 import { formatCurrency, todayInTz } from "@/lib/utils";
@@ -53,7 +54,7 @@ export default async function DashboardPage({
   if (canViewRanking) {
     const rankedAgentIds = scopeAgentsForRanking(db, user).map((a) => a.id);
     const profileById = new Map(db.profiles.map((p) => [p.id, p]));
-    const rankedTotals = totalsByAgent(computeDailyAgentStats(db, rankedAgentIds, dashboardRange.from, dashboardRange.to))
+    const rankedTotals = totalsByAgent(computeDailyAgentStats(db, rankedAgentIds, dashboardRange.from, dashboardRange.to, await countCompletedSessions(rankedAgentIds, dashboardRange.from, dashboardRange.to, db.operations.min_call_seconds)))
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 5);
     rankingWidget = {
@@ -74,7 +75,7 @@ export default async function DashboardPage({
   if (!isAgent && canViewPerformance) {
     const today = todayInTz();
     const scoped = scopeAgentsForUser(db, user).map((a) => a.id);
-    const totals = totalsByAgent(computeDailyAgentStats(db, scoped, today, today));
+    const totals = totalsByAgent(computeDailyAgentStats(db, scoped, today, today, await countCompletedSessions(scoped, today, today, db.operations.min_call_seconds)));
     teamToday = {
       calls: totals.reduce((s, t) => s + t.calls, 0),
       orders: totals.reduce((s, t) => s + t.orders, 0),

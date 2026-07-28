@@ -484,6 +484,15 @@ export interface PancakeSyncLog {
   payload_summary: Record<string, unknown> | null; // REDACTED: never tokens/keys/secrets
 }
 
+export interface OperationsSettings {
+  /** Off by default: a file dictating status could push leads straight into
+   * the sale pipeline, stamping order dates and firing Pancake forwards. */
+  allow_status_import: boolean;
+  /** Minimum duration for a calling session to count towards Calls Made.
+   * 0 counts every completed session. */
+  min_call_seconds: number;
+}
+
 export interface DbShape {
   schema_version: number;
   attendance_sweep_cursor: string | null; // last work_date (YYYY-MM-DD) fully processed by the auto-absent sweep
@@ -503,6 +512,7 @@ export interface DbShape {
   order_seq: Record<string, number>; // date -> last sequence number
   performance_thresholds: PerformanceThresholds;
   work_schedule: WorkSchedule;
+  operations: OperationsSettings;
 }
 
 

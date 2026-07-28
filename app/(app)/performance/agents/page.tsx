@@ -4,6 +4,7 @@ import { readDb } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { scopeAgentsForUser, computeDailyAgentStats, aggregateByPeriod, resolveDateRange, type Granularity } from "@/lib/performance";
+import { countCompletedSessions } from "@/lib/call-sessions";
 import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { Input, Select } from "@/components/ui/Field";
@@ -37,7 +38,7 @@ export default async function AgentPerformancePage({ searchParams }: { searchPar
   const range = resolveDateRange(sp.range, sp.from, sp.to);
   const granularity: Granularity = (sp.view as Granularity) || "daily";
 
-  const daily = computeDailyAgentStats(db, agentIds, range.from, range.to);
+  const daily = computeDailyAgentStats(db, agentIds, range.from, range.to, await countCompletedSessions(agentIds, range.from, range.to, db.operations.min_call_seconds));
   const rows = aggregateByPeriod(daily, granularity);
 
   const byId = new Map(db.profiles.map((p) => [p.id, p.full_name]));
