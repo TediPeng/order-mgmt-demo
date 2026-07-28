@@ -159,6 +159,7 @@ export async function runPancakeSync(opts: SweepOptions = {}): Promise<SweepSumm
             phone: null,
             rawStatus: res.rawStatus,
             statusName: res.statusName,
+            trackingNumber: res.trackingNumber,
             eventTimestamp: res.eventTimestamp,
             shopId: account.shop_or_page_id,
           },

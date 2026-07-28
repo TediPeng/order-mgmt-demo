@@ -19,6 +19,7 @@ export async function createUserAction(formData: FormData) {
     email: formData.get("email"),
     role: formData.get("role"),
     team_lead_id: formData.get("team_lead_id"),
+    call_name: formData.get("call_name"),
     temp_password: formData.get("temp_password"),
   });
 
@@ -41,6 +42,7 @@ export async function createUserAction(formData: FormData) {
     email: data.email,
     role: data.role,
     team_lead_id: data.role === "agent" && data.team_lead_id ? data.team_lead_id : null,
+    call_name: data.call_name || null,
     is_active: true,
     password_hash: hashPassword(data.temp_password),
     must_change_password: true,

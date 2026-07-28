@@ -88,6 +88,10 @@ export default async function UsersPage({
                 </Select>
               </div>
               <div>
+                <Label htmlFor="call_name">Call Name (required for Agents)</Label>
+                <Input id="call_name" name="call_name" placeholder="e.g. JAMIE" />
+              </div>
+              <div>
                 <Label htmlFor="team_lead_id">Team lead (if Agent)</Label>
                 <Select id="team_lead_id" name="team_lead_id" defaultValue="">
                   <option value="">— Unassigned —</option>

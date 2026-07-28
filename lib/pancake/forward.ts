@@ -157,6 +157,24 @@ export async function forwardOrderToPancake(
   }
 
   // --- Claim (concurrency guard) -------------------------------------------
+  // Fill the fields the agent cannot see from the account's defaults. Done
+  // here rather than at save time so a later change to the defaults applies to
+  // anything not yet forwarded, and so the agent's action is never blocked by
+  // a field they have no control over.
+  const effective = {
+    payment_method: order.payment_method || account.default_payment_method || null,
+    shipping_fee: order.shipping_fee ?? account.default_shipping_fee ?? null,
+    courier: order.courier || account.default_courier || null,
+  };
+  if (
+    effective.payment_method !== order.payment_method ||
+    effective.shipping_fee !== order.shipping_fee ||
+    effective.courier !== order.courier
+  ) {
+    await updateOrderSyncFields(order.id, effective);
+    Object.assign(order, effective);
+  }
+
   const requestAt = new Date().toISOString();
   const claimed = await claimOrderForSync(order.id, {
     pancake_pos_account_id: account.id,

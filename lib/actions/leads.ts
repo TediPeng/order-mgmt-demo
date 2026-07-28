@@ -20,6 +20,7 @@ import {
 } from "@/lib/lead-workflow";
 import { forwardOrderToPancake } from "@/lib/pancake/forward";
 import { computeOrderTotal, validateForPancake } from "@/lib/pancake/validate";
+import { validateAddressCodes } from "@/lib/psgc";
 import { insertSyncLog } from "@/lib/pancake/store";
 import type { DbShape, Order, Profile } from "@/lib/types";
 import { ORDER_PANCAKE_DEFAULTS } from "@/lib/types";
@@ -45,6 +46,9 @@ function buildLeadFieldErrors(formData: FormData): Record<string, unknown> {
     courier: formData.get("courier"),
     payment_method: formData.get("payment_method"),
     order_source: formData.get("order_source"),
+    province_code: formData.get("province_code"),
+    city_code: formData.get("city_code"),
+    barangay_code: formData.get("barangay_code"),
     discount: formData.get("discount") || null,
     variant: formData.get("variant"),
   };
@@ -113,7 +117,7 @@ export async function createLeadAction(formData: FormData) {
     shipping_fee: data.shipping_fee ?? null,
     courier: data.courier || null,
     payment_method: data.payment_method || null,
-    order_source: data.order_source || null,
+    order_source: assignedAgent?.call_name || null,
     discount: data.discount ?? 0,
     variant: data.variant || null,
     notes: data.notes || "",
@@ -208,6 +212,24 @@ export async function applyLeadUpdate(
         error: `Missing required fields for Packaging: ${missing.join(", ")}`,
       };
     }
+    const address = await validateAddressCodes({
+      province_code: data.province_code || null,
+      city_code: data.city_code || null,
+      barangay_code: data.barangay_code || null,
+    });
+    if (!address.ok) {
+      return {
+        ok: false,
+        code: "validation",
+        error: `Invalid address: ${Object.values(address.errors).join(" ")}`,
+      };
+    }
+    // Trust the codes over the submitted names, so a stale or edited label
+    // cannot disagree with the location actually chosen.
+    order.province = address.names.province;
+    order.city = address.names.city;
+    order.barangay = address.names.barangay;
+
     // Second gate: Pancake's own requirements. Checking here means a status
     // change that would fail at the API is refused up front, so the order is
     // never left mid-sync with a fixable field missing.
@@ -251,6 +273,11 @@ export async function applyLeadUpdate(
   order.barangay = data.barangay || "";
   order.city = data.city || "";
   order.province = data.province || "";
+  order.province_code = data.province_code || null;
+  order.city_code = data.city_code || null;
+  order.barangay_code = data.barangay_code || null;
+  // A freshly picked address is by definition resolved.
+  if (data.province_code && data.city_code && data.barangay_code) order.address_needs_review = false;
   order.landmark = data.landmark || "";
   order.previous_order_date = data.previous_order_date || null;
   order.previous_order_product = data.previous_order_product || null;
@@ -281,7 +308,9 @@ export async function applyLeadUpdate(
   order.order_date = newOrderDate;
   order.courier = data.courier || null;
   order.payment_method = data.payment_method || null;
-  order.order_source = data.order_source || null;
+    // Re-derived rather than accepted from input: Order Source is the owning
+  // agent's Call Name and must not be settable through the form.
+  order.order_source = db.profiles.find((p) => p.id === order.agent_id)?.call_name || order.order_source;
   order.notes = data.notes || "";
   if (!order.system_order_id) order.system_order_id = order.order_number;
   if (isReassignment) {

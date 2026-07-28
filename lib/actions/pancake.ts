@@ -87,6 +87,12 @@ export async function createPancakeAccountAction(formData: FormData) {
     is_default: formData.get("is_default") === "on",
     is_active: formData.get("is_active") !== "off",
     use_one_time_products: formData.get("use_one_time_products") !== "off",
+    default_payment_method: String(formData.get("default_payment_method") || "").trim() || null,
+    default_shipping_fee: formData.get("default_shipping_fee") !== null && String(formData.get("default_shipping_fee")).trim() !== ""
+      ? Number(formData.get("default_shipping_fee"))
+      : null,
+    default_courier: String(formData.get("default_courier") || "").trim() || null,
+
     created_by: user.id,
     created_at: new Date().toISOString(),
     updated_at: null,
@@ -119,6 +125,12 @@ export async function updatePancakeAccountAction(accountId: string, formData: Fo
     is_default: formData.get("is_default") === "on",
     is_active: formData.get("is_active") === "on",
     use_one_time_products: formData.get("use_one_time_products") === "on",
+    default_payment_method: String(formData.get("default_payment_method") || "").trim() || null,
+    default_shipping_fee: formData.get("default_shipping_fee") !== null && String(formData.get("default_shipping_fee")).trim() !== ""
+      ? Number(formData.get("default_shipping_fee"))
+      : null,
+    default_courier: String(formData.get("default_courier") || "").trim() || null,
+
     updated_at: new Date().toISOString(),
   };
 

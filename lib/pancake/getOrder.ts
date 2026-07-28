@@ -14,6 +14,7 @@ export async function getOrder(account: PancakeAccount, order: Pick<Order, "panc
       error: "Order has no Pancake order id.",
       rawStatus: null,
       statusName: null,
+      trackingNumber: null,
       eventTimestamp: null,
       responseSummary: null,
     };
@@ -28,6 +29,7 @@ export async function getOrder(account: PancakeAccount, order: Pick<Order, "panc
       error: null,
       rawStatus: "1",
       statusName: "confirmed",
+      trackingNumber: "MOCK-TRACK-1",
       eventTimestamp: new Date().toISOString(),
       responseSummary: { mock: true, status: "1" },
     };
@@ -39,6 +41,7 @@ export async function getOrder(account: PancakeAccount, order: Pick<Order, "panc
       error: "MOCK_MODE=fail: simulated Pancake API failure",
       rawStatus: null,
       statusName: null,
+      trackingNumber: null,
       eventTimestamp: null,
       responseSummary: { mock: true },
     };
@@ -50,6 +53,12 @@ export async function getOrder(account: PancakeAccount, order: Pick<Order, "panc
   // Pancake's own label ("packing", "shipped", …) so the UI shows words rather
   // than a bare status code. The raw code stays the value the map keys on.
   const statusName = data[RESPONSE_FIELDS.status_name] != null ? String(data[RESPONSE_FIELDS.status_name]) : null;
+  // Pancake exposes a tracking URL rather than a bare number; some couriers
+  // also put an id on the partner object. Either is more use than nothing.
+  const partner = (data[RESPONSE_FIELDS.partner] || {}) as Record<string, unknown>;
+  const tracking =
+    (data[RESPONSE_FIELDS.tracking] != null ? String(data[RESPONSE_FIELDS.tracking]) : null) ||
+    (partner.extend_code != null ? String(partner.extend_code) : null);
   const eventTimestamp = data[RESPONSE_FIELDS.updated_at] != null ? String(data[RESPONSE_FIELDS.updated_at]) : null;
   return {
     ok: res.ok,
@@ -57,6 +66,7 @@ export async function getOrder(account: PancakeAccount, order: Pick<Order, "panc
     error: res.error,
     rawStatus,
     statusName,
+    trackingNumber: tracking,
     eventTimestamp,
     responseSummary: res.body ? { status: rawStatus, status_name: statusName, updated_at: eventTimestamp } : null,
   };

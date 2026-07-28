@@ -120,6 +120,28 @@ export default async function IntegrationsSettingsPage({
           Active
         </label>
       </div>
+      <div>
+        <Label>Default payment method</Label>
+        <Input name="default_payment_method" defaultValue={defaults?.default_payment_method ?? "COD"} placeholder="COD" />
+      </div>
+      <div>
+        <Label>Default shipping fee</Label>
+        <Input
+          name="default_shipping_fee"
+          type="number"
+          min={0}
+          step={0.01}
+          defaultValue={defaults?.default_shipping_fee ?? 0}
+        />
+      </div>
+      <div className="sm:col-span-2">
+        <Label>Default courier</Label>
+        <Input name="default_courier" defaultValue={defaults?.default_courier || ""} placeholder="e.g. J&T Express" />
+        <p className="mt-1 text-xs text-slate-400">
+          These fill an order&apos;s payment method, shipping fee and courier when it is forwarded. Agents do not see
+          those fields, so a blank default here means the order is held for review rather than blocking the agent.
+        </p>
+      </div>
       <div className="sm:col-span-2">
         <label className="flex items-start gap-2 text-sm text-slate-700">
           <input

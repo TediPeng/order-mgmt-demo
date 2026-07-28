@@ -10,6 +10,7 @@ import { ProductCombobox } from "@/components/ProductCombobox";
 import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { cn, formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import { LEAD_STATUS_LABELS, PAYMENT_METHOD_SUGGESTIONS, selectableStatuses } from "@/lib/validation";
+import { AddressSelect } from "@/components/AddressSelect";
 import { computeOrderTotal, validateForPancake as computePancakeCheck } from "@/lib/pancake/validate";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 import type { Order, OrderStatus } from "@/lib/types";
@@ -21,6 +22,11 @@ interface EditForm {
   barangay: string;
   city: string;
   province: string;
+  // PSGC codes travel with the names: the codes are what the server validates,
+  // the names are what gets displayed and sent onward.
+  province_code: string;
+  city_code: string;
+  barangay_code: string;
   landmark: string;
   product_id: string;
   variant: string;
@@ -41,6 +47,9 @@ function snapshotFrom(order: Order): EditForm {
     customer_phone: order.customer_phone,
     purok: order.purok,
     barangay: order.barangay,
+    province_code: order.province_code || "",
+    city_code: order.city_code || "",
+    barangay_code: order.barangay_code || "",
     city: order.city,
     province: order.province,
     landmark: order.landmark,
@@ -66,6 +75,9 @@ function buildRawFromOrder(o: Order, overrides: Record<string, unknown> = {}): R
     barangay: o.barangay,
     city: o.city,
     province: o.province,
+    province_code: o.province_code || "",
+    city_code: o.city_code || "",
+    barangay_code: o.barangay_code || "",
     landmark: o.landmark,
     previous_order_date: o.previous_order_date || "",
     previous_order_product: o.previous_order_product || "",
@@ -296,6 +308,9 @@ export function OrderDetailsModal({
         barangay: form.barangay,
         city: form.city,
         province: form.province,
+        province_code: form.province_code,
+        city_code: form.city_code,
+        barangay_code: form.barangay_code,
         landmark: form.landmark,
         product_id: form.product_id,
         variant: form.variant,
@@ -459,24 +474,39 @@ export function OrderDetailsModal({
                       <Input id="m_customer_phone" value={form.customer_phone} onChange={(e) => update("customer_phone", e.target.value)} />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label htmlFor="m_purok">Purok</Label>
-                      <Input id="m_purok" value={form.purok} onChange={(e) => update("purok", e.target.value)} />
-                    </div>
-                    <div>
-                      <Label htmlFor="m_barangay">Barangay</Label>
-                      <Input id="m_barangay" value={form.barangay} onChange={(e) => update("barangay", e.target.value)} />
-                    </div>
-                    <div>
-                      <Label htmlFor="m_city">City</Label>
-                      <Input id="m_city" value={form.city} onChange={(e) => update("city", e.target.value)} />
-                    </div>
-                    <div>
-                      <Label htmlFor="m_province">Province</Label>
-                      <Input id="m_province" value={form.province} onChange={(e) => update("province", e.target.value)} />
-                    </div>
+                  <div>
+                    <Label htmlFor="m_purok">Address / Purok</Label>
+                    <Input id="m_purok" value={form.purok} onChange={(e) => update("purok", e.target.value)} />
                   </div>
+                  {order.address_needs_review && (
+                    <Alert kind="info">
+                      This lead&apos;s address predates the Province/City/Barangay lists and could not be matched
+                      automatically. The original text was{" "}
+                      <strong>{[order.barangay, order.city, order.province].filter(Boolean).join(", ") || "—"}</strong> —
+                      please re-select it below before Packaging.
+                    </Alert>
+                  )}
+                  <AddressSelect
+                    value={{
+                      province_code: form.province_code,
+                      province: form.province,
+                      city_code: form.city_code,
+                      city: form.city,
+                      barangay_code: form.barangay_code,
+                      barangay: form.barangay,
+                    }}
+                    onChange={(next) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        province_code: next.province_code,
+                        province: next.province,
+                        city_code: next.city_code,
+                        city: next.city,
+                        barangay_code: next.barangay_code,
+                        barangay: next.barangay,
+                      }))
+                    }
+                  />
                   <div>
                     <Label htmlFor="m_landmark">Landmark</Label>
                     <Input id="m_landmark" value={form.landmark} onChange={(e) => update("landmark", e.target.value)} />
@@ -497,6 +527,7 @@ export function OrderDetailsModal({
                         onChange={(id) => update("product_id", id)}
                       />
                     </div>
+                    {canSeeFulfillment && (
                     <div>
                       <Label htmlFor="m_variant">Variant</Label>
                       {productVariants.length > 0 ? (
@@ -517,6 +548,7 @@ export function OrderDetailsModal({
                         />
                       )}
                     </div>
+                    )}
                   </div>
                   <div className="grid grid-cols-3 gap-3">
                     <div>
@@ -527,12 +559,16 @@ export function OrderDetailsModal({
                       <Label htmlFor="m_unit_price">Unit Price</Label>
                       <Input id="m_unit_price" type="number" min={0} step={0.01} value={form.unit_price} onChange={(e) => update("unit_price", e.target.value)} />
                     </div>
+                    {canSeeFulfillment && (
                     <div>
                       <Label htmlFor="m_discount">Discount</Label>
                       <Input id="m_discount" type="number" min={0} step={0.01} value={form.discount} onChange={(e) => update("discount", e.target.value)} />
                     </div>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
+                    {canSeeFulfillment && (
+                    <>
                     <div>
                       <Label htmlFor="m_shipping_fee">Shipping Fee</Label>
                       <Input id="m_shipping_fee" type="number" min={0} step={0.01} value={form.shipping_fee} onChange={(e) => update("shipping_fee", e.target.value)} />
@@ -555,9 +591,12 @@ export function OrderDetailsModal({
                         ))}
                       </datalist>
                     </div>
+                    </>
+                    )}
                     <div>
                       <Label htmlFor="m_order_source">Order Source</Label>
-                      <Input id="m_order_source" value={form.order_source} onChange={(e) => update("order_source", e.target.value)} />
+                      <Input id="m_order_source" value={form.order_source || "—"} disabled readOnly />
+                      <p className="mt-1 text-xs text-slate-400">Set from the assigned agent&apos;s Call Name.</p>
                     </div>
                   </div>
                   <dl className="space-y-1 rounded-lg bg-slate-50 p-3 text-sm">

@@ -117,6 +117,7 @@ export async function applyIncomingUpdate(update: IncomingUpdate, source: Pancak
   if (internalStatus === order.status) {
     await updateOrderSyncFields(order.id, {
       pancake_status: update.statusName || update.rawStatus,
+      ...(update.trackingNumber ? { tracking_number: update.trackingNumber } : {}),
       pancake_sync_status: "synced",
       pancake_synced_at: new Date().toISOString(),
       pancake_event_at: update.eventTimestamp || order.pancake_event_at,
@@ -166,6 +167,7 @@ export async function applyIncomingUpdate(update: IncomingUpdate, source: Pancak
   await updateOrderSyncFields(order.id, {
     status: internalStatus as Order["status"],
     pancake_status: update.statusName || update.rawStatus,
+    ...(update.trackingNumber ? { tracking_number: update.trackingNumber } : {}),
     pancake_sync_status: "synced",
     pancake_synced_at: now,
     pancake_event_at: update.eventTimestamp || order.pancake_event_at,

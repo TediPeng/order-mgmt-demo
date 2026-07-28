@@ -196,7 +196,7 @@ export function AddressSelect({
         label="Province"
         options={provinces}
         value={value.province_code}
-        displayValue={value.province}
+        displayValue={value.province_code ? value.province : ""}
         disabled={disabled}
         placeholder="Search province…"
         error={errors?.province}
@@ -207,7 +207,7 @@ export function AddressSelect({
         label="City / Municipality"
         options={cities}
         value={value.city_code}
-        displayValue={value.city}
+        displayValue={value.city_code ? value.city : ""}
         disabled={disabled || !value.province_code}
         placeholder={value.province_code ? "Search city…" : "Select a province first"}
         error={errors?.city}
@@ -218,7 +218,7 @@ export function AddressSelect({
         label="Barangay"
         options={barangays}
         value={value.barangay_code}
-        displayValue={value.barangay}
+        displayValue={value.barangay_code ? value.barangay : ""}
         disabled={disabled || !value.city_code}
         placeholder={value.city_code ? "Search barangay…" : "Select a city first"}
         error={errors?.barangay}

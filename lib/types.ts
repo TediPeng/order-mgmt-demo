@@ -19,6 +19,9 @@ export interface Profile {
   email: string;
   role: Role;
   team_lead_id: string | null;
+  /** Agent's Call Name, assigned by Management. Stamped onto every order they
+   * create as order_source, and read-only to the agent. */
+  call_name: string | null;
   is_active: boolean;
   password_hash: string;
   must_change_password: boolean;
@@ -422,6 +425,11 @@ export interface PancakeAccount {
   // Send products with no pancake_variation_id as Pancake "quick add"
   // (one-time) products rather than holding the order back for mapping.
   use_one_time_products: boolean;
+  // Applied to an order's blank fields when it is forwarded, so agents never
+  // have to see or enter them.
+  default_payment_method: string | null;
+  default_shipping_fee: number | null;
+  default_courier: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string | null;

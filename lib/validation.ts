@@ -138,6 +138,9 @@ export const leadFormSchema = z.object({
   courier: z.string().trim().optional().default(""),
   payment_method: z.string().trim().optional().default(""),
   order_source: z.string().trim().optional().default(""),
+  province_code: z.string().trim().optional().default(""),
+  city_code: z.string().trim().optional().default(""),
+  barangay_code: z.string().trim().optional().default(""),
   discount: z.coerce.number().nonnegative("Discount must be zero or more").optional().nullable(),
   variant: z.string().trim().optional().default(""),
 });
@@ -222,14 +225,23 @@ export const callLogRowSchema = z.object({
   agent_name: z.string().trim().optional().default(""),
 });
 
-export const userFormSchema = z.object({
-  username: z.string().trim().min(3, "Username must be at least 3 characters"),
-  full_name: z.string().trim().min(1, "Full name is required"),
-  email: z.string().trim().email("Enter a valid email"),
-  role: z.string().trim().min(1, "Role is required"),
-  team_lead_id: z.string().trim().optional().default(""),
-  temp_password: z.string().min(8, "Temporary password must be at least 8 characters"),
-});
+export const userFormSchema = z
+  .object({
+    username: z.string().trim().min(3, "Username must be at least 3 characters"),
+    full_name: z.string().trim().min(1, "Full name is required"),
+    email: z.string().trim().email("Enter a valid email"),
+    role: z.string().trim().min(1, "Role is required"),
+    team_lead_id: z.string().trim().optional().default(""),
+    // The label an agent's orders are attributed to; becomes orders.order_source.
+    call_name: z.string().trim().optional().default(""),
+    temp_password: z.string().min(8, "Temporary password must be at least 8 characters"),
+  })
+  // Required for agents specifically: every order they create is stamped with
+  // it, so an agent without one would produce orders with no source.
+  .refine((d) => d.role !== "agent" || d.call_name.length > 0, {
+    message: "Call Name is required for agents",
+    path: ["call_name"],
+  });
 
 export const passwordChangeSchema = z
   .object({

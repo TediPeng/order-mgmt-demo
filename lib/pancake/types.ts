@@ -61,6 +61,7 @@ export interface GetOrderResult {
   error: string | null;
   rawStatus: string | null; // Pancake's raw status code — what the status map keys on
   statusName: string | null; // Pancake's own label for that code, for display
+  trackingNumber: string | null; // courier tracking URL/id, written to orders.tracking_number
   eventTimestamp: string | null; // Pancake's updated_at, for out-of-order protection
   responseSummary: Record<string, unknown> | null;
 }
@@ -73,6 +74,7 @@ export interface IncomingUpdate {
   phone: string | null;
   rawStatus: string | null;
   statusName?: string | null;
+  trackingNumber?: string | null;
   eventTimestamp: string | null;
   shopId: string | null;
 }

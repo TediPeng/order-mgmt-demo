@@ -56,6 +56,8 @@ export const RESPONSE_FIELDS = {
   phone: "bill_phone_number",
   shop_id: "shop_id",
   display_id: "display_id",
+  tracking: "tracking_link", // courier tracking URL, surfaced as Tracking Number
+  partner: "partner", // carries partner_id / tracking id for some couriers
 } as const;
 
 /** Human-readable meaning of Pancake's integer status codes (from the
