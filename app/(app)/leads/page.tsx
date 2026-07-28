@@ -262,6 +262,7 @@ export default async function LeadsPage({
         activeProducts={activeProducts}
         canEdit={canEdit}
         canManageIntegrations={canManageIntegrations}
+        canSetFulfillmentStatus={isFullAccess(user.role)}
         fullPageHrefBase={isFullAccess(user.role) ? "/leads" : null}
         initialOpenOrderNumber={sp.open}
       />

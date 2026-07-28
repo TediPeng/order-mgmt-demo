@@ -9,7 +9,7 @@ import { Alert } from "@/components/ui/Alert";
 import { ProductCombobox } from "@/components/ProductCombobox";
 import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { cn, formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
-import { LEAD_STATUSES, LEAD_STATUS_LABELS, PAYMENT_METHOD_SUGGESTIONS } from "@/lib/validation";
+import { LEAD_STATUS_LABELS, PAYMENT_METHOD_SUGGESTIONS, selectableStatuses } from "@/lib/validation";
 import { computeOrderTotal, validateForPancake as computePancakeCheck } from "@/lib/pancake/validate";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 import type { Order, OrderStatus } from "@/lib/types";
@@ -114,6 +114,7 @@ export function OrderDetailsModal({
   activeProducts,
   canEdit,
   canManageIntegrations = false,
+  canSetFulfillmentStatus = false,
   fullPageHref,
   onClose,
   onSaved,
@@ -125,6 +126,8 @@ export function OrderDetailsModal({
   activeProducts: { id: string; name: string; code: string | null; variants?: string[] | null }[];
   canEdit: boolean;
   canManageIntegrations?: boolean;
+  /** Full-access users may set Pancake-owned fulfillment statuses by hand. */
+  canSetFulfillmentStatus?: boolean;
   fullPageHref: string | null;
   onClose: () => void;
   onSaved: (updated: Order) => void;
@@ -614,13 +617,18 @@ export function OrderDetailsModal({
                   <div>
                     <Label htmlFor="m_status">Status</Label>
                     <Select id="m_status" value={form.status} onChange={(e) => update("status", e.target.value)}>
-                      {LEAD_STATUSES.map((s) => (
+                      {selectableStatuses(canSetFulfillmentStatus, order.status).map((s) => (
                         <option key={s} value={s} disabled={s === "ready_to_ship" && !pancakeCheck.ok}>
                           {LEAD_STATUS_LABELS[s]}
                           {s === "ready_to_ship" && !pancakeCheck.ok ? " (fields missing)" : ""}
                         </option>
                       ))}
                     </Select>
+                    {!canSetFulfillmentStatus && (
+                      <p className="mt-1 text-xs text-slate-400">
+                        Fulfillment statuses are set by Pancake POS once the order is sent.
+                      </p>
+                    )}
                     {form.status === "ready_to_ship" && (
                       <p className="mt-1 text-xs text-slate-500">
                         Saving with Ready to Ship sends this order to Pancake POS.
@@ -786,7 +794,7 @@ export function OrderDetailsModal({
               <div className="flex-1">
                 <Label htmlFor="m_status_quick">Update Status</Label>
                 <Select id="m_status_quick" value={statusDraft} onChange={(e) => setStatusDraft(e.target.value)}>
-                  {LEAD_STATUSES.map((s) => (
+                  {selectableStatuses(canSetFulfillmentStatus, order.status).map((s) => (
                     <option key={s} value={s}>
                       {LEAD_STATUS_LABELS[s]}
                     </option>

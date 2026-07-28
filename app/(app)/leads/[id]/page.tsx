@@ -127,6 +127,7 @@ export default async function LeadDetailPage({
             canEdit={canEdit}
             canReassign={canReassign}
             canSeePreviousOrderFields={isFullAccess(user.role)}
+            canSetFulfillmentStatus={isFullAccess(user.role)}
             productName={currentProductName}
             agents={agents}
             activeProducts={activeProducts}

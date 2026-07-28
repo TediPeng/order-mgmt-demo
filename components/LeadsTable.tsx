@@ -17,6 +17,7 @@ export function LeadsTable({
   activeProducts,
   canEdit,
   canManageIntegrations = false,
+  canSetFulfillmentStatus = false,
   fullPageHrefBase,
   initialOpenOrderNumber,
 }: {
@@ -28,6 +29,7 @@ export function LeadsTable({
   activeProducts: { id: string; name: string; code: string | null }[];
   canEdit: boolean;
   canManageIntegrations?: boolean;
+  canSetFulfillmentStatus?: boolean;
   fullPageHrefBase: string | null;
   initialOpenOrderNumber?: string;
 }) {
@@ -141,6 +143,7 @@ export function LeadsTable({
           activeProducts={activeProducts}
           canEdit={canEdit}
           canManageIntegrations={canManageIntegrations}
+          canSetFulfillmentStatus={canSetFulfillmentStatus}
           fullPageHref={fullPageHrefBase ? `${fullPageHrefBase}/${openOrder.id}` : null}
           onClose={() => setOpenId(null)}
           onSaved={handleSaved}

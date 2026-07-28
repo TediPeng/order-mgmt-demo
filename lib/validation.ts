@@ -85,6 +85,24 @@ export const REQUIRES_PRIOR_READY_TO_SHIP = FULFILLMENT_STATUSES;
 // automatically; terminal-to-terminal changes are allowed with a full log.
 export const TERMINAL_STATUSES = ["delivered", "collected_money", "returned", "cancelled", "deleted"] as const;
 
+/** Statuses a user may pick by hand. Fulfillment statuses belong to Pancake
+ * sync, so only full-access users get them in a dropdown — everyone else works
+ * the pre-sale pipeline and lets Ready to Ship hand the order over. The server
+ * enforces the same rule (lead-workflow.ts), this just stops the UI offering
+ * choices that would be rejected. `current` is always included so an order
+ * already in a fulfillment status still displays its own value. */
+export function selectableStatuses(
+  userIsFullAccess: boolean,
+  current?: string
+): readonly (typeof LEAD_STATUSES)[number][] {
+  if (userIsFullAccess) return LEAD_STATUSES;
+  const base = PRE_SALE_STATUSES as readonly (typeof LEAD_STATUSES)[number][];
+  if (current && !base.includes(current as (typeof LEAD_STATUSES)[number])) {
+    return [current as (typeof LEAD_STATUSES)[number], ...base];
+  }
+  return base;
+}
+
 export const leadFormSchema = z.object({
   customer_name: z.string().trim().min(1, "Customer name is required"),
   customer_phone: z.string().trim().optional().default(""),

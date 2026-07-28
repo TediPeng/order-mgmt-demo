@@ -5,7 +5,7 @@ import { Input, Label, Select, Textarea, FieldError } from "@/components/ui/Fiel
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { ProductCombobox } from "@/components/ProductCombobox";
-import { LEAD_STATUSES, LEAD_STATUS_LABELS, PAYMENT_METHOD_SUGGESTIONS } from "@/lib/validation";
+import { LEAD_STATUS_LABELS, PAYMENT_METHOD_SUGGESTIONS, selectableStatuses } from "@/lib/validation";
 import type { Order, Profile } from "@/lib/types";
 
 interface FormState {
@@ -74,6 +74,7 @@ export function LeadEditForm({
   canEdit,
   canReassign,
   canSeePreviousOrderFields,
+  canSetFulfillmentStatus = false,
   productName,
   agents,
   activeProducts,
@@ -83,6 +84,8 @@ export function LeadEditForm({
   canEdit: boolean;
   canReassign: boolean;
   canSeePreviousOrderFields: boolean;
+  /** Full-access users may set Pancake-owned fulfillment statuses by hand. */
+  canSetFulfillmentStatus?: boolean;
   productName: string;
   agents: Pick<Profile, "id" | "full_name" | "username">[];
   activeProducts: { id: string; name: string; code: string | null }[];
@@ -372,7 +375,7 @@ export function LeadEditForm({
       <div>
         <Label htmlFor="status">Status</Label>
         <Select id="status" name="status" value={form.status} onChange={(e) => update("status", e.target.value)} disabled={!canEdit}>
-          {LEAD_STATUSES.map((s) => (
+          {selectableStatuses(canSetFulfillmentStatus, order.status).map((s) => (
             <option key={s} value={s}>
               {LEAD_STATUS_LABELS[s]}
             </option>
