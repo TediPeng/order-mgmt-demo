@@ -21,6 +21,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   settings: "System Settings",
   integrations: "Integrations (Pancake POS)",
   file_uploads: "File Uploads",
+  regular_customers: "Regular Customers",
 };
 
 export const ACTION_LABELS: Record<ActionKey, string> = {
@@ -58,6 +59,7 @@ export const MODULE_ACTIONS: Record<ModuleKey, ActionKey[]> = {
   // Pancake POS integration settings, manual sync/retry, and sync logs.
   integrations: ["view", "manage"],
   file_uploads: ["view", "upload", "download"],
+  regular_customers: ["view", "edit", "manage"],
 };
 
 type Grant = [ModuleKey, ActionKey];
@@ -102,6 +104,7 @@ const TEAM_LEAD_DEFAULTS: Grant[] = [
   ["reports", "export"],
   ["file_uploads", "view"],
   ["file_uploads", "upload"],
+  ["regular_customers", "view"],
 ];
 
 const AGENT_DEFAULTS: Grant[] = [

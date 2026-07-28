@@ -3,7 +3,8 @@ import { readDb } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { scopeOrders } from "@/lib/order-access";
-import { normalizePhone, isValidPhoneQuery } from "@/lib/utils";
+import { normalizePhone, isValidPhoneQuery, canonicalPhone } from "@/lib/utils";
+import { findDuplicates } from "@/lib/customers";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
@@ -48,7 +49,11 @@ export default async function LeadsPage({
   const canImport = can(user.role, "orders", "upload", db.role_permissions);
   const canExport = can(user.role, "orders", "export", db.role_permissions);
 
-  let orders = scopeOrders(user, db.orders, db).sort((a, b) => b.created_at.localeCompare(a.created_at));
+  // Regular Customers live in their own section; the flag takes them out of
+  // the active list while every order and its history stays put.
+  let orders = scopeOrders(user, db.orders, db)
+    .filter((o) => !o.is_regular_customer)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
 
   // Dashboard cards deep-link agents into a pre-filtered status view â€” that's
   // internal navigation, not a search control, so status stays honored for
@@ -97,7 +102,7 @@ export default async function LeadsPage({
   // Status-card counts are taken from the agent's whole scoped set, before the
   // status filter is applied, so selecting a card doesn't zero the others. One
   // pass builds every bucket rather than a query per card.
-  const agentScoped = isAgent ? scopeOrders(user, db.orders, db) : [];
+  const agentScoped = isAgent ? scopeOrders(user, db.orders, db).filter((o) => !o.is_regular_customer) : [];
   const agentTotalLeads = agentScoped.length;
   const countsByStatus = new Map<string, number>();
   for (const o of agentScoped) countsByStatus.set(o.status, (countsByStatus.get(o.status) ?? 0) + 1);
@@ -134,6 +139,39 @@ export default async function LeadsPage({
   // The agent's open call (if any) and the call history for the rows on this
   // page. Loaded here so a reopened popup restores its timer from the server
   // rather than restarting the count.
+  const canTagRegular = can(user.role, "regular_customers", "view", db.role_permissions);
+
+  // Duplicate warnings are computed for Management/Team Lead only. Agents are
+  // never given them: the detector spans every agent's customers by design, so
+  // surfacing a match would leak exactly what their scoping withholds.
+  const canSeeDuplicateWarnings = isFullAccess(user.role) || user.role === "team_lead";
+  const duplicateWarningsByOrderId: Record<
+    string,
+    { name: string; phone: string; agent: string; fields: string[]; confidence: string }[]
+  > = {};
+  if (canSeeDuplicateWarnings) {
+    for (const o of pageOrders) {
+      if (!o.customer_phone.trim()) continue;
+      const findings = await findDuplicates({
+        full_name: o.customer_name,
+        phone_normalized: canonicalPhone(o.customer_phone),
+        purok: o.purok,
+        barangay: o.barangay,
+        city: o.city,
+        province: o.province,
+      });
+      if (findings.length > 0) {
+        duplicateWarningsByOrderId[o.id] = findings.map((d) => ({
+          name: d.matched.full_name,
+          phone: d.matched.phone_raw,
+          agent: agentFullNameById[d.matched.owner_agent_id] || "—",
+          fields: d.fields,
+          confidence: d.confidence,
+        }));
+      }
+    }
+  }
+
   const activeCallSession = isAgent ? await getActiveSession(user.id) : null;
   const callSessionsByOrderId: Record<string, CallSession[]> = {};
   if (isAgent && pageOrders.length > 0) {
@@ -169,7 +207,7 @@ export default async function LeadsPage({
               Import Excel
             </LinkButton>
           )}
-          <LinkButton href="/leads/new">New Lead</LinkButton>
+          <LinkButton href="/leads/new">Regular Customer</LinkButton>
         </div>
       </div>
 
@@ -291,6 +329,7 @@ export default async function LeadsPage({
           productNameByOrderId={productNameByOrderId}
           activeProducts={activeProducts}
           canEdit={canEdit}
+          canTagRegular={canTagRegular}
           initialCallSession={activeCallSession}
           callSessionsByOrderId={callSessionsByOrderId}
           agentNameById={agentFullNameById}
@@ -307,6 +346,8 @@ export default async function LeadsPage({
         canEdit={canEdit}
         canManageIntegrations={canManageIntegrations}
         canSetFulfillmentStatus={isFullAccess(user.role)}
+        canTagRegular={canTagRegular}
+        duplicateWarningsByOrderId={duplicateWarningsByOrderId}
         requiresCallSession={!isFullAccess(user.role)}
         initialCallSession={activeCallSession}
         callSessionsByOrderId={callSessionsByOrderId}

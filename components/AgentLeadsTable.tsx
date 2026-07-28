@@ -27,6 +27,7 @@ export function AgentLeadsTable({
   productNameByOrderId,
   activeProducts,
   canEdit,
+  canTagRegular = false,
   initialCallSession = null,
   callSessionsByOrderId = {},
   agentNameById = {},
@@ -37,6 +38,7 @@ export function AgentLeadsTable({
   productNameByOrderId: Record<string, string>;
   activeProducts: { id: string; name: string; code: string | null }[];
   canEdit: boolean;
+  canTagRegular?: boolean;
   initialCallSession?: CallSession | null;
   callSessionsByOrderId?: Record<string, CallSession[]>;
   agentNameById?: Record<string, string>;
@@ -163,6 +165,7 @@ export function AgentLeadsTable({
           canManageIntegrations={false}
           // Agents must open a call before they can edit or change status;
           // the same rule is enforced server-side.
+          canTagRegular={canTagRegular}
           requiresCallSession
           initialCallSession={initialCallSession}
           callSessions={callSessionsByOrderId[openOrder.id] || []}

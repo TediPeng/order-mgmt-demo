@@ -13,6 +13,8 @@ import { LEAD_STATUS_LABELS, PAYMENT_METHOD_SUGGESTIONS, selectableStatuses } fr
 import { AddressSelect } from "@/components/AddressSelect";
 import { CallingPanel } from "@/components/CallingPanel";
 import { CallHistory } from "@/components/CallHistory";
+import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
+import { tagRegularCustomerAction } from "@/lib/actions/regular-customers";
 import { computeOrderTotal, validateForPancake as computePancakeCheck } from "@/lib/pancake/validate";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 import type { CallSession, Order, OrderStatus } from "@/lib/types";
@@ -130,6 +132,8 @@ export function OrderDetailsModal({
   canManageIntegrations = false,
   canSeeFulfillment = false,
   canSetFulfillmentStatus = false,
+  canTagRegular = false,
+  duplicateWarnings = [],
   requiresCallSession = false,
   initialCallSession = null,
   callSessions = [],
@@ -149,6 +153,12 @@ export function OrderDetailsModal({
   canSeeFulfillment?: boolean;
   /** Full-access users may set Pancake-owned fulfillment statuses by hand. */
   canSetFulfillmentStatus?: boolean;
+  /** Tagging moves the customer to Regular Customers; the lead leaves the active list. */
+  canTagRegular?: boolean;
+  /** Possible duplicates for this customer. Management/Team Lead only — an
+   * agent is never told a match exists, since it would reveal records outside
+   * their own scope. */
+  duplicateWarnings?: { name: string; phone: string; agent: string; fields: string[]; confidence: string }[];
   /** Agents must have a calling session open before editing; Management does not. */
   requiresCallSession?: boolean;
   initialCallSession?: CallSession | null;
@@ -919,6 +929,32 @@ export function OrderDetailsModal({
             </div>
           )}
         </div>
+
+        {duplicateWarnings.length > 0 && (
+          <div className="border-t border-amber-200 bg-amber-50 px-5 py-3">
+            <p className="text-sm font-medium text-amber-900">
+              Possible duplicate customer{duplicateWarnings.length === 1 ? "" : "s"}
+            </p>
+            <ul className="mt-1 space-y-1 text-xs text-amber-800">
+              {duplicateWarnings.map((d, i) => (
+                <li key={i}>
+                  <strong>{d.name}</strong> · {d.phone} · agent {d.agent} — matched on {d.fields.join(", ")} ({d.confidence} confidence)
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1 text-xs text-amber-700">Nothing is merged automatically. Review under Regular Customers.</p>
+          </div>
+        )}
+
+        {canTagRegular && !order.is_regular_customer && (
+          <div className="border-t border-slate-100 px-5 py-3">
+            <form action={tagRegularCustomerAction.bind(null, order.id)}>
+              <ConfirmSubmitButton confirmMessage="Tag this customer as a Regular Customer? Their leads move out of the active Leads list; nothing is deleted.">
+                Tag as Regular Customer
+              </ConfirmSubmitButton>
+            </form>
+          </div>
+        )}
 
         <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-5 py-3">
           <div>{fullPageHref && <Link href={fullPageHref} className="text-xs font-medium text-[var(--brand-primary)] hover:underline">Open full page</Link>}</div>

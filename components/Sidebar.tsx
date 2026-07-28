@@ -10,6 +10,7 @@ import {
   PhoneCall,
   UploadCloud,
   Users2,
+  UserCheck,
   TrendingUp,
   Trophy,
   LineChart,
@@ -53,6 +54,7 @@ export function Sidebar({ access }: { access: Record<ModuleKey, boolean> }) {
       title: "Operations",
       items: [
         { href: "/leads", label: "Leads", icon: ShoppingCart, show: access.orders },
+        { href: "/regular-customers", label: "Regular Customers", icon: UserCheck, show: access.regular_customers },
         { href: "/products", label: "Products", icon: Package, show: access.products },
         { href: "/call-logs", label: "Call Logs", icon: PhoneCall, show: access.call_logs },
         { href: "/file-uploads", label: "File Uploads", icon: UploadCloud, show: access.file_uploads },

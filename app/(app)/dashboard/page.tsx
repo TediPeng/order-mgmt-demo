@@ -220,7 +220,7 @@ export default async function DashboardPage({
             </CardHeader>
             <CardContent className="flex flex-wrap gap-3">
               <LinkButton href="/leads/new" variant="outline">
-                <PlusCircle className="h-4 w-4" /> New Lead
+                <PlusCircle className="h-4 w-4" /> Regular Customer
               </LinkButton>
               {canImport && (
                 <LinkButton href="/leads/import" variant="outline">

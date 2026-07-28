@@ -79,6 +79,9 @@ export const PANCAKE_SYNC_STATUS_LABELS: Record<PancakeSyncStatus, string> = {
  * Pancake POS — spread into every order-creation site (form, import, seed). */
 export const ORDER_PANCAKE_DEFAULTS = {
   tag: null,
+  customer_id: null,
+  is_regular_customer: false,
+  regular_customer_since: null,
   tracking_number: null,
   province_code: null,
   city_code: null,
@@ -141,6 +144,10 @@ export interface Order {
   order_source: string | null;
   // Free-text tag: Management/Team Lead edit it, agents only read it.
   tag: string | null;
+  // Set once the customer behind this order is tagged Regular.
+  customer_id: string | null;
+  is_regular_customer: boolean;
+  regular_customer_since: string | null;
   // Written only by the integration; shows "Not Available" until synced.
   tracking_number: string | null;
   // PSGC codes alongside the display names, carrying the authoritative
@@ -375,6 +382,7 @@ export const MODULES = [
   "settings",
   "integrations",
   "file_uploads",
+  "regular_customers",
 ] as const;
 export type ModuleKey = (typeof MODULES)[number];
 
@@ -548,39 +556,7 @@ export interface CallSession {
   previous_status: string | null;
   new_status: string | null;
   remarks: string | null;
+  /** Generated column: true while ended_at is null. */
   is_active: boolean;
   created_at: string;
-}
-
-export interface AgentCallLogUpload {
-  id: string;
-  agent_id: string;
-  file_name: string;
-  storage_path: string | null;
-  total_rows: number | null;
-  imported_rows: number | null;
-  duplicate_rows: number | null;
-  invalid_rows: number | null;
-  failed_rows: number | null;
-  uploaded_at: string;
-}
-
-export interface AgentCallLogRecord {
-  id: string;
-  upload_id: string | null;
-  agent_id: string;
-  call_name: string | null;
-  phone_raw: string | null;
-  phone_normalized: string | null;
-  call_date: string;
-}
-
-export interface CallLogImage {
-  id: string;
-  agent_id: string;
-  storage_path: string;
-  original_filename: string;
-  file_size_bytes: number | null;
-  related_call_date: string | null;
-  uploaded_at: string;
 }
