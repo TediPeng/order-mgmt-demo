@@ -116,24 +116,25 @@ export async function applyIncomingUpdate(update: IncomingUpdate, source: Pancak
   // write a failure row on every single poll.
   if (internalStatus === order.status) {
     await updateOrderSyncFields(order.id, {
-      pancake_status: update.rawStatus,
+      pancake_status: update.statusName || update.rawStatus,
       pancake_sync_status: "synced",
-      // "We checked just now" — not Pancake's older updated_at, which would
-      // walk the anchor backwards.
       pancake_synced_at: new Date().toISOString(),
+      pancake_event_at: update.eventTimestamp || order.pancake_event_at,
       pancake_sync_error: null,
     });
     return { applied: false, reason: "Status unchanged.", orderId: order.id };
   }
 
-  // Out-of-order protection: an event older than the last applied one is
-  // logged, never applied. Both sides are parsed to a real instant first —
-  // Pancake sends a naive timestamp while ours carries an offset, so comparing
-  // the strings would give the wrong answer.
+  // Out-of-order protection: an event older than the last one we observed is
+  // logged, never applied. Both sides come from PANCAKE's clock — comparing
+  // against our own synced-at stamp would reject every genuine update, since
+  // that stamp is written after the event it describes. Strings are parsed to
+  // real instants first: Pancake sends a naive timestamp, ours carries an
+  // offset, so a string comparison would also give the wrong answer.
   const eventMs = update.eventTimestamp ? Date.parse(update.eventTimestamp) : NaN;
-  const lastMs = order.pancake_synced_at ? Date.parse(order.pancake_synced_at) : NaN;
+  const lastMs = order.pancake_event_at ? Date.parse(order.pancake_event_at) : NaN;
   if (Number.isFinite(eventMs) && Number.isFinite(lastMs) && eventMs < lastMs) {
-    const reason = `Out-of-order event (${update.eventTimestamp} is older than last applied ${order.pancake_synced_at}) — logged, not applied.`;
+    const reason = `Out-of-order event (${update.eventTimestamp} is older than last observed ${order.pancake_event_at}) — logged, not applied.`;
     await insertSyncLog({
       ...base,
       order_id: order.id,
@@ -161,14 +162,15 @@ export async function applyIncomingUpdate(update: IncomingUpdate, source: Pancak
 
   // Apply: fulfillment status + sync bookkeeping ONLY. Notes, agent
   // assignment, ownership, and every other field are untouchable here.
-  const appliedAt = update.eventTimestamp || new Date().toISOString();
+  const now = new Date().toISOString();
   await updateOrderSyncFields(order.id, {
     status: internalStatus as Order["status"],
-    pancake_status: update.rawStatus,
+    pancake_status: update.statusName || update.rawStatus,
     pancake_sync_status: "synced",
-    pancake_synced_at: appliedAt,
+    pancake_synced_at: now,
+    pancake_event_at: update.eventTimestamp || order.pancake_event_at,
     pancake_sync_error: null,
-    updated_at: new Date().toISOString(),
+    updated_at: now,
   });
   await insertSyncLog({
     ...base,

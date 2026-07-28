@@ -75,6 +75,7 @@ export const ORDER_PANCAKE_DEFAULTS = {
   pancake_status: null,
   pancake_sync_status: "not_synced",
   pancake_synced_at: null,
+  pancake_event_at: null,
   pancake_last_sync_attempt_at: null,
   pancake_request_payload: null,
   pancake_response_payload: null,
@@ -127,7 +128,11 @@ export interface Order {
   // Raw Pancake-side status label (Packaging, then fulfillment statuses).
   pancake_status: string | null;
   pancake_sync_status: PancakeSyncStatus;
+  // When WE last talked to Pancake (our clock) — for display only.
   pancake_synced_at: string | null;
+  // Pancake-clock timestamp of the last observed state. The ONLY value the
+  // out-of-order guard compares against, so both sides use the same clock.
+  pancake_event_at: string | null;
   pancake_last_sync_attempt_at: string | null;
   // Full request/response bodies, redacted of credentials, for troubleshooting.
   pancake_request_payload: Record<string, unknown> | null;

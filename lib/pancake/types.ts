@@ -42,6 +42,8 @@ export interface CreateOrderResult {
   pancakeOrderId: string | null;
   /** Pancake-side status label as reported back (expected: Packaging). */
   pancakeStatus: string | null;
+  /** Pancake's own updated_at for the created order — the event-clock anchor. */
+  eventTimestamp: string | null;
   /** True when Pancake did NOT report the requested Packaging status. */
   statusMismatch: boolean;
   httpStatus: number | null;
@@ -57,7 +59,8 @@ export interface GetOrderResult {
   ok: boolean;
   httpStatus: number | null;
   error: string | null;
-  rawStatus: string | null; // Pancake's raw status code
+  rawStatus: string | null; // Pancake's raw status code — what the status map keys on
+  statusName: string | null; // Pancake's own label for that code, for display
   eventTimestamp: string | null; // Pancake's updated_at, for out-of-order protection
   responseSummary: Record<string, unknown> | null;
 }
@@ -65,10 +68,11 @@ export interface GetOrderResult {
 /** Normalized incoming update (from webhook or polling) after field mapping. */
 export interface IncomingUpdate {
   pancakeOrderId: string | null;
-  externalReference: string | null; // should be our internal order id
+  externalReference: string | null; // our system_order_id, echoed by Pancake
   orderNumber: string | null;
   phone: string | null;
   rawStatus: string | null;
+  statusName?: string | null;
   eventTimestamp: string | null;
   shopId: string | null;
 }

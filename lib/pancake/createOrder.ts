@@ -88,6 +88,7 @@ export async function createOrder(account: PancakeAccount, payload: ForwardPaylo
       ok: true,
       pancakeOrderId: `MOCK-${payload.order_number}`,
       pancakeStatus: CREATE_STATUS_PACKAGING_LABEL,
+      eventTimestamp: new Date().toISOString(),
       statusMismatch: false,
       httpStatus: 201,
       error: null,
@@ -101,6 +102,7 @@ export async function createOrder(account: PancakeAccount, payload: ForwardPaylo
       ok: false,
       pancakeOrderId: null,
       pancakeStatus: null,
+      eventTimestamp: null,
       statusMismatch: false,
       httpStatus: 503,
       error: "MOCK_MODE=fail: simulated Pancake API failure",
@@ -123,6 +125,7 @@ export async function createOrder(account: PancakeAccount, payload: ForwardPaylo
     ok: res.ok && !!pancakeOrderId,
     pancakeOrderId,
     pancakeStatus,
+    eventTimestamp: data[RESPONSE_FIELDS.updated_at] != null ? String(data[RESPONSE_FIELDS.updated_at]) : null,
     statusMismatch,
     httpStatus: res.httpStatus,
     error:

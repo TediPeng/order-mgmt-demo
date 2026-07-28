@@ -53,6 +53,7 @@ export function parseWebhookPayload(payload: Record<string, unknown>): { event: 
       orderNumber: s(f.display_id),
       phone: s(f.phone),
       rawStatus: s(f.status),
+      statusName: s("status_name"),
       eventTimestamp: s(f.event_timestamp),
       shopId: s(f.shop_id),
     },

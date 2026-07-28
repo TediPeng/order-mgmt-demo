@@ -192,6 +192,9 @@ export async function forwardOrderToPancake(
       pancake_status: pancakeStatus,
       pancake_sync_status: mismatchReason ? "sync_failed" : "synced",
       pancake_synced_at: responseAt,
+      // Anchor the event clock to Pancake's own timestamp, so the first status
+      // change they report is not mistaken for an out-of-order event.
+      pancake_event_at: result.eventTimestamp,
       pancake_sync_error: mismatchReason,
       forwarded_to_pancake_at: responseAt,
       pancake_request_payload: result.requestPayload,

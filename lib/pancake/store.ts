@@ -298,6 +298,7 @@ export async function updateOrderSyncFields(
       | "pancake_status"
       | "pancake_sync_status"
       | "pancake_synced_at"
+      | "pancake_event_at"
       | "pancake_last_sync_attempt_at"
       | "pancake_request_payload"
       | "pancake_response_payload"
