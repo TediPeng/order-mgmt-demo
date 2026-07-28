@@ -10,15 +10,17 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { uploadCallLogAction, deleteCallLogAction } from "@/lib/actions/call-logs";
+import { AgentCallLogUpload } from "@/components/AgentCallLogUpload";
 
 export default async function CallLogsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; uploaded?: string; deleted?: string; q?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ error?: string; uploaded?: string; deleted?: string; q?: string; from?: string; to?: string; image_uploaded?: string }>;
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
   const db = await readDb();
+  const isAgent = user.role === "agent";
   const canView = can(user.role, "call_logs", "view", db.role_permissions);
   const canUpload = can(user.role, "call_logs", "upload", db.role_permissions);
   const canDelete = can(user.role, "call_logs", "delete", db.role_permissions);
@@ -35,6 +37,17 @@ export default async function CallLogsPage({
   }
   if (sp.from) logs = logs.filter((l) => l.uploaded_at.slice(0, 10) >= sp.from!);
   if (sp.to) logs = logs.filter((l) => l.uploaded_at.slice(0, 10) <= sp.to!);
+
+  // Agents get only the four controls the spec allows; the richer
+  // Management view (filters, per-file listing, deletes) stays for everyone else.
+  if (isAgent) {
+    return (
+      <div>
+        <h1 className="mb-4 text-xl font-semibold text-slate-900">Call Logs</h1>
+        <AgentCallLogUpload imageError={sp.error} imageUploaded={Boolean(sp.image_uploaded)} />
+      </div>
+    );
+  }
 
   return (
     <div>
