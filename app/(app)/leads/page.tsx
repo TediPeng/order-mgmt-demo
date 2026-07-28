@@ -12,7 +12,8 @@ import { AgentLeadsTable } from "@/components/AgentLeadsTable";
 import { LeadStatusCards, QUICK_FILTER_STATUSES } from "@/components/LeadStatusCards";
 import { StatusBadge } from "@/components/ui/Badge";
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, PRE_SALE_STATUSES } from "@/lib/validation";
-import type { OrderStatus } from "@/lib/types";
+import type { CallSession, OrderStatus } from "@/lib/types";
+import { getActiveSession, listSessionsForOrder } from "@/lib/call-sessions";
 
 const PAGE_SIZE = 25;
 
@@ -127,6 +128,18 @@ export default async function LeadsPage({
     if (!existing || e.created_at > existing.at) {
       const updatedStatus = (e.updated_value as { status?: OrderStatus } | null)?.status;
       if (updatedStatus) latestStatusUpdateByOrderId[e.entity_id] = { status: updatedStatus, at: e.created_at };
+    }
+  }
+
+  // The agent's open call (if any) and the call history for the rows on this
+  // page. Loaded here so a reopened popup restores its timer from the server
+  // rather than restarting the count.
+  const activeCallSession = isAgent ? await getActiveSession(user.id) : null;
+  const callSessionsByOrderId: Record<string, CallSession[]> = {};
+  if (isAgent && pageOrders.length > 0) {
+    for (const o of pageOrders) {
+      const sessions = await listSessionsForOrder(o.id);
+      if (sessions.length > 0) callSessionsByOrderId[o.id] = sessions;
     }
   }
 
@@ -278,6 +291,9 @@ export default async function LeadsPage({
           productNameByOrderId={productNameByOrderId}
           activeProducts={activeProducts}
           canEdit={canEdit}
+          initialCallSession={activeCallSession}
+          callSessionsByOrderId={callSessionsByOrderId}
+          agentNameById={agentFullNameById}
           initialOpenOrderNumber={sp.open}
         />
       ) : (
@@ -291,6 +307,10 @@ export default async function LeadsPage({
         canEdit={canEdit}
         canManageIntegrations={canManageIntegrations}
         canSetFulfillmentStatus={isFullAccess(user.role)}
+        requiresCallSession={!isFullAccess(user.role)}
+        initialCallSession={activeCallSession}
+        callSessionsByOrderId={callSessionsByOrderId}
+        agentNameById={agentFullNameById}
         canSeeFulfillment={!isAgent}
         fullPageHrefBase={isFullAccess(user.role) ? "/leads" : null}
         initialOpenOrderNumber={sp.open}

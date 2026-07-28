@@ -5,6 +5,7 @@ import { writeDb, uuid, nowIso, nextOrderNumber } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { orderInScope, allowedAssigneeIds } from "@/lib/order-access";
+import { getActiveSessionForOrder, endSession } from "@/lib/call-sessions";
 import { isFullAccess } from "@/lib/permissions";
 import { requireUser, requirePermission } from "./guards";
 import { leadFormSchema, leadImportRowSchema, PACKAGING_STATUS } from "@/lib/validation";
@@ -197,6 +198,24 @@ export async function applyLeadUpdate(
     if (restricted) return { ok: false, code: "forbidden", error: restricted };
   }
 
+  // A status only moves while the agent has a calling session open on this
+  // order. Enforced here, not by disabling the control: the point of the rule
+  // is that every status change is attributable to a recorded call, which a
+  // crafted request would otherwise sidestep. Management is exempt — they
+  // correct records rather than make calls.
+  const statusChanging = data.status !== order.status;
+  let session = null;
+  if (!isFullAccess(user.role)) {
+    session = await getActiveSessionForOrder(user.id, order.id);
+    if (statusChanging && !session) {
+      return {
+        ok: false,
+        code: "forbidden",
+        error: "Click Calling before updating this order's status.",
+      };
+    }
+  }
+
   const blocked = pipelineBlockReason(order, data.status);
   if (blocked) return { ok: false, code: "validation", error: blocked };
 
@@ -346,6 +365,26 @@ export async function applyLeadUpdate(
     { order_number: order.order_number },
     { module: "orders", previous_value: before, updated_value: order, ...info }
   );
+
+  // Close the calling session that licensed this edit, recording the
+  // transition it produced. After the activity logging, so the audit trail
+  // survives even if this write fails.
+  if (session) {
+    await endSession(session.id, {
+      previousStatus: before.status,
+      newStatus: order.status,
+      remarks: typeof raw.call_remarks === "string" ? raw.call_remarks : null,
+    });
+    logActivity(
+      db,
+      user.id,
+      "CALL_SESSION_ENDED",
+      "order",
+      order.id,
+      { order_number: order.order_number, previous_status: before.status, new_status: order.status },
+      { module: "orders", ...info }
+    );
+  }
 
   const forwarded = Boolean(before.pancake_order_id || before.forwarded_to_pancake_at);
   return {

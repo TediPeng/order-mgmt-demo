@@ -6,7 +6,7 @@ import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui
 import { OrderDetailsModal } from "@/components/OrderDetailsModal";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
-import type { Order, OrderStatus } from "@/lib/types";
+import type { CallSession, Order, OrderStatus } from "@/lib/types";
 
 export function LeadsTable({
   orders: initialOrders,
@@ -18,6 +18,10 @@ export function LeadsTable({
   canEdit,
   canManageIntegrations = false,
   canSetFulfillmentStatus = false,
+  requiresCallSession = false,
+  initialCallSession = null,
+  callSessionsByOrderId = {},
+  agentNameById = {},
   canSeeFulfillment = false,
   fullPageHrefBase,
   initialOpenOrderNumber,
@@ -31,6 +35,10 @@ export function LeadsTable({
   canEdit: boolean;
   canManageIntegrations?: boolean;
   canSetFulfillmentStatus?: boolean;
+  requiresCallSession?: boolean;
+  initialCallSession?: CallSession | null;
+  callSessionsByOrderId?: Record<string, CallSession[]>;
+  agentNameById?: Record<string, string>;
   canSeeFulfillment?: boolean;
   fullPageHrefBase: string | null;
   initialOpenOrderNumber?: string;
@@ -146,6 +154,10 @@ export function LeadsTable({
           canEdit={canEdit}
           canManageIntegrations={canManageIntegrations}
           canSetFulfillmentStatus={canSetFulfillmentStatus}
+          requiresCallSession={requiresCallSession}
+          initialCallSession={initialCallSession}
+          callSessions={callSessionsByOrderId[openOrder.id] || []}
+          agentNameById={agentNameById}
           canSeeFulfillment={canSeeFulfillment}
           fullPageHref={fullPageHrefBase ? `${fullPageHrefBase}/${openOrder.id}` : null}
           onClose={() => setOpenId(null)}

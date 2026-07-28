@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { StatusBadge, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { OrderDetailsModal } from "@/components/OrderDetailsModal";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
-import type { Order } from "@/lib/types";
+import type { CallSession, Order } from "@/lib/types";
 
 export interface CareStaff {
   name: string;
@@ -27,6 +27,9 @@ export function AgentLeadsTable({
   productNameByOrderId,
   activeProducts,
   canEdit,
+  initialCallSession = null,
+  callSessionsByOrderId = {},
+  agentNameById = {},
   initialOpenOrderNumber,
 }: {
   orders: Order[];
@@ -34,6 +37,9 @@ export function AgentLeadsTable({
   productNameByOrderId: Record<string, string>;
   activeProducts: { id: string; name: string; code: string | null }[];
   canEdit: boolean;
+  initialCallSession?: CallSession | null;
+  callSessionsByOrderId?: Record<string, CallSession[]>;
+  agentNameById?: Record<string, string>;
   initialOpenOrderNumber?: string;
 }) {
   const router = useRouter();
@@ -155,6 +161,12 @@ export function AgentLeadsTable({
           canSeeFulfillment={false}
           canSetFulfillmentStatus={false}
           canManageIntegrations={false}
+          // Agents must open a call before they can edit or change status;
+          // the same rule is enforced server-side.
+          requiresCallSession
+          initialCallSession={initialCallSession}
+          callSessions={callSessionsByOrderId[openOrder.id] || []}
+          agentNameById={agentNameById}
           fullPageHref={null}
           onClose={() => setOpenId(null)}
           onSaved={handleSaved}

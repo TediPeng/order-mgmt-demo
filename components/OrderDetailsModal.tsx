@@ -11,9 +11,11 @@ import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui
 import { cn, formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import { LEAD_STATUS_LABELS, PAYMENT_METHOD_SUGGESTIONS, selectableStatuses } from "@/lib/validation";
 import { AddressSelect } from "@/components/AddressSelect";
+import { CallingPanel } from "@/components/CallingPanel";
+import { CallHistory } from "@/components/CallHistory";
 import { computeOrderTotal, validateForPancake as computePancakeCheck } from "@/lib/pancake/validate";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
-import type { Order, OrderStatus } from "@/lib/types";
+import type { CallSession, Order, OrderStatus } from "@/lib/types";
 
 interface EditForm {
   customer_name: string;
@@ -128,6 +130,10 @@ export function OrderDetailsModal({
   canManageIntegrations = false,
   canSeeFulfillment = false,
   canSetFulfillmentStatus = false,
+  requiresCallSession = false,
+  initialCallSession = null,
+  callSessions = [],
+  agentNameById = {},
   fullPageHref,
   onClose,
   onSaved,
@@ -143,6 +149,11 @@ export function OrderDetailsModal({
   canSeeFulfillment?: boolean;
   /** Full-access users may set Pancake-owned fulfillment statuses by hand. */
   canSetFulfillmentStatus?: boolean;
+  /** Agents must have a calling session open before editing; Management does not. */
+  requiresCallSession?: boolean;
+  initialCallSession?: CallSession | null;
+  callSessions?: CallSession[];
+  agentNameById?: Record<string, string>;
   fullPageHref: string | null;
   onClose: () => void;
   onSaved: (updated: Order) => void;
@@ -230,6 +241,17 @@ export function OrderDetailsModal({
   const isDirty = mode === "edit" && JSON.stringify(form) !== JSON.stringify(initial);
   const hasUnsavedChanges = isDirty || statusDraft !== order.status;
 
+  // Calling session state. `locked` is what disables the controls; the server
+  // refuses the same edits independently, so this is only the visible half.
+  const [callSession, setCallSession] = useState<CallSession | null>(initialCallSession);
+  const [callRemarks, setCallRemarks] = useState("");
+  const callActive = Boolean(callSession && callSession.order_id === order.id);
+  const blockedBy =
+    callSession && callSession.order_id !== order.id
+      ? { id: callSession.order_id, order_number: callSession.order_id.slice(0, 8) }
+      : null;
+  const locked = requiresCallSession && !callActive;
+
   function update<K extends keyof EditForm>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
   }
@@ -296,7 +318,7 @@ export function OrderDetailsModal({
 
   function handleUpdateStatus() {
     if (statusDraft === order.status) return;
-    submit(buildRawFromOrder(order, { status: statusDraft }));
+    submit(buildRawFromOrder(order, { status: statusDraft, call_remarks: callRemarks }));
   }
 
   function handleSaveEdit() {
@@ -336,6 +358,12 @@ export function OrderDetailsModal({
   }
 
   function requestClose() {
+    if (callActive) {
+      const ok = window.confirm(
+        "A call is still in progress on this order. Close anyway? The call stays open — use End without update to close it."
+      );
+      if (!ok) return;
+    }
     if (hasUnsavedChanges) {
       const ok = window.confirm("You have unsaved changes on this lead. Close without saving?");
       if (!ok) return;
@@ -364,6 +392,21 @@ export function OrderDetailsModal({
         </div>
 
         <div className="space-y-4 p-5">
+          {requiresCallSession && (
+            <CallingPanel
+              orderId={order.id}
+              session={callSession}
+              blockedBy={blockedBy}
+              onStarted={(s) => setCallSession(s)}
+              onEnded={() => {
+                setCallSession(null);
+                setMode("view");
+              }}
+              onOpenActive={(id) => {
+                window.location.href = `/leads?open_id=${id}`;
+              }}
+            />
+          )}
           {error && <Alert kind="error">{error}</Alert>}
           {missing.length > 0 && (
             <Alert kind="error">Missing required fields for Packaging: {missing.join(", ")}</Alert>
@@ -838,7 +881,7 @@ export function OrderDetailsModal({
             <div className="flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3">
               <div className="flex-1">
                 <Label htmlFor="m_status_quick">Update Status</Label>
-                <Select id="m_status_quick" value={statusDraft} onChange={(e) => setStatusDraft(e.target.value)}>
+                <Select id="m_status_quick" value={statusDraft} onChange={(e) => setStatusDraft(e.target.value)} disabled={locked}>
                   {selectableStatuses(canSetFulfillmentStatus, order.status).map((s) => (
                     <option key={s} value={s}>
                       {LEAD_STATUS_LABELS[s]}
@@ -846,9 +889,33 @@ export function OrderDetailsModal({
                   ))}
                 </Select>
               </div>
-              <Button type="button" variant="secondary" disabled={saving || statusDraft === order.status} onClick={handleUpdateStatus}>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={locked || saving || statusDraft === order.status}
+                onClick={handleUpdateStatus}
+              >
                 {saving ? "Updating…" : "Update Status"}
               </Button>
+              {callActive && (
+                <div className="w-full">
+                  <Label htmlFor="m_call_remarks">Call remarks (saved with this call)</Label>
+                  <Textarea
+                    id="m_call_remarks"
+                    rows={2}
+                    value={callRemarks}
+                    onChange={(e) => setCallRemarks(e.target.value)}
+                    placeholder="What was discussed on this call?"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {callSessions.length > 0 && (
+            <div className="border-t border-slate-100 pt-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Call History</p>
+              <CallHistory sessions={callSessions} agentNameById={agentNameById} />
             </div>
           )}
         </div>
@@ -862,7 +929,7 @@ export function OrderDetailsModal({
                   Close
                 </Button>
                 {canEdit && (
-                  <Button type="button" onClick={() => setMode("edit")}>
+                  <Button type="button" disabled={locked} onClick={() => setMode("edit")}>
                     Edit Order
                   </Button>
                 )}
