@@ -1,4 +1,10 @@
-import Link from "next/link";
+"use client";
+
+import { useState } from "react";
+import { Eye } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { CallLogPreviewModal } from "@/components/CallLogPreviewModal";
+import { CallLogImageModal } from "@/components/CallLogImageModal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
 import { formatDateTime, formatDate } from "@/lib/utils";
@@ -29,11 +35,22 @@ export function AgentCallLogReview({
   uploads,
   images,
   agentById,
+  canDelete = false,
 }: {
   uploads: AgentCallLogUpload[];
   images: CallLogImage[];
   agentById: Record<string, AgentInfo>;
+  /** Deleting an upload removes its call records too, so Management only. */
+  canDelete?: boolean;
 }) {
+  const [previewUploadId, setPreviewUploadId] = useState<string | null>(null);
+  const [previewImage, setPreviewImage] = useState<CallLogImage | null>(null);
+
+  const label = (id: string) => {
+    const a = agentById[id];
+    return a?.call_name || a?.name || "Unknown";
+  };
+
   return (
     <div className="mt-6 space-y-6">
       <Card>
@@ -52,6 +69,7 @@ export function AgentCallLogReview({
                   <th className="px-4 py-3 num">Imported</th>
                   <th className="px-4 py-3 num">Duplicates</th>
                   <th className="px-4 py-3 num">Rejected</th>
+                  <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -77,12 +95,17 @@ export function AgentCallLogReview({
                       <td className={`px-4 py-3 num ${rejected > 0 ? "font-medium text-red-700" : "text-slate-600"}`}>
                         {rejected}
                       </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button type="button" size="sm" variant="outline" onClick={() => setPreviewUploadId(u.id)}>
+                          <Eye className="h-4 w-4" /> View file
+                        </Button>
+                      </td>
                     </tr>
                   );
                 })}
                 {uploads.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
+                    <td colSpan={8} className="px-4 py-10 text-center text-slate-400">
                       No agent has uploaded a call log yet.
                     </td>
                   </tr>
@@ -106,7 +129,7 @@ export function AgentCallLogReview({
                 const agent = agentById[img.agent_id];
                 return (
                   <li key={img.id} className="overflow-hidden rounded-lg border border-slate-200">
-                    <Link href={`/api/call-log-images/${img.id}`} target="_blank" className="block">
+                    <button type="button" onClick={() => setPreviewImage(img)} className="block w-full text-left">
                       {/* Served through an access-checked route, not a public URL. */}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
@@ -114,7 +137,7 @@ export function AgentCallLogReview({
                         alt={`Call log screenshot uploaded by ${agent?.name || "an agent"}`}
                         className="h-40 w-full bg-slate-50 object-cover"
                       />
-                    </Link>
+                    </button>
                     <div className="space-y-1 px-3 py-2 text-xs">
                       <p className="flex items-center gap-2 text-slate-700">
                         <Avatar name={agent?.name || "—"} src={agent?.avatar_url} size="sm" />
@@ -136,6 +159,17 @@ export function AgentCallLogReview({
           )}
         </CardContent>
       </Card>
+
+      {previewUploadId && (
+        <CallLogPreviewModal uploadId={previewUploadId} canDelete={canDelete} onClose={() => setPreviewUploadId(null)} />
+      )}
+      {previewImage && (
+        <CallLogImageModal
+          image={previewImage}
+          agentLabel={label(previewImage.agent_id)}
+          onClose={() => setPreviewImage(null)}
+        />
+      )}
     </div>
   );
 }

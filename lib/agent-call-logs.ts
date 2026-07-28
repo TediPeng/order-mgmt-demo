@@ -11,6 +11,8 @@ export interface AgentCallLogUpload {
   id: string;
   agent_id: string;
   file_name: string;
+  /** Set only for uploads made once the original file began being retained. */
+  storage_path: string | null;
   total_rows: number | null;
   imported_rows: number | null;
   duplicate_rows: number | null;
@@ -93,4 +95,84 @@ export async function getCallLogImage(id: string): Promise<CallLogImage | null> 
   const { data, error } = await supabaseAdmin.from("call_log_images").select("*").eq("id", id).maybeSingle();
   if (error) throw new Error(`call_log_images read failed: ${error.message}`);
   return data ? ({ ...(data as unknown as CallLogImage), file_size_bytes: num(data.file_size_bytes) }) : null;
+}
+
+/** Whether a viewer may see records belonging to `agentId`.
+ *
+ * One rule, used by every call-log surface — the review list, the record
+ * preview, the file download and the image route — so a new entry point cannot
+ * accidentally apply a laxer check than the screen that links to it. */
+export function canViewAgentRecords(
+  viewer: { id: string; role: string },
+  agentId: string,
+  profiles: { id: string; team_lead_id: string | null }[]
+): boolean {
+  if (viewer.role === "management" || viewer.role === "administrator") return true;
+  if (viewer.id === agentId) return true;
+  if (viewer.role === "team_lead") {
+    return profiles.some((p) => p.id === agentId && p.team_lead_id === viewer.id);
+  }
+  return false;
+}
+
+export async function getUpload(id: string): Promise<AgentCallLogUpload | null> {
+  const { data, error } = await supabaseAdmin.from("agent_call_log_uploads").select("*").eq("id", id).maybeSingle();
+  if (error) throw new Error(`agent_call_log_uploads read failed: ${error.message}`);
+  if (!data) return null;
+  return {
+    ...(data as unknown as AgentCallLogUpload),
+    total_rows: num(data.total_rows),
+    imported_rows: num(data.imported_rows),
+    duplicate_rows: num(data.duplicate_rows),
+    invalid_rows: num(data.invalid_rows),
+    failed_rows: num(data.failed_rows),
+  };
+}
+
+export interface CallLogRecordRow {
+  id: string;
+  call_name: string | null;
+  phone_raw: string | null;
+  phone_normalized: string | null;
+  call_date: string;
+}
+
+/** A page of an upload's stored records.
+ *
+ * Searching, sorting and paging all happen in the query rather than in the
+ * browser, so a large file is never shipped whole just to show 25 rows. These
+ * are the same rows the daily call-log count is computed from, so the preview
+ * cannot disagree with the figure it sits beside. */
+export async function listRecordsPage(opts: {
+  uploadId: string;
+  search?: string;
+  sort?: "asc" | "desc";
+  page?: number;
+  pageSize?: number;
+}): Promise<{ rows: CallLogRecordRow[]; total: number }> {
+  const page = Math.max(1, opts.page ?? 1);
+  const pageSize = Math.min(200, Math.max(10, opts.pageSize ?? 50));
+  const from = (page - 1) * pageSize;
+
+  let query = supabaseAdmin
+    .from("agent_call_log_records")
+    .select("id, call_name, phone_raw, phone_normalized, call_date", { count: "exact" })
+    .eq("upload_id", opts.uploadId);
+
+  const search = (opts.search || "").trim();
+  if (search) {
+    // Call Name or phone, matched against both the raw and canonical forms so
+    // "0917…" finds a row stored as "+63917…".
+    const digits = search.replace(/\D/g, "");
+    const clauses = [`call_name.ilike.%${search}%`, `phone_raw.ilike.%${search}%`];
+    if (digits) clauses.push(`phone_normalized.ilike.%${digits}%`);
+    query = query.or(clauses.join(","));
+  }
+
+  const { data, error, count } = await query
+    .order("call_date", { ascending: opts.sort !== "desc" })
+    .range(from, from + pageSize - 1);
+  if (error) throw new Error(`agent_call_log_records read failed: ${error.message}`);
+
+  return { rows: (data || []) as unknown as CallLogRecordRow[], total: count ?? 0 };
 }

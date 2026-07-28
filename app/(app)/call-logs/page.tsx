@@ -233,7 +233,7 @@ export default async function CallLogsPage({
       ) : (
         <Alert kind="info">You don&apos;t have permission to view uploaded call logs.</Alert>
       )}
-      <AgentCallLogReview uploads={agentUploads} images={callLogImages} agentById={agentById} />
+      <AgentCallLogReview uploads={agentUploads} images={callLogImages} agentById={agentById} canDelete={isFullAccess(user.role)} />
     </div>
   );
 }

@@ -7,7 +7,13 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Input, Label } from "@/components/ui/Field";
-import { importAgentCallLogAction, uploadCallLogImageAction, type AgentUploadSummary, type RawCallRow } from "@/lib/actions/agent-call-logs";
+import {
+  importAgentCallLogAction,
+  attachOriginalCallLogFileAction,
+  uploadCallLogImageAction,
+  type AgentUploadSummary,
+  type RawCallRow,
+} from "@/lib/actions/agent-call-logs";
 
 const HEADERS = ["CALL NAME", "PHONE NUMBER", "CALL DATE"];
 
@@ -70,6 +76,17 @@ export function AgentCallLogUpload({ imageError, imageUploaded }: { imageError?:
 
       const result = await importAgentCallLogAction(rows, file.name);
       setSummary(result);
+
+      // Keep the original so it can be downloaded from the preview later.
+      // Deliberately after the import and not awaited into the result: the rows
+      // are already saved, and a storage hiccup must not present a successful
+      // import as a failure.
+      if (result.uploadId) {
+        const fd = new FormData();
+        fd.append("upload_id", result.uploadId);
+        fd.append("file", file);
+        attachOriginalCallLogFileAction(fd).catch(() => undefined);
+      }
       setFile(null);
       if (fileRef.current) fileRef.current.value = "";
     } catch (e) {

@@ -2,12 +2,13 @@
 
 import { redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { uploadFile } from "@/lib/storage";
+import { uploadFile, deleteFile } from "@/lib/storage";
 import { canonicalPhone, normalizePhone } from "@/lib/utils";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { writeDb } from "@/lib/db";
 import { requireUser } from "./guards";
+import { isFullAccess } from "@/lib/permissions";
 import { detectDateOrder, parseCallDate, type DateOrder } from "@/lib/call-date";
 
 const PATH = "/call-logs";
@@ -19,6 +20,8 @@ export interface AgentUploadRowError {
 }
 
 export interface AgentUploadSummary {
+  /** Lets the caller attach the original file to this upload afterwards. */
+  uploadId: string | null;
   total: number;
   imported: number;
   duplicates: number;
@@ -138,6 +141,7 @@ export async function importAgentCallLogAction(rows: RawCallRow[], fileName: str
   await writeDb(db);
 
   return {
+    uploadId,
     total: rows.length,
     imported,
     duplicates,
@@ -188,4 +192,72 @@ export async function uploadCallLogImageAction(formData: FormData) {
   await writeDb(db);
 
   redirect(`${PATH}?image_uploaded=1`);
+}
+
+/** Stores the original file behind an upload, after its rows are imported.
+ *
+ * Kept as a second step rather than folded into the import: the import sends
+ * parsed rows, and pushing the raw bytes through the same call would put a
+ * whole spreadsheet into a server-action payload. Failure here is deliberately
+ * not fatal — the rows are already recorded, and losing the ability to download
+ * the original is far better than failing an import that actually succeeded. */
+export async function attachOriginalCallLogFileAction(formData: FormData): Promise<{ ok: boolean }> {
+  const { user } = await requireUser();
+
+  const uploadId = String(formData.get("upload_id") || "");
+  const file = formData.get("file") as File | null;
+  if (!uploadId || !file || file.size === 0) return { ok: false };
+
+  // Only the agent who owns the upload may attach its file.
+  const { data: upload } = await supabaseAdmin
+    .from("agent_call_log_uploads")
+    .select("id, agent_id, storage_path")
+    .eq("id", uploadId)
+    .maybeSingle();
+  if (!upload || upload.agent_id !== user.id || upload.storage_path) return { ok: false };
+
+  try {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const safeName = file.name.replace(/[^\w.-]/g, "_");
+    const storagePath = `call-logs/${user.id}/${uploadId}-${safeName}`;
+    await uploadFile(storagePath, buffer);
+    await supabaseAdmin.from("agent_call_log_uploads").update({ storage_path: storagePath }).eq("id", uploadId);
+    return { ok: true };
+  } catch {
+    return { ok: false };
+  }
+}
+
+/** Removes an upload and everything recorded from it.
+ *
+ * Management-only, and deliberately a hard delete: the point is to undo a
+ * mistaken upload, and leaving the rows behind would keep inflating the
+ * agent's call-log count. The records go via the FK cascade; the audit entry
+ * keeps what was removed. */
+export async function deleteCallLogUploadAction(uploadId: string) {
+  const { user, db } = await requireUser();
+  if (!isFullAccess(user.role)) {
+    redirect(`${PATH}?error=${encodeURIComponent("Only Management can delete an upload.")}`);
+  }
+
+  const { data: upload } = await supabaseAdmin
+    .from("agent_call_log_uploads")
+    .select("*")
+    .eq("id", uploadId)
+    .maybeSingle();
+  if (!upload) redirect(`${PATH}?error=${encodeURIComponent("Upload not found.")}`);
+
+  if (upload!.storage_path) await deleteFile(upload!.storage_path as string).catch(() => undefined);
+  const { error } = await supabaseAdmin.from("agent_call_log_uploads").delete().eq("id", uploadId);
+  if (error) redirect(`${PATH}?error=${encodeURIComponent(error.message)}`);
+
+  const info = await getRequestInfo();
+  logActivity(db, user.id, "AGENT_CALL_LOG_DELETED", "call_log", uploadId, {
+    file_name: upload!.file_name,
+    agent_id: upload!.agent_id,
+    imported_rows: upload!.imported_rows,
+  }, { module: "call_logs", previous_value: upload, ...info });
+  await writeDb(db);
+
+  redirect(`${PATH}?upload_deleted=1`);
 }
