@@ -5,9 +5,9 @@ import type { IncomingUpdate } from "./types";
 import { mapStatus } from "./mapStatus";
 import {
   findForwardedOrdersByPhone,
+  findOrderByExternalReference,
   findOrderByOrderNumber,
   findOrderByPancakeId,
-  getOrderRow,
   listStatusMap,
   insertSyncLog,
   notifyManagement,
@@ -32,7 +32,7 @@ export async function matchOrder(update: IncomingUpdate): Promise<{ order: Order
     if (o) return { order: o, matchedBy: "pancake_order_id", ambiguous: false };
   }
   if (update.externalReference) {
-    const o = await getOrderRow(update.externalReference);
+    const o = await findOrderByExternalReference(update.externalReference);
     if (o) return { order: o, matchedBy: "external_reference", ambiguous: false };
   }
   if (update.orderNumber) {

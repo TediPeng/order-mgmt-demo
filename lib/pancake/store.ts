@@ -175,6 +175,23 @@ export async function findOrderByPancakeId(pancakeOrderId: string): Promise<Orde
   return data && data.length === 1 ? mapOrder(data[0]) : null;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Looks up the order an external reference points at. The reference is
+ * whatever we put in Pancake's `custom_id`: `system_order_id` (the order
+ * number) for anything sent since the refinement, and the internal UUID for
+ * orders forwarded before it. Querying `orders.id` with a non-UUID would make
+ * Postgres reject the whole statement, so the shape is checked first. */
+export async function findOrderByExternalReference(reference: string): Promise<Order | null> {
+  if (UUID_RE.test(reference)) {
+    const byId = await getOrderRow(reference);
+    if (byId) return byId;
+  }
+  const { data, error } = await supabaseAdmin.from("orders").select("*").eq("system_order_id", reference).limit(2);
+  if (error) throw new Error(`orders read failed: ${error.message}`);
+  return data && data.length === 1 ? mapOrder(data[0]) : null;
+}
+
 export async function findOrderByOrderNumber(orderNumber: string): Promise<Order | null> {
   const { data, error } = await supabaseAdmin.from("orders").select("*").eq("order_number", orderNumber).limit(2);
   if (error) throw new Error(`orders read failed: ${error.message}`);
