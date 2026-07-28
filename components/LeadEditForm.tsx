@@ -128,7 +128,7 @@ export function LeadEditForm({
   }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    if (form.status === "ready_to_ship") {
+    if (form.status === "packaging") {
       const missingFields: string[] = [];
       if (!form.customer_name.trim()) missingFields.push("customer_name");
       if (!form.customer_phone.trim()) missingFields.push("customer_phone");
@@ -152,7 +152,7 @@ export function LeadEditForm({
     <form action={action} onSubmit={handleSubmit} className="space-y-4">
       {missing.length > 0 && (
         <Alert kind="error">
-          Missing required fields for Ready to Ship: {missing.map((k) => FIELD_LABELS[k] || k).join(", ")}
+          Missing required fields for Packaging: {missing.map((k) => FIELD_LABELS[k] || k).join(", ")}
         </Alert>
       )}
 

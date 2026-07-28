@@ -186,7 +186,7 @@ function seedDb(): DbShape {
       unit_price: 450,
       total_amount: 450,
       ...ORDER_PANCAKE_DEFAULTS,
-      status: "ready_to_ship" as const,
+      status: "packaging" as const,
       order_date: ymd(today),
       source: "manual" as const,
       notes: "Repeat customer",

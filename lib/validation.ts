@@ -1,9 +1,8 @@
 import { z } from "zod";
 
-// Pre-sale statuses are agent-driven; fulfillment statuses are normally set by
-// Pancake POS sync after the order is forwarded on Ready to Ship (Management
-// can override manually — enforced in lib/lead-workflow.ts).
-export const PRE_SALE_STATUSES = ["new", "ringing", "hung_up", "cbr", "rsrv", "ready_to_ship"] as const;
+// Pre-sale statuses cover the call workflow. `new` sits here because a lead
+// starts there, but agents cannot set it back — see AGENT_EDITABLE_STATUSES.
+export const PRE_SALE_STATUSES = ["new", "ringing", "hung_up", "cbr", "rsrv"] as const;
 
 // Fulfillment statuses mirror Pancake POS's own order statuses one-for-one, in
 // Pancake's pipeline order, so what an agent sees here is what the fulfillment
@@ -39,7 +38,6 @@ export const LEAD_STATUS_LABELS: Record<(typeof LEAD_STATUSES)[number], string> 
   hung_up: "Hung Up",
   cbr: "CBR",
   rsrv: "RSRV",
-  ready_to_ship: "Ready to Ship",
   waiting_confirmation: "Waiting for Confirmation",
   confirmed: "Confirmed",
   restocking: "Restocking",
@@ -58,11 +56,10 @@ export const LEAD_STATUS_LABELS: Record<(typeof LEAD_STATUSES)[number], string> 
   deleted: "Deleted in Pancake",
 };
 
-// Statuses that represent a converted sale: Ready to Ship plus every stage
-// where the sale is still standing. The return path and cancellations are
-// failed sales and stay excluded, so Sales figures don't count them.
+// Statuses that represent a converted sale: Packaging plus every stage where
+// the sale is still standing. The return path and cancellations are failed
+// sales and stay excluded, so Sales figures don't count them.
 export const SALE_STATUSES = [
-  "ready_to_ship",
   "waiting_confirmation",
   "confirmed",
   "restocking",
@@ -76,27 +73,44 @@ export const SALE_STATUSES = [
   "collected_money",
 ] as const;
 
-// Every fulfillment status is downstream of Ready to Ship; a lead must have
-// passed through it at least once (i.e. already have an order_date) before it
-// can move into any of these.
-export const REQUIRES_PRIOR_READY_TO_SHIP = FULFILLMENT_STATUSES;
+/** Packaging is the single "order is ready" status: agents set it, it stamps
+ * the Order Date and it triggers the Pancake forward. Pancake creates the
+ * order at its own Packaging (code 8), so both systems read the same word. */
+export const PACKAGING_STATUS = "packaging" as const;
+
+/** The only statuses a non-full-access user may set. Everything else after
+ * Packaging belongs to Pancake, and `new` is the system's own starting point.
+ * Enforced server-side in lib/lead-workflow.ts — the UI merely matches it. */
+export const AGENT_EDITABLE_STATUSES = ["packaging", "ringing", "hung_up", "cbr", "rsrv"] as const;
+
+// Every fulfillment stage past Packaging is downstream of it; a lead must have
+// passed through Packaging at least once (i.e. already have an order_date)
+// before it can move into any of them.
+export const REQUIRES_PRIOR_PACKAGING = FULFILLMENT_STATUSES.filter((s) => s !== PACKAGING_STATUS);
 
 // Terminal fulfillment statuses: Pancake sync never moves these backward
 // automatically; terminal-to-terminal changes are allowed with a full log.
 export const TERMINAL_STATUSES = ["delivered", "collected_money", "returned", "cancelled", "deleted"] as const;
 
-/** Statuses a user may pick by hand. Fulfillment statuses belong to Pancake
- * sync, so only full-access users get them in a dropdown — everyone else works
- * the pre-sale pipeline and lets Ready to Ship hand the order over. The server
- * enforces the same rule (lead-workflow.ts), this just stops the UI offering
- * choices that would be rejected. `current` is always included so an order
- * already in a fulfillment status still displays its own value. */
+/** Statuses Pancake could still move on, so the polling fallback keeps asking
+ * about them. Derived rather than listed, so a new fulfillment status is
+ * covered automatically. */
+export const POLLABLE_STATUSES = FULFILLMENT_STATUSES.filter(
+  (s) => !(TERMINAL_STATUSES as readonly string[]).includes(s)
+);
+
+/** Statuses a user may pick by hand. Everything past Packaging belongs to
+ * Pancake sync, so only full-access users get those in a dropdown — everyone
+ * else works the call pipeline and lets Packaging hand the order over. The
+ * server enforces the same rule (lead-workflow.ts); this just stops the UI
+ * offering choices that would be rejected with a 403. `current` is always
+ * included so an order already in a fulfillment status still shows its value. */
 export function selectableStatuses(
   userIsFullAccess: boolean,
   current?: string
 ): readonly (typeof LEAD_STATUSES)[number][] {
   if (userIsFullAccess) return LEAD_STATUSES;
-  const base = PRE_SALE_STATUSES as readonly (typeof LEAD_STATUSES)[number][];
+  const base = AGENT_EDITABLE_STATUSES as readonly (typeof LEAD_STATUSES)[number][];
   if (current && !base.includes(current as (typeof LEAD_STATUSES)[number])) {
     return [current as (typeof LEAD_STATUSES)[number], ...base];
   }
@@ -133,13 +147,19 @@ export const PAYMENT_METHOD_SUGGESTIONS = ["COD", "GCash", "Bank Transfer"] as c
 
 export type LeadFormInput = z.infer<typeof leadFormSchema>;
 
-export const READY_TO_SHIP_REQUIRED_FIELDS: { key: keyof LeadFormInput; label: string }[] = [
+/** Everything that must be present before a lead can move to Packaging (and
+ * therefore be sent to Pancake). Fields the agent cannot see — shipping fee,
+ * payment method, courier — are deliberately absent: they come from the
+ * integration defaults at forward time, and a missing default is a Management
+ * problem raised as Needs Review, never a blocker on the agent's action. */
+export const PACKAGING_REQUIRED_FIELDS: { key: keyof LeadFormInput; label: string }[] = [
   { key: "customer_name", label: "Customer Name" },
   { key: "customer_phone", label: "Phone Number" },
-  { key: "barangay", label: "Barangay" },
-  { key: "city", label: "City" },
+  { key: "purok", label: "Address / Purok" },
   { key: "province", label: "Province" },
-  { key: "product_id", label: "New Product Order" },
+  { key: "city", label: "City / Municipality" },
+  { key: "barangay", label: "Barangay" },
+  { key: "product_id", label: "Product" },
   { key: "unit_price", label: "Unit Price" },
 ];
 

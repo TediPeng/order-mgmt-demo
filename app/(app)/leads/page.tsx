@@ -8,6 +8,8 @@ import { Button, LinkButton } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
 import { LeadsTable } from "@/components/LeadsTable";
+import { AgentLeadsTable } from "@/components/AgentLeadsTable";
+import { LeadStatusCards, QUICK_FILTER_STATUSES } from "@/components/LeadStatusCards";
 import { StatusBadge } from "@/components/ui/Badge";
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, PRE_SALE_STATUSES } from "@/lib/validation";
 import type { OrderStatus } from "@/lib/types";
@@ -52,18 +54,19 @@ export default async function LeadsPage({
   // everyone. Every other filter param is Agent-only-rejected per Section 3.
   if (sp.status) orders = orders.filter((o) => o.status === sp.status);
 
-  let phoneError: string | null = null;
-
   if (isAgent) {
-    const rawPhone = (sp.phone || "").trim();
-    if (rawPhone) {
-      if (!isValidPhoneQuery(rawPhone)) {
-        phoneError = "Please enter a valid phone number.";
-        // Invalid input: do not run the query, fall back to the unfiltered list.
-      } else {
-        const target = normalizePhone(rawPhone);
-        orders = orders.filter((o) => normalizePhone(o.customer_phone).startsWith(target));
-      }
+    const term = (sp.q || sp.phone || "").trim();
+    if (term) {
+      const lower = term.toLowerCase();
+      const looksLikePhone = isValidPhoneQuery(term);
+      const phoneTarget = looksLikePhone ? normalizePhone(term) : "";
+      orders = orders.filter(
+        (o) =>
+          o.order_number.toLowerCase().includes(lower) ||
+          o.customer_name.toLowerCase().includes(lower) ||
+          (o.tracking_number || "").toLowerCase().includes(lower) ||
+          (looksLikePhone && phoneTarget !== "" && normalizePhone(o.customer_phone).includes(phoneTarget))
+      );
     }
   } else {
     if (sp.q) {
@@ -90,6 +93,16 @@ export default async function LeadsPage({
     if (sp.prev_to) orders = orders.filter((o) => (o.previous_order_date || "") <= sp.prev_to!);
   }
 
+  // Status-card counts are taken from the agent's whole scoped set, before the
+  // status filter is applied, so selecting a card doesn't zero the others. One
+  // pass builds every bucket rather than a query per card.
+  const agentScoped = isAgent ? scopeOrders(user, db.orders, db) : [];
+  const agentTotalLeads = agentScoped.length;
+  const countsByStatus = new Map<string, number>();
+  for (const o of agentScoped) countsByStatus.set(o.status, (countsByStatus.get(o.status) ?? 0) + 1);
+  const agentStatusCounts = QUICK_FILTER_STATUSES.map((s) => ({ status: s, count: countsByStatus.get(s) ?? 0 }));
+  const statusHref = (status?: string) => qs({ status, page: undefined });
+
   const page = Math.max(1, parseInt(sp.page || "1", 10) || 1);
   const totalPages = Math.max(1, Math.ceil(orders.length / PAGE_SIZE));
   const pageOrders = orders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -100,6 +113,7 @@ export default async function LeadsPage({
   const canManageIntegrations = can(user.role, "integrations", "manage", db.role_permissions);
   const agentUsernameById = Object.fromEntries(db.profiles.map((p) => [p.id, p.username]));
   const agentFullNameById = Object.fromEntries(db.profiles.map((p) => [p.id, p.full_name]));
+  const careStaffById = Object.fromEntries(db.profiles.map((p) => [p.id, { name: p.full_name, email: p.email }]));
   const activeProducts = db.products.filter((p) => p.is_active).map((p) => ({ id: p.id, name: p.name, code: p.code, variants: p.variants }));
   const productNameByOrderId = Object.fromEntries(
     pageOrders.map((o) => [o.id, o.product_id ? db.products.find((p) => p.id === o.product_id)?.name || o.product_name : o.product_name])
@@ -161,22 +175,24 @@ export default async function LeadsPage({
           Lead deleted.
         </Alert>
       )}
-      {phoneError && (
-        <Alert kind="error" className="mb-4">
-          {phoneError}
-        </Alert>
-      )}
 
       {isAgent ? (
-        <form className="mb-4 flex gap-3 rounded-lg border border-slate-200 bg-white p-4">
-          <input type="hidden" name="status" value={sp.status || ""} />
-          <div className="flex-1">
-            <Input name="phone" placeholder="Search customer using phone number" defaultValue={sp.phone} />
-          </div>
-          <Button type="submit" variant="secondary">
-            Search
-          </Button>
-        </form>
+        <>
+          <form className="sticky top-0 z-30 mb-4 flex gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <input type="hidden" name="status" value={sp.status || ""} />
+            <div className="flex-1">
+              <Input
+                name="q"
+                placeholder="Search order number, customer name, phone number, or tracking number"
+                defaultValue={sp.q || sp.phone}
+              />
+            </div>
+            <Button type="submit" variant="secondary">
+              Search
+            </Button>
+          </form>
+          <LeadStatusCards counts={agentStatusCounts} total={agentTotalLeads} selected={sp.status} hrefFor={statusHref} />
+        </>
       ) : (
         <form className="mb-4 grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-4">
           <div className="sm:col-span-2">
@@ -238,6 +254,7 @@ export default async function LeadsPage({
         </form>
       )}
 
+      {!isAgent && (
       <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
           <span className="font-semibold uppercase tracking-wide text-slate-400">Pre-sale:</span>
@@ -252,7 +269,18 @@ export default async function LeadsPage({
           ))}
         </div>
       </div>
+      )}
 
+      {isAgent ? (
+        <AgentLeadsTable
+          orders={pageOrders}
+          careStaffById={careStaffById}
+          productNameByOrderId={productNameByOrderId}
+          activeProducts={activeProducts}
+          canEdit={canEdit}
+          initialOpenOrderNumber={sp.open}
+        />
+      ) : (
       <LeadsTable
         orders={pageOrders}
         agentUsernameById={agentUsernameById}
@@ -263,9 +291,11 @@ export default async function LeadsPage({
         canEdit={canEdit}
         canManageIntegrations={canManageIntegrations}
         canSetFulfillmentStatus={isFullAccess(user.role)}
+        canSeeFulfillment={!isAgent}
         fullPageHrefBase={isFullAccess(user.role) ? "/leads" : null}
         initialOpenOrderNumber={sp.open}
       />
+      )}
 
       {totalPages > 1 && (
         <div className="mt-4 flex items-center justify-between text-sm text-slate-500">

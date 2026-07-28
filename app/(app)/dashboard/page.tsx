@@ -107,49 +107,31 @@ export default async function DashboardPage({
       {isAgent && agentStats ? (
         <>
           <DateRangeFilter />
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+          {/* Row 1: volume and value. Row 2: outcomes. Every card links to the
+              matching filtered leads view. */}
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <StatCard label="Total Leads" value={agentStats.totalLeads} href="/leads" />
-            <StatCard label="New Leads" value={agentStats.newLeads} href="/leads?status=new" />
+            <StatCard label="Total Orders" value={agentStats.totalOrders} href="/leads?status=packaging" />
+            <StatCard label="Overall Sales" value={formatCurrency(agentStats.salesAmount)} href="/leads?status=packaging" />
+            <StatCard label="AOV" value={agentStats.aov === null ? formatCurrency(0) : formatCurrency(agentStats.aov)} />
+          </div>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <StatCard
-              label="Delivered Orders"
+              label="Delivered"
               value={agentStats.delivered.count}
               href="/leads?status=delivered"
               accent="text-teal-700"
-              extra={
-                <>
-                  <p>Qty: {agentStats.delivered.quantity}</p>
-                  <p>{formatCurrency(agentStats.delivered.amount)}</p>
-                </>
-              }
+              extra={<p>{formatCurrency(agentStats.delivered.amount)}</p>}
             />
             <StatCard
-              label="Returned Orders"
+              label="Returned"
               value={agentStats.returned.count}
               href="/leads?status=returned"
               accent="text-red-900"
-              extra={
-                <>
-                  <p>Qty: {agentStats.returned.quantity}</p>
-                  <p>{formatCurrency(agentStats.returned.amount)}</p>
-                </>
-              }
+              extra={<p>{formatCurrency(agentStats.returned.amount)}</p>}
             />
-            <StatCard
-              label="RTS Percentage"
-              value={agentStats.rtsPercentage === null ? "—" : `${agentStats.rtsPercentage}%`}
-            />
-            <StatCard label="Ringing Leads" value={agentStats.ringingLeads} href="/leads?status=ringing" />
-            <StatCard
-              label="In Fulfillment"
-              value={fulfillmentTotal}
-              href="/leads"
-              accent="text-indigo-700"
-              extra={fulfillmentBreakdown.map((r) => (
-                <p key={r.status}>
-                  {LEAD_STATUS_LABELS[r.status]}: {r.count}
-                </p>
-              ))}
-            />
+            <StatCard label="RTS %" value={`${agentStats.rtsPercentage}%`} href="/leads?status=returned" />
+            <StatCard label="New Leads" value={agentStats.newLeads} href="/leads?status=new" />
           </div>
         </>
       ) : (
@@ -162,7 +144,7 @@ export default async function DashboardPage({
               <StatCard
                 label="Overall Sales"
                 value={formatCurrency(kpiStats.sales.amount)}
-                href="/leads?status=ready_to_ship"
+                href="/leads?status=packaging"
                 extra={<p>Qty: {kpiStats.sales.quantity}</p>}
               />
               <StatCard

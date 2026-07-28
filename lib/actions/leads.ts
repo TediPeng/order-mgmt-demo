@@ -7,11 +7,12 @@ import { getRequestInfo } from "@/lib/request-info";
 import { orderInScope, allowedAssigneeIds } from "@/lib/order-access";
 import { isFullAccess } from "@/lib/permissions";
 import { requireUser, requirePermission } from "./guards";
-import { leadFormSchema, leadImportRowSchema } from "@/lib/validation";
+import { leadFormSchema, leadImportRowSchema, PACKAGING_STATUS } from "@/lib/validation";
 import { matchAgentByUsername } from "@/lib/agent-match";
 import { todayInTz } from "@/lib/utils";
 import {
-  validateReadyToShip,
+  validatePackaging,
+  restrictedStatusBlockReason,
   pipelineBlockReason,
   computeOrderDate,
   findPreviousOrderInfo,
@@ -67,10 +68,10 @@ export async function createLeadAction(formData: FormData) {
   const blocked = pipelineBlockReason({ order_date: null }, data.status);
   if (blocked) redirect(`/leads/new?error=${encodeURIComponent(blocked)}`);
 
-  if (data.status === "ready_to_ship") {
-    const missing = validateReadyToShip({ ...data, product_id: data.product_id || null });
+  if (data.status === PACKAGING_STATUS) {
+    const missing = validatePackaging({ ...data, product_id: data.product_id || null });
     if (missing.length > 0) {
-      redirect(`/leads/new?error=${encodeURIComponent(`Missing required fields for Ready to Ship: ${missing.join(", ")}`)}`);
+      redirect(`/leads/new?error=${encodeURIComponent(`Missing required fields for Packaging: ${missing.join(", ")}`)}`);
     }
   }
 
@@ -106,7 +107,7 @@ export async function createLeadAction(formData: FormData) {
       shipping_fee: data.shipping_fee ?? null,
     }),
     status: data.status,
-    order_date: data.status === "ready_to_ship" ? today : null,
+    order_date: data.status === PACKAGING_STATUS ? today : null,
     source: "manual",
     ...ORDER_PANCAKE_DEFAULTS,
     shipping_fee: data.shipping_fee ?? null,
@@ -132,9 +133,9 @@ export async function createLeadAction(formData: FormData) {
     ...info,
   });
   await writeDb(db);
-  if (order.status === "ready_to_ship") {
+  if (order.status === PACKAGING_STATUS) {
     // Forward AFTER persisting; the handler has its own duplicate/idempotency guards.
-    await forwardOrderToPancake(order.id, { source: "ready_to_ship_event", triggeredBy: user.id });
+    await forwardOrderToPancake(order.id, { source: "packaging_event", triggeredBy: user.id });
   }
   redirect(`/leads/${order.id}?created=1`);
 }
@@ -143,8 +144,8 @@ export type ApplyLeadUpdateResult =
   | {
       ok: true;
       order: Order;
-      /** Status transitioned INTO ready_to_ship — callers trigger the Pancake forward after writeDb(). */
-      enteredReadyToShip: boolean;
+      /** Status transitioned INTO packaging — callers trigger the Pancake forward after writeDb(). */
+      enteredPackaging: boolean;
       /** Management manually changed the status of an already-forwarded order —
        * callers add a pancake_sync_logs entry with source internal_user. */
       manualFulfillmentOverride: { oldStatus: string; newStatus: string } | null;
@@ -183,19 +184,28 @@ export async function applyLeadUpdate(
   }
   const data = parsed.data;
 
+  // Statuses past Packaging belong to fulfillment. This is an authorization
+  // decision, not a validation one, so it answers 403 — a hidden dropdown
+  // option is not a control, and the same check has to hold for a crafted
+  // request that never went near the UI.
+  if (data.status !== order.status) {
+    const restricted = restrictedStatusBlockReason(data.status, isFullAccess(user.role));
+    if (restricted) return { ok: false, code: "forbidden", error: restricted };
+  }
+
   const blocked = pipelineBlockReason(order, data.status);
   if (blocked) return { ok: false, code: "validation", error: blocked };
 
   const fulfillmentBlocked = fulfillmentOverrideBlockReason(order, data.status, isFullAccess(user.role));
-  if (fulfillmentBlocked) return { ok: false, code: "validation", error: fulfillmentBlocked };
+  if (fulfillmentBlocked) return { ok: false, code: "forbidden", error: fulfillmentBlocked };
 
-  if (data.status === "ready_to_ship") {
-    const missing = validateReadyToShip({ ...data, product_id: data.product_id || null });
+  if (data.status === PACKAGING_STATUS) {
+    const missing = validatePackaging({ ...data, product_id: data.product_id || null });
     if (missing.length > 0) {
       return {
         ok: false,
         code: "validation",
-        error: `Missing required fields for Ready to Ship: ${missing.join(", ")}`,
+        error: `Missing required fields for Packaging: ${missing.join(", ")}`,
       };
     }
     // Second gate: Pancake's own requirements. Checking here means a status
@@ -312,7 +322,7 @@ export async function applyLeadUpdate(
   return {
     ok: true,
     order,
-    enteredReadyToShip: before.status !== "ready_to_ship" && order.status === "ready_to_ship",
+    enteredPackaging: before.status !== PACKAGING_STATUS && order.status === PACKAGING_STATUS,
     manualFulfillmentOverride:
       forwarded && before.status !== order.status ? { oldStatus: before.status, newStatus: order.status } : null,
   };
@@ -321,7 +331,7 @@ export async function applyLeadUpdate(
 /** Post-persist hook shared by the form action and the modal PATCH route:
  * records Management's manual override of a forwarded order (source
  * internal_user) and fires the exactly-once Pancake forward on entering
- * Ready to Ship. Call only AFTER writeDb() succeeded. */
+ * Packaging. Call only AFTER writeDb() succeeded. */
 export async function afterLeadUpdatePersisted(
   user: Profile,
   result: Extract<ApplyLeadUpdateResult, { ok: true }>
@@ -341,8 +351,8 @@ export async function afterLeadUpdatePersisted(
       payload_summary: { note: "Manual status change by Management on a forwarded order" },
     });
   }
-  if (result.enteredReadyToShip) {
-    await forwardOrderToPancake(result.order.id, { source: "ready_to_ship_event", triggeredBy: user.id });
+  if (result.enteredPackaging) {
+    await forwardOrderToPancake(result.order.id, { source: "packaging_event", triggeredBy: user.id });
   }
 }
 

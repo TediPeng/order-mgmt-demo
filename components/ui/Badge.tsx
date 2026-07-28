@@ -25,12 +25,6 @@ export const LEAD_STATUS_STYLES: Record<OrderStatus, LeadStatusStyle> = {
   hung_up: { badge: "bg-red-100 text-red-700", row: "bg-red-50", rowHover: "hover:bg-red-100", header: "bg-red-500" },
   cbr: { badge: "bg-orange-100 text-orange-700", row: "bg-orange-50", rowHover: "hover:bg-orange-100", header: "bg-orange-500" },
   rsrv: { badge: "bg-purple-100 text-purple-700", row: "bg-purple-50", rowHover: "hover:bg-purple-100", header: "bg-purple-500" },
-  ready_to_ship: {
-    badge: "bg-green-100 text-green-700",
-    row: "bg-green-50",
-    rowHover: "hover:bg-green-100",
-    header: "bg-green-500",
-  },
   // Fulfillment (Pancake-driven), in Pancake's own pipeline order. The hues
   // walk warm → cool → green as an order progresses, then to red/grey for the
   // return and cancellation paths, so a glance down a tinted list reads as
@@ -56,11 +50,13 @@ export const LEAD_STATUS_STYLES: Record<OrderStatus, LeadStatusStyle> = {
     header: "bg-zinc-500",
   },
   printed: { badge: "bg-sky-100 text-sky-700", row: "bg-sky-50", rowHover: "hover:bg-sky-100", header: "bg-sky-500" },
+  // Packaging is the agent's "order is ready" action and inherits the green
+  // that Ready to Ship used to carry — it is the milestone on the leads list.
   packaging: {
-    badge: "bg-fuchsia-100 text-fuchsia-700",
-    row: "bg-fuchsia-50",
-    rowHover: "hover:bg-fuchsia-100",
-    header: "bg-fuchsia-500",
+    badge: "bg-green-100 text-green-700",
+    row: "bg-green-50",
+    rowHover: "hover:bg-green-100",
+    header: "bg-green-500",
   },
   waiting_pickup: { badge: "bg-pink-100 text-pink-700", row: "bg-pink-50", rowHover: "hover:bg-pink-100", header: "bg-pink-500" },
   shipped: {

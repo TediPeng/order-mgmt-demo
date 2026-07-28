@@ -26,8 +26,8 @@ export interface Profile {
   created_at: string;
 }
 
-// Pre-sale statuses (new/ringing/hung_up/cbr/rsrv/ready_to_ship) are
-// agent-driven; a lead becomes a sale on entering ready_to_ship (which also
+// Pre-sale statuses (new/ringing/hung_up/cbr/rsrv) are agent-driven; a lead
+// becomes a sale on entering packaging (which also
 // forwards it to Pancake POS), then the fulfillment statuses
 // (confirmed/printed/shipped/in_transit/failed_delivery/delivered/returned/
 // cancelled) are normally driven by Pancake sync — Management may override
@@ -38,7 +38,6 @@ export type OrderStatus =
   | "hung_up"
   | "cbr"
   | "rsrv"
-  | "ready_to_ship"
   // Fulfillment statuses mirror Pancake POS's own set (lib/validation.ts).
   | "waiting_confirmation"
   | "confirmed"
@@ -72,6 +71,12 @@ export const PANCAKE_SYNC_STATUS_LABELS: Record<PancakeSyncStatus, string> = {
 /** Field defaults for a brand-new order that has never been forwarded to
  * Pancake POS — spread into every order-creation site (form, import, seed). */
 export const ORDER_PANCAKE_DEFAULTS = {
+  tag: null,
+  tracking_number: null,
+  province_code: null,
+  city_code: null,
+  barangay_code: null,
+  address_needs_review: false,
   shipping_fee: null,
   courier: null,
   payment_method: null,
@@ -115,7 +120,7 @@ export interface Order {
   // Grand total: unit_price * quantity - discount + shipping_fee.
   total_amount: number;
   status: OrderStatus;
-  // Date the lead most recently entered ready_to_ship; overwritten each time it
+  // Date the lead most recently entered packaging; overwritten each time it
   // re-enters. Blank until then, regardless of created_at.
   order_date: string | null;
   source: "manual" | "import";
@@ -127,6 +132,17 @@ export interface Order {
   // Optional routing tag: resolves which Pancake account receives the order
   // (priority: assigned agent -> agent's team -> order_source -> default).
   order_source: string | null;
+  // Free-text tag: Management/Team Lead edit it, agents only read it.
+  tag: string | null;
+  // Written only by the integration; shows "Not Available" until synced.
+  tracking_number: string | null;
+  // PSGC codes alongside the display names, carrying the authoritative
+  // province -> city -> barangay relationships.
+  province_code: string | null;
+  city_code: string | null;
+  barangay_code: string | null;
+  // Legacy free-text address that could not be matched to PSGC on migration.
+  address_needs_review: boolean;
   // Pancake POS sync state. Managed by lib/pancake/*; the DbShape write path
   // carries these along unchanged.
   // Stable external reference sent to Pancake (defaults to order_number).
@@ -427,7 +443,8 @@ export type PancakeSyncSource =
   | "manual_sync"
   | "internal_user"
   | "auto_retry"
-  | "ready_to_ship_event";
+  | "ready_to_ship_event" // historical: renamed to packaging_event
+  | "packaging_event";
 
 export interface PancakeSyncLog {
   id: string;

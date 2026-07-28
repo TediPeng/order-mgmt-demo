@@ -1,5 +1,6 @@
 import { v4 as uuid } from "uuid";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { POLLABLE_STATUSES } from "@/lib/validation";
 import type {
   Order,
   PancakeAccount,
@@ -211,14 +212,14 @@ export async function findForwardedOrdersByPhone(phone: string): Promise<Order[]
 }
 
 /** Orders the polling cron should check: forwarded, in a non-terminal
- * fulfillment state (or still ready_to_ship awaiting confirmation). */
+ * fulfillment state — anything Pancake could still move on. */
 export async function listOrdersForPolling(): Promise<Order[]> {
   const { data, error } = await supabaseAdmin
     .from("orders")
     .select("*")
     .eq("pancake_sync_status", "synced")
     .not("pancake_order_id", "is", null)
-    .in("status", ["ready_to_ship", "confirmed", "printed", "shipped", "in_transit", "failed_delivery"]);
+    .in("status", POLLABLE_STATUSES as unknown as string[]);
   if (error) throw new Error(`orders read failed: ${error.message}`);
   return (data || []).map(mapOrder);
 }

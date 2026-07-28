@@ -86,7 +86,7 @@ export default async function NewLeadPage({
               </div>
             </div>
             <p className="-mt-2 text-xs text-slate-400">
-              Leave blank to auto-fill from this customer&apos;s most recent Ready to Ship lead, matched by phone number.
+              Leave blank to auto-fill from this customer&apos;s most recent packaged lead, matched by phone number.
             </p>
 
             <div className="grid grid-cols-2 gap-4">
@@ -138,7 +138,7 @@ export default async function NewLeadPage({
             <div>
               <Label htmlFor="status">Status</Label>
               {/* Fulfillment statuses are Pancake-driven and require a prior
-                  Ready to Ship — a brand-new lead can only start pre-sale. */}
+                  Packaging — a brand-new lead can only start pre-sale. */}
               <Select id="status" name="status" defaultValue="new">
                 {PRE_SALE_STATUSES.map((s) => (
                   <option key={s} value={s}>

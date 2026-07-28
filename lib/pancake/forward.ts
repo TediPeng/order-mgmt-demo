@@ -4,6 +4,7 @@ import { buildForwardPayload } from "./types";
 import { createOrder } from "./createOrder";
 import { CREATE_STATUS_PACKAGING_LABEL } from "./config";
 import { validateForPancake } from "./validate";
+import { PACKAGING_STATUS } from "@/lib/validation";
 import {
   claimOrderForSync,
   getOrderRow,
@@ -26,7 +27,7 @@ export interface ForwardResult {
   fieldErrors?: { field: string; message: string }[];
 }
 
-/** Records a terminal failure: internal status stays Ready to Ship, only the
+/** Records a terminal failure: internal status stays Packaging, only the
  * sync state moves. Shared by every failure path so none of them can leave an
  * order stranded in `syncing`. */
 async function failSync(
@@ -89,9 +90,9 @@ export async function forwardOrderToPancake(
   const order = await getOrderRow(orderId);
   if (!order) return { ok: false, skipped: true, message: "Order not found." };
 
-  // Hard guard: only Ready to Ship is ever sent.
-  if (order.status !== "ready_to_ship") {
-    return { ok: false, skipped: true, message: "Only Ready to Ship orders are sent to Pancake POS." };
+  // Hard guard: only Packaging is ever sent.
+  if (order.status !== PACKAGING_STATUS) {
+    return { ok: false, skipped: true, message: "Only Packaging orders are sent to Pancake POS." };
   }
 
   // --- Duplicate prevention -------------------------------------------------

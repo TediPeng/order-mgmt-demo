@@ -1,11 +1,20 @@
-import { READY_TO_SHIP_REQUIRED_FIELDS, REQUIRES_PRIOR_READY_TO_SHIP, LEAD_STATUS_LABELS } from "@/lib/validation";
+import {
+  PACKAGING_REQUIRED_FIELDS,
+  REQUIRES_PRIOR_PACKAGING,
+  LEAD_STATUS_LABELS,
+  PACKAGING_STATUS,
+  AGENT_EDITABLE_STATUSES,
+} from "@/lib/validation";
 import { normalizePhone } from "@/lib/utils";
 import type { DbShape, Order, OrderStatus } from "@/lib/types";
 
-/** Missing-field labels blocking a transition into Ready to Ship (Section 11). */
-export function validateReadyToShip(candidate: {
+/** Missing-field labels blocking a transition into Packaging. Address codes are
+ * checked here for presence only; whether the province/city/barangay actually
+ * nest is a database question, answered by validateAddressCodes in lib/psgc.ts. */
+export function validatePackaging(candidate: {
   customer_name: string;
   customer_phone: string;
+  purok?: string;
   barangay: string;
   city: string;
   province: string;
@@ -15,32 +24,44 @@ export function validateReadyToShip(candidate: {
   const values: Record<string, unknown> = {
     customer_name: candidate.customer_name,
     customer_phone: candidate.customer_phone,
+    purok: candidate.purok,
     barangay: candidate.barangay,
     city: candidate.city,
     province: candidate.province,
     product_id: candidate.product_id,
     unit_price: candidate.unit_price,
   };
-  return READY_TO_SHIP_REQUIRED_FIELDS.filter(({ key }) => {
+  return PACKAGING_REQUIRED_FIELDS.filter(({ key }) => {
     const v = values[key];
-    if (key === "unit_price") return v === null || v === undefined;
+    // Unit Price must be present AND greater than zero.
+    if (key === "unit_price") return v === null || v === undefined || Number(v) <= 0;
     return !String(v ?? "").trim();
   }).map((f) => f.label);
 }
 
-/** Printed/Shipped/Delivered/Returned are downstream of Ready to Ship — a lead
- * must already have an order_date (i.e. have passed through Ready to Ship at
- * least once) before it can move into any of them. */
+/** Every fulfillment stage past Packaging is downstream of it — a lead must
+ * already have an order_date (i.e. have passed through Packaging at least once)
+ * before it can move into any of them. */
 export function pipelineBlockReason(order: Pick<Order, "order_date">, newStatus: OrderStatus): string | null {
-  if ((REQUIRES_PRIOR_READY_TO_SHIP as readonly string[]).includes(newStatus) && !order.order_date) {
-    return `This lead must pass through Ready to Ship before it can be marked as ${LEAD_STATUS_LABELS[newStatus]}.`;
+  if ((REQUIRES_PRIOR_PACKAGING as readonly string[]).includes(newStatus) && !order.order_date) {
+    return `This lead must pass through Packaging before it can be marked as ${LEAD_STATUS_LABELS[newStatus]}.`;
   }
   return null;
 }
 
-/** Once an order has been forwarded to Pancake POS, its status is normally
- * driven by Pancake sync — manual changes are Management-only (Section 0.1).
- * Pre-forward leads are unaffected. */
+/** Statuses past Packaging belong to Pancake sync, so only full-access users
+ * may set them by hand — at any point in the lead's life, not just after it has
+ * been forwarded. Callers turn this into a 403. */
+export function restrictedStatusBlockReason(newStatus: OrderStatus, userIsFullAccess: boolean): string | null {
+  if (userIsFullAccess) return null;
+  if ((AGENT_EDITABLE_STATUSES as readonly string[]).includes(newStatus)) return null;
+  return `${LEAD_STATUS_LABELS[newStatus]} is set by fulfillment, not by agents. You can set ${AGENT_EDITABLE_STATUSES.map(
+    (s) => LEAD_STATUS_LABELS[s]
+  ).join(", ")}.`;
+}
+
+/** Once an order has been forwarded to Pancake POS, its status is driven by
+ * sync — manual changes are Management-only. Pre-forward leads are unaffected. */
 export function fulfillmentOverrideBlockReason(
   order: Pick<Order, "pancake_order_id" | "forwarded_to_pancake_at" | "status">,
   newStatus: OrderStatus,
@@ -51,24 +72,26 @@ export function fulfillmentOverrideBlockReason(
   return "This order was forwarded to Pancake POS; its status is managed by sync. Only Management can change it manually.";
 }
 
-/** Order Date is stamped/overwritten only when entering ready_to_ship (including
- * re-entry — latest Ready-to-Ship date wins); every other transition leaves it untouched. */
+/** Order Date is stamped/overwritten only when entering Packaging (including
+ * re-entry — the latest Packaging date wins); every other transition leaves it
+ * untouched. */
 export function computeOrderDate(order: Pick<Order, "order_date">, newStatus: OrderStatus, today: string): string | null {
-  if (newStatus === "ready_to_ship") return today;
+  if (newStatus === PACKAGING_STATUS) return today;
   return order.order_date;
 }
 
-/** Most recent Ready-to-Ship lead for this phone number (normalized), used to
- * auto-fill Previous Order Date/Product/Amount when the file/form doesn't supply them. */
+/** Most recent packaged lead for this phone number (normalized), used to
+ * auto-fill Previous Order Date/Product/Amount when the file/form doesn't
+ * supply them. Any lead with an order_date has reached Packaging, so the date
+ * is the marker rather than the current status — an order that has since moved
+ * on to Shipped or Delivered still counts as a previous order. */
 export function findPreviousOrderInfo(
   db: DbShape,
   phone: string
 ): { date: string; product: string; amount: number } | null {
   const target = normalizePhone(phone);
   if (!target) return null;
-  const candidates = db.orders.filter(
-    (o) => o.status === "ready_to_ship" && o.order_date && normalizePhone(o.customer_phone) === target
-  );
+  const candidates = db.orders.filter((o) => o.order_date && normalizePhone(o.customer_phone) === target);
   if (candidates.length === 0) return null;
   candidates.sort((a, b) => (b.order_date as string).localeCompare(a.order_date as string));
   const best = candidates[0];

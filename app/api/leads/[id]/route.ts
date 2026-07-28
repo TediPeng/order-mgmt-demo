@@ -36,6 +36,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   await afterLeadUpdatePersisted(user, result);
   // The forward may have just updated sync fields — return the fresh row so
   // the modal's sync chip is current without an extra refresh.
-  const fresh = result.enteredReadyToShip ? await getOrderRow(id) : null;
+  const fresh = result.enteredPackaging ? await getOrderRow(id) : null;
   return NextResponse.json({ ok: true, order: fresh || result.order });
 }

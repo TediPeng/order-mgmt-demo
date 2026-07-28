@@ -144,8 +144,7 @@ function withRates(row: AgentDailyRow): AgentAggRow {
   return {
     ...row,
     conversion_rate: row.calls > 0 ? Math.round((row.orders / row.calls) * 10000) / 100 : null,
-    // AOV = Total Sales Amount / Total Order Quantity (Section 0.3) -- not order count.
-    aov: row.quantity > 0 ? Math.round((row.amount / row.quantity) * 100) / 100 : null,
+    aov: row.orders > 0 ? Math.round((row.amount / row.orders) * 100) / 100 : null,
   };
 }
 
@@ -235,8 +234,7 @@ export function totalsByAgent(rows: AgentDailyRow[]): AgentTotals[] {
   }
   for (const acc of map.values()) {
     acc.conversion_rate = acc.calls > 0 ? Math.round((acc.orders / acc.calls) * 10000) / 100 : null;
-    // AOV = Total Sales Amount / Total Order Quantity (Section 0.3) -- not order count.
-    acc.aov = acc.quantity > 0 ? Math.round((acc.amount / acc.quantity) * 100) / 100 : null;
+    acc.aov = acc.orders > 0 ? Math.round((acc.amount / acc.orders) * 100) / 100 : null;
     acc.return_rate = acc.orders > 0 ? Math.round((acc.returned / acc.orders) * 10000) / 100 : null;
   }
   return Array.from(map.values());
@@ -246,9 +244,15 @@ export interface AgentDashboardStats {
   totalLeads: number;
   newLeads: number;
   ringingLeads: number;
+  /** Leads that reached Packaging in the period (i.e. have an Order Date). */
+  totalOrders: number;
+  /** Value of those orders. */
+  salesAmount: number;
+  /** Sales / Total Orders — an order-count basis, consistent system-wide. */
+  aov: number | null;
   delivered: { count: number; quantity: number; amount: number };
   returned: { count: number; quantity: number; amount: number };
-  rtsPercentage: number | null;
+  rtsPercentage: number;
 }
 
 export interface QtyAmount {
@@ -267,18 +271,19 @@ function aggregateByStatusAndOrderDate(orders: Order[], status: Order["status"],
   };
 }
 
-/** RTS % (Section 0.1, supersedes the earlier Ready-to-Ship-rate definition):
- * Returned Quantity / Delivered Quantity x 100 -- a return-to-sender rate.
- * "—" (null) when Delivered quantity is 0. Lower is better. */
-export function computeRtsPercentage(deliveredQty: number, returnedQty: number): number | null {
-  return deliveredQty > 0 ? Math.round((returnedQty / deliveredQty) * 10000) / 100 : null;
+/** RTS % — Returned Orders / Delivered Orders x 100, a return-to-sender rate on
+ * an order-count basis. Reports 0 rather than "no data" when nothing has been
+ * delivered, so every screen shows a number. Lower is better. */
+export function computeRtsPercentage(deliveredOrders: number, returnedOrders: number): number {
+  if (deliveredOrders <= 0) return 0;
+  return Math.round((returnedOrders / deliveredOrders) * 10000) / 100;
 }
 
 /** Stats for the Agent dashboard cards, scoped to one agent's own leads and a
- * date range (inclusive, YYYY-MM-DD). Total/New/Ringing bucket by created_at
- * (the only date a pre-RTS lead has); Delivered/Returned bucket by order_date,
- * matching the convention used for performance/ranking (order_date is the
- * Ready-to-Ship date and isn't touched by later Delivered/Returned changes). */
+ * date range (inclusive, YYYY-MM-DD). Total Leads/New/Ringing bucket by
+ * created_at — the only date a lead has before Packaging. Total Orders, Sales,
+ * Delivered and Returned bucket by order_date, the Packaging date, which later
+ * status changes never rewrite. */
 export function computeAgentDashboardStats(db: DbShape, agentId: string, from: string, to: string): AgentDashboardStats {
   const own = db.orders.filter((o) => o.agent_id === agentId);
 
@@ -290,6 +295,12 @@ export function computeAgentDashboardStats(db: DbShape, agentId: string, from: s
   const newLeads = cohort.filter((o) => o.status === "new").length;
   const ringingLeads = cohort.filter((o) => o.status === "ringing").length;
 
+  // Total Orders = reached Packaging in the period. Keyed off order_date, not
+  // the current status, so an order that has since shipped still counts.
+  const packagedInPeriod = own.filter((o) => o.order_date && o.order_date >= from && o.order_date <= to);
+  const totalOrders = packagedInPeriod.length;
+  const salesAmount = packagedInPeriod.reduce((s, o) => s + o.total_amount, 0);
+
   const delivered = aggregateByStatusAndOrderDate(own, "delivered", from, to);
   const returned = aggregateByStatusAndOrderDate(own, "returned", from, to);
 
@@ -297,9 +308,12 @@ export function computeAgentDashboardStats(db: DbShape, agentId: string, from: s
     totalLeads,
     newLeads,
     ringingLeads,
+    totalOrders,
+    salesAmount,
+    aov: totalOrders > 0 ? Math.round((salesAmount / totalOrders) * 100) / 100 : null,
     delivered,
     returned,
-    rtsPercentage: computeRtsPercentage(delivered.quantity, returned.quantity),
+    rtsPercentage: computeRtsPercentage(delivered.count, returned.count),
   };
 }
 
@@ -328,7 +342,7 @@ export interface ManagementKpiStats {
   delivered: QtyAmount;
   returned: QtyAmount;
   aov: number | null;
-  rtsPercentage: number | null;
+  rtsPercentage: number;
 }
 
 /** Stats for the Management/Team Lead KPI dashboard (Section 1), over an
@@ -358,8 +372,8 @@ export function computeManagementKpiStats(orders: Order[], from: string, to: str
     sales,
     delivered,
     returned,
-    aov: salesQuantity > 0 ? Math.round((salesAmount / salesQuantity) * 100) / 100 : null,
-    rtsPercentage: computeRtsPercentage(delivered.quantity, returned.quantity),
+    aov: sales.count > 0 ? Math.round((salesAmount / sales.count) * 100) / 100 : null,
+    rtsPercentage: computeRtsPercentage(delivered.count, returned.count),
   };
 }
 

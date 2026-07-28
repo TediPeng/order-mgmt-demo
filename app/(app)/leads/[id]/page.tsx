@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { readDb } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
@@ -36,7 +36,7 @@ export default async function LeadDetailPage({
   if (!order) notFound();
 
   const user = (await getCurrentUser())!;
-  if (!orderInScope(user, order, db)) notFound();
+  if (!orderInScope(user, order, db)) redirect("/forbidden");
 
   const canEdit = can(user.role, "orders", "edit", db.role_permissions);
   const canDelete = can(user.role, "orders", "delete", db.role_permissions);
@@ -54,10 +54,12 @@ export default async function LeadDetailPage({
     .filter((e) => e.entity_id === order.id && e.module === "orders")
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
 
+  const canSeeFulfillment = isFullAccess(user.role) || user.role === "team_lead";
   const wasForwarded =
-    order.status === "ready_to_ship" ||
+    canSeeFulfillment &&
+    (order.status === "packaging" ||
     Boolean(order.pancake_order_id || order.forwarded_to_pancake_at) ||
-    order.pancake_sync_status !== "not_synced";
+      order.pancake_sync_status !== "not_synced");
   const syncLogs = wasForwarded ? await listSyncLogs({ order_id: order.id, limit: 25 }) : [];
   const pancakeAccount = order.pancake_pos_account_id ? await getAccount(order.pancake_pos_account_id) : null;
 

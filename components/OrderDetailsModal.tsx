@@ -98,7 +98,7 @@ interface SyncHistoryEntry {
   source: string | null;
 }
 
-const MISSING_PREFIX = "Missing required fields for Ready to Ship: ";
+const MISSING_PREFIX = "Missing required fields for Packaging: ";
 
 const STEPS = [
   { n: 1 as const, label: "Customer" },
@@ -114,6 +114,7 @@ export function OrderDetailsModal({
   activeProducts,
   canEdit,
   canManageIntegrations = false,
+  canSeeFulfillment = false,
   canSetFulfillmentStatus = false,
   fullPageHref,
   onClose,
@@ -126,6 +127,8 @@ export function OrderDetailsModal({
   activeProducts: { id: string; name: string; code: string | null; variants?: string[] | null }[];
   canEdit: boolean;
   canManageIntegrations?: boolean;
+  /** Fulfillment/Pancake surface is hidden from agents entirely. */
+  canSeeFulfillment?: boolean;
   /** Full-access users may set Pancake-owned fulfillment statuses by hand. */
   canSetFulfillmentStatus?: boolean;
   fullPageHref: string | null;
@@ -148,12 +151,15 @@ export function OrderDetailsModal({
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState(false);
 
-  // The sync panel appears once the order has reached Ready to Ship (Section 4
+  // The sync panel appears once the order has reached Packaging (Section 4
   // step 5) — before that there is nothing to sync and nothing to report.
+  // Agents never see it at all: Pancake sync is fulfillment surface, and the
+  // data behind it is withheld from the agent payload server-side too.
   const showSyncPanel =
-    order.status === "ready_to_ship" ||
-    Boolean(order.pancake_order_id || order.forwarded_to_pancake_at) ||
-    order.pancake_sync_status !== "not_synced";
+    canSeeFulfillment &&
+    (order.status === "packaging" ||
+      Boolean(order.pancake_order_id || order.forwarded_to_pancake_at) ||
+      order.pancake_sync_status !== "not_synced");
   const syncNeedsReview = order.pancake_sync_status === "sync_failed" && order.pancake_retry_count >= MAX_ATTEMPTS;
 
   async function copyPancakeOrderId() {
@@ -345,7 +351,7 @@ export function OrderDetailsModal({
         <div className="space-y-4 p-5">
           {error && <Alert kind="error">{error}</Alert>}
           {missing.length > 0 && (
-            <Alert kind="error">Missing required fields for Ready to Ship: {missing.join(", ")}</Alert>
+            <Alert kind="error">Missing required fields for Packaging: {missing.join(", ")}</Alert>
           )}
 
           <div className="grid grid-cols-2 gap-3 text-sm">
@@ -581,7 +587,7 @@ export function OrderDetailsModal({
                     <Alert kind="success">All required fields are present — this order is ready to send to Pancake POS.</Alert>
                   ) : (
                     <Alert kind="error">
-                      <p className="font-medium">Complete these before Ready to Ship:</p>
+                      <p className="font-medium">Complete these before Packaging:</p>
                       <ul className="mt-1 list-inside list-disc">
                         {pancakeCheck.errors.map((e) => (
                           <li key={e.field}>{e.message}</li>
@@ -618,9 +624,9 @@ export function OrderDetailsModal({
                     <Label htmlFor="m_status">Status</Label>
                     <Select id="m_status" value={form.status} onChange={(e) => update("status", e.target.value)}>
                       {selectableStatuses(canSetFulfillmentStatus, order.status).map((s) => (
-                        <option key={s} value={s} disabled={s === "ready_to_ship" && !pancakeCheck.ok}>
+                        <option key={s} value={s} disabled={s === "packaging" && !pancakeCheck.ok}>
                           {LEAD_STATUS_LABELS[s]}
-                          {s === "ready_to_ship" && !pancakeCheck.ok ? " (fields missing)" : ""}
+                          {s === "packaging" && !pancakeCheck.ok ? " (fields missing)" : ""}
                         </option>
                       ))}
                     </Select>
@@ -629,9 +635,9 @@ export function OrderDetailsModal({
                         Fulfillment statuses are set by Pancake POS once the order is sent.
                       </p>
                     )}
-                    {form.status === "ready_to_ship" && (
+                    {form.status === "packaging" && (
                       <p className="mt-1 text-xs text-slate-500">
-                        Saving with Ready to Ship sends this order to Pancake POS.
+                        Saving with Packaging sends this order to Pancake POS.
                       </p>
                     )}
                   </div>
