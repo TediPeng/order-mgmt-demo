@@ -10,7 +10,7 @@ import { isFullAccess } from "@/lib/permissions";
 import { requireUser, requirePermission } from "./guards";
 import { leadFormSchema, leadImportRowSchema, PACKAGING_STATUS, PRE_SALE_STATUSES } from "@/lib/validation";
 import { matchAgentByCallName } from "@/lib/agent-match";
-import { todayInTz } from "@/lib/utils";
+import { todayInTz, restoreTrunkZero } from "@/lib/utils";
 import {
   validatePackaging,
   restrictedStatusBlockReason,
@@ -605,7 +605,7 @@ export async function importLeadsAction(
       id: uuid(),
       order_number: nextOrderNumber(db),
       customer_name: data.customer_name,
-      customer_phone: data.customer_phone,
+      customer_phone: restoreTrunkZero(data.customer_phone),
       purok: data.purok || "",
       barangay: data.barangay || "",
       city: data.city || "",

@@ -55,6 +55,17 @@ export function normalizePhone(phone: string): string {
   return digits;
 }
 
+/** Restores the trunk "0" Excel drops from a phone typed as a number.
+ *
+ * A spreadsheet treats 09955853393 as numeric and stores 9955853393, losing
+ * the leading zero before the file ever reaches us. A bare 10-digit PH mobile
+ * begins with 9, so the missing prefix is unambiguous and is restored; anything
+ * else is returned untouched rather than guessed at. */
+export function restoreTrunkZero(phone: string): string {
+  const trimmed = phone.trim();
+  return /^9\d{9}$/.test(trimmed) ? `0${trimmed}` : trimmed;
+}
+
 /** Canonical stored form of a PH mobile number: +639XXXXXXXXX.
  *
  * normalizePhone() strips the trunk prefix for comparison and is what existing

@@ -166,18 +166,38 @@ export const PACKAGING_REQUIRED_FIELDS: { key: keyof LeadFormInput; label: strin
   { key: "unit_price", label: "Unit Price" },
 ];
 
+/** A spreadsheet cell as text.
+ *
+ * Excel decides a cell's type for itself: a phone number typed as digits
+ * arrives as a `number`, an empty cell as `null`, a date as a `Date`. Requiring
+ * a string here rejected such rows with a bare "Invalid input" — blaming a file
+ * that was in fact filled in correctly. Coerce instead, and let the per-field
+ * rules below decide what is actually missing. */
+const textCell = z.preprocess((v) => {
+  if (v === null || v === undefined) return "";
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  return String(v).trim();
+}, z.string());
+
+/** A numeric cell, tolerant of the number arriving as text ("399", "1,299"). */
+const numberCell = z.preprocess((v) => {
+  if (v === null || v === undefined || String(v).trim() === "") return null;
+  const n = Number(String(v).replace(/,/g, ""));
+  return Number.isFinite(n) ? n : v;
+}, z.number({ message: "Previous Order Amount must be a number" }).nonnegative("Previous Order Amount must be zero or more").nullable());
+
 export const leadImportRowSchema = z.object({
-  agent_name: z.string().trim().optional().default(""),
-  customer_name: z.string().trim().min(1, "Customer Name is required"),
-  customer_phone: z.string().trim().optional().default(""),
-  purok: z.string().trim().optional().default(""),
-  barangay: z.string().trim().optional().default(""),
-  city: z.string().trim().optional().default(""),
-  province: z.string().trim().optional().default(""),
-  landmark: z.string().trim().optional().default(""),
-  previous_order_date: z.string().trim().optional().default(""),
-  previous_order_product: z.string().trim().optional().default(""),
-  previous_order_amount: z.number().nonnegative("Previous Order Amount must be zero or more").optional().nullable(),
+  agent_name: textCell,
+  customer_name: textCell.refine((v) => v.length > 0, "Customer Name is required"),
+  customer_phone: textCell,
+  purok: textCell,
+  barangay: textCell,
+  city: textCell,
+  province: textCell,
+  landmark: textCell,
+  previous_order_date: textCell,
+  previous_order_product: textCell,
+  previous_order_amount: numberCell,
 });
 
 export const LEAD_IMPORT_HEADERS = [
