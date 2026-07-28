@@ -1,4 +1,5 @@
-import { cn, formatCurrency, initials } from "@/lib/utils";
+import { cn, formatCurrency, } from "@/lib/utils";
+import { Avatar } from "@/components/ui/Avatar";
 
 export interface RankingRow {
   agent_id: string;
@@ -37,14 +38,7 @@ export function RankingBars({
             )}
           >
             <span className="w-6 shrink-0 text-center text-sm font-semibold text-slate-500">#{idx + 1}</span>
-            {r.avatar_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={r.avatar_url} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" />
-            ) : (
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--brand-primary-10)] text-xs font-semibold text-[var(--brand-primary)]">
-                {initials(r.full_name)}
-              </div>
-            )}
+            <Avatar name={r.full_name} src={r.avatar_url} size="md" />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <p className="truncate text-sm font-medium text-slate-800">{r.full_name}</p>

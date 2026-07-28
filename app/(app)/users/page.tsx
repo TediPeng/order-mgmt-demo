@@ -6,6 +6,7 @@ import { formatDate } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Input, Label, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
+import { Avatar } from "@/components/ui/Avatar";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
@@ -140,7 +141,12 @@ export default async function UsersPage({
               return (
                 <tr key={u.id}>
                   <td className="px-4 py-3 font-medium text-slate-800">{u.username}</td>
-                  <td className="px-4 py-3">{u.full_name}</td>
+                  <td className="px-4 py-3">
+                    <span className="flex items-center gap-2">
+                      <Avatar name={u.full_name} src={u.avatar_url} size="sm" />
+                      {u.full_name}
+                    </span>
+                  </td>
                   <td className="px-4 py-3">
                     {isFullAccess(u.role) ? (
                       <Badge className="bg-[var(--brand-primary-10)] text-[var(--brand-primary)]">

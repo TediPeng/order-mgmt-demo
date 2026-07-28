@@ -1,7 +1,7 @@
 import { LogOut } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { logoutAction } from "@/lib/actions/auth";
-import { initials } from "@/lib/utils";
+import { Avatar } from "@/components/ui/Avatar";
 import { NotificationBell } from "./NotificationBell";
 import type { AppNotification, Profile } from "@/lib/types";
 
@@ -24,9 +24,7 @@ export function Topbar({
           <p className="text-sm font-medium text-slate-800">{user.full_name}</p>
           <p className="text-xs text-slate-400">{roleName}</p>
         </div>
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--brand-primary-10)] text-xs font-semibold text-[var(--brand-primary)]">
-          {initials(user.full_name)}
-        </div>
+        <Avatar name={user.full_name} src={user.avatar_url} size="md" />
         <form action={logoutAction}>
           <button
             type="submit"
