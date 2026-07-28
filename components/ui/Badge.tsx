@@ -31,31 +31,59 @@ export const LEAD_STATUS_STYLES: Record<OrderStatus, LeadStatusStyle> = {
     rowHover: "hover:bg-green-100",
     header: "bg-green-500",
   },
-  // Fulfillment (Pancake-driven). Confirmed takes cyan per the integration
-  // spec; legacy Printed moved to sky to stay distinguishable.
+  // Fulfillment (Pancake-driven), in Pancake's own pipeline order. The hues
+  // walk warm → cool → green as an order progresses, then to red/grey for the
+  // return and cancellation paths, so a glance down a tinted list reads as
+  // progress. Confirmed keeps cyan per the integration spec.
+  waiting_confirmation: {
+    badge: "bg-amber-100 text-amber-800",
+    row: "bg-amber-50",
+    rowHover: "hover:bg-amber-100",
+    header: "bg-amber-500",
+  },
   confirmed: { badge: "bg-cyan-100 text-cyan-700", row: "bg-cyan-50", rowHover: "hover:bg-cyan-100", header: "bg-cyan-500" },
+  restocking: { badge: "bg-lime-100 text-lime-800", row: "bg-lime-50", rowHover: "hover:bg-lime-100", header: "bg-lime-600" },
+  purchased: {
+    badge: "bg-violet-100 text-violet-700",
+    row: "bg-violet-50",
+    rowHover: "hover:bg-violet-100",
+    header: "bg-violet-500",
+  },
+  wait_for_printing: {
+    badge: "bg-zinc-200 text-zinc-800",
+    row: "bg-zinc-100",
+    rowHover: "hover:bg-zinc-200",
+    header: "bg-zinc-500",
+  },
   printed: { badge: "bg-sky-100 text-sky-700", row: "bg-sky-50", rowHover: "hover:bg-sky-100", header: "bg-sky-500" },
+  packaging: {
+    badge: "bg-fuchsia-100 text-fuchsia-700",
+    row: "bg-fuchsia-50",
+    rowHover: "hover:bg-fuchsia-100",
+    header: "bg-fuchsia-500",
+  },
+  waiting_pickup: { badge: "bg-pink-100 text-pink-700", row: "bg-pink-50", rowHover: "hover:bg-pink-100", header: "bg-pink-500" },
   shipped: {
     badge: "bg-indigo-100 text-indigo-700",
     row: "bg-indigo-50",
     rowHover: "hover:bg-indigo-100",
     header: "bg-indigo-500",
   },
-  // Amber, a deliberately different shade family from Ringing's yellow.
-  in_transit: {
-    badge: "bg-amber-200 text-amber-900",
-    row: "bg-amber-100/70",
-    rowHover: "hover:bg-amber-200",
-    header: "bg-amber-600",
+  delivered: { badge: "bg-teal-100 text-teal-700", row: "bg-teal-50", rowHover: "hover:bg-teal-100", header: "bg-teal-500" },
+  collected_money: {
+    badge: "bg-emerald-100 text-emerald-800",
+    row: "bg-emerald-50",
+    rowHover: "hover:bg-emerald-100",
+    header: "bg-emerald-600",
   },
-  // Brown/dark orange, darker than CBR's orange.
-  failed_delivery: {
+  // Return path: rose then a heavier orange, both distinct from CBR's orange.
+  returning: { badge: "bg-rose-100 text-rose-700", row: "bg-rose-50", rowHover: "hover:bg-rose-100", header: "bg-rose-500" },
+  partial_return: {
     badge: "bg-orange-200 text-orange-950",
     row: "bg-orange-100",
     rowHover: "hover:bg-orange-200",
     header: "bg-orange-800",
   },
-  delivered: { badge: "bg-teal-100 text-teal-700", row: "bg-teal-50", rowHover: "hover:bg-teal-100", header: "bg-teal-500" },
   returned: { badge: "bg-red-900/10 text-red-900", row: "bg-red-50/70", rowHover: "hover:bg-red-100", header: "bg-red-900" },
   cancelled: {
     badge: "bg-slate-300 text-slate-800",
@@ -63,6 +91,7 @@ export const LEAD_STATUS_STYLES: Record<OrderStatus, LeadStatusStyle> = {
     rowHover: "hover:bg-slate-200",
     header: "bg-slate-600",
   },
+  deleted: { badge: "bg-gray-200 text-gray-600", row: "bg-gray-100", rowHover: "hover:bg-gray-200", header: "bg-gray-500" },
 };
 
 export function StatusBadge({ status }: { status: OrderStatus }) {

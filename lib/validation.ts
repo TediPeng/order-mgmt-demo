@@ -4,15 +4,31 @@ import { z } from "zod";
 // Pancake POS sync after the order is forwarded on Ready to Ship (Management
 // can override manually — enforced in lib/lead-workflow.ts).
 export const PRE_SALE_STATUSES = ["new", "ringing", "hung_up", "cbr", "rsrv", "ready_to_ship"] as const;
+
+// Fulfillment statuses mirror Pancake POS's own order statuses one-for-one, in
+// Pancake's pipeline order, so what an agent sees here is what the fulfillment
+// team sees there. The Pancake code each one maps to lives in the editable
+// pancake_status_map table (seeded to match); PANCAKE_STATUS_HINTS in
+// lib/pancake/config.ts carries Pancake's own wording for each code.
+// `delivered` keeps its internal name even though Pancake calls it "Received",
+// because Delivered Orders and RTS % are defined against it.
 export const FULFILLMENT_STATUSES = [
+  "waiting_confirmation",
   "confirmed",
+  "restocking",
+  "purchased",
+  "wait_for_printing",
   "printed",
+  "packaging",
+  "waiting_pickup",
   "shipped",
-  "in_transit",
-  "failed_delivery",
   "delivered",
+  "collected_money",
+  "returning",
+  "partial_return",
   "returned",
   "cancelled",
+  "deleted",
 ] as const;
 
 export const LEAD_STATUSES = [...PRE_SALE_STATUSES, ...FULFILLMENT_STATUSES] as const;
@@ -24,27 +40,40 @@ export const LEAD_STATUS_LABELS: Record<(typeof LEAD_STATUSES)[number], string> 
   cbr: "CBR",
   rsrv: "RSRV",
   ready_to_ship: "Ready to Ship",
+  waiting_confirmation: "Waiting for Confirmation",
   confirmed: "Confirmed",
+  restocking: "Restocking",
+  purchased: "Purchased",
+  wait_for_printing: "Waiting for Printing",
   printed: "Printed",
+  packaging: "Packaging",
+  waiting_pickup: "Waiting for Pick Up",
   shipped: "Shipped",
-  in_transit: "In Transit",
-  failed_delivery: "Failed Delivery",
   delivered: "Delivered",
+  collected_money: "Collected Money",
+  returning: "Returning",
+  partial_return: "Partial Return",
   returned: "Returned",
   cancelled: "Cancelled",
+  deleted: "Deleted in Pancake",
 };
 
-// Statuses that represent a converted sale (Ready to Ship and every
-// downstream in-flight fulfillment stage) — used for Order Qty / Total Order
-// Amount. Returned and Cancelled are failed sales and stay excluded.
+// Statuses that represent a converted sale: Ready to Ship plus every stage
+// where the sale is still standing. The return path and cancellations are
+// failed sales and stay excluded, so Sales figures don't count them.
 export const SALE_STATUSES = [
   "ready_to_ship",
+  "waiting_confirmation",
   "confirmed",
+  "restocking",
+  "purchased",
+  "wait_for_printing",
   "printed",
+  "packaging",
+  "waiting_pickup",
   "shipped",
-  "in_transit",
-  "failed_delivery",
   "delivered",
+  "collected_money",
 ] as const;
 
 // Every fulfillment status is downstream of Ready to Ship; a lead must have
@@ -54,7 +83,7 @@ export const REQUIRES_PRIOR_READY_TO_SHIP = FULFILLMENT_STATUSES;
 
 // Terminal fulfillment statuses: Pancake sync never moves these backward
 // automatically; terminal-to-terminal changes are allowed with a full log.
-export const TERMINAL_STATUSES = ["delivered", "returned", "cancelled"] as const;
+export const TERMINAL_STATUSES = ["delivered", "collected_money", "returned", "cancelled", "deleted"] as const;
 
 export const leadFormSchema = z.object({
   customer_name: z.string().trim().min(1, "Customer name is required"),

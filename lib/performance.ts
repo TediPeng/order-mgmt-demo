@@ -1,7 +1,7 @@
 import type { DbShape, Order, Profile } from "./types";
 import { todayInTz, dateInTz } from "./utils";
 import { isFullAccess } from "./permissions";
-import { SALE_STATUSES } from "./validation";
+import { SALE_STATUSES, FULFILLMENT_STATUSES } from "./validation";
 
 const SALE_STATUS_SET: ReadonlySet<string> = new Set(SALE_STATUSES);
 
@@ -311,7 +311,11 @@ export function computeFulfillmentBreakdown(
   from: string,
   to: string
 ): { status: Order["status"]; count: number }[] {
-  const statuses: Order["status"][] = ["confirmed", "printed", "shipped", "in_transit", "failed_delivery", "cancelled"];
+  // Derived from the shared list so a change to the Pancake-aligned statuses
+  // shows up here automatically. Delivered and Returned have their own cards.
+  const statuses = FULFILLMENT_STATUSES.filter(
+    (s) => s !== "delivered" && s !== "returned"
+  ) as unknown as Order["status"][];
   return statuses
     .map((status) => ({ status, count: aggregateByStatusAndOrderDate(orders, status, from, to).count }))
     .filter((r) => r.count > 0);

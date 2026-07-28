@@ -39,14 +39,23 @@ export type OrderStatus =
   | "cbr"
   | "rsrv"
   | "ready_to_ship"
+  // Fulfillment statuses mirror Pancake POS's own set (lib/validation.ts).
+  | "waiting_confirmation"
   | "confirmed"
+  | "restocking"
+  | "purchased"
+  | "wait_for_printing"
   | "printed"
+  | "packaging"
+  | "waiting_pickup"
   | "shipped"
-  | "in_transit"
-  | "failed_delivery"
   | "delivered"
+  | "collected_money"
+  | "returning"
+  | "partial_return"
   | "returned"
-  | "cancelled";
+  | "cancelled"
+  | "deleted";
 
 /** Outbound sync state. "Needs review" is not a status of its own — it is the
  * sync_failed state once the retry budget is exhausted, rendered as
