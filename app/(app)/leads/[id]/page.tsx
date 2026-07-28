@@ -78,7 +78,7 @@ export default async function LeadDetailPage({
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-semibold text-slate-900">{order.order_number}</h1>
+              <h1 className="text-page-title text-slate-900">{order.order_number}</h1>
               <StatusBadge status={order.status} />
             </div>
             <p className="text-sm text-slate-500">

@@ -16,7 +16,7 @@ export default async function PasswordSettingsPage({
   const user = (await getCurrentUser())!;
   return (
     <div className="mx-auto max-w-lg space-y-6">
-      <h1 className="text-xl font-semibold text-slate-900">My Account</h1>
+      <h1 className="text-page-title text-slate-900">My Account</h1>
 
       <Card>
         <CardHeader>

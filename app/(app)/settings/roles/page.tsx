@@ -36,7 +36,7 @@ export default async function RolesPage({
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">Roles &amp; Permissions</h1>
+        <h1 className="text-page-title text-slate-900">Roles &amp; Permissions</h1>
       </div>
 
       {sp.saved && <Alert kind="success">Permission updated — takes effect immediately, no redeploy needed.</Alert>}

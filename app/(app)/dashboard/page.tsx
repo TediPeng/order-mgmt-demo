@@ -101,7 +101,7 @@ export default async function DashboardPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900">Welcome back, {user.full_name.split(" ")[0]}</h1>
+        <h1 className="text-page-title text-slate-900">Welcome back, {user.full_name.split(" ")[0]}</h1>
         <p className="text-sm text-slate-500">{today}</p>
       </div>
 
@@ -195,19 +195,19 @@ export default async function DashboardPage({
           <CardContent className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <div>
               <p className="text-xs uppercase text-slate-400">Calls Made</p>
-              <p className="text-xl font-semibold text-slate-900">{teamToday.calls}</p>
+              <p className="text-page-title text-slate-900">{teamToday.calls}</p>
             </div>
             <div>
               <p className="text-xs uppercase text-slate-400">Orders</p>
-              <p className="text-xl font-semibold text-slate-900">{teamToday.orders}</p>
+              <p className="text-page-title text-slate-900">{teamToday.orders}</p>
             </div>
             <div>
               <p className="text-xs uppercase text-slate-400">Sales</p>
-              <p className="text-xl font-semibold text-slate-900">{formatCurrency(teamToday.amount)}</p>
+              <p className="text-page-title text-slate-900">{formatCurrency(teamToday.amount)}</p>
             </div>
             <div>
               <p className="text-xs uppercase text-slate-400">Active Agents</p>
-              <p className="text-xl font-semibold text-slate-900">{teamToday.activeAgents}</p>
+              <p className="text-page-title text-slate-900">{teamToday.activeAgents}</p>
             </div>
           </CardContent>
         </Card>

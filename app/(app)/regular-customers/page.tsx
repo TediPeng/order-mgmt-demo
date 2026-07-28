@@ -52,7 +52,7 @@ export default async function RegularCustomersPage({
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-xl font-semibold text-slate-900">Regular Customers</h1>
+        <h1 className="text-page-title text-slate-900">Regular Customers</h1>
         {canSeeDuplicates && openDuplicates.length > 0 && (
           <Link
             href="/regular-customers/duplicates"
@@ -68,8 +68,8 @@ export default async function RegularCustomersPage({
       {sp.error && <Alert kind="error" className="mb-4">{sp.error}</Alert>}
 
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-        <table className="w-full min-w-[1500px] text-left text-sm">
-          <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500">
+        <table className="w-full min-w-[1500px] text-left text-table">
+          <thead className="sticky top-0 bg-slate-50 text-table font-medium uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Customer Name</th>
               <th className="px-4 py-3">Phone Number</th>
@@ -85,7 +85,7 @@ export default async function RegularCustomersPage({
           </thead>
           <tbody className="divide-y divide-slate-100">
             {rows.map(({ customer, orders, latest, previous }) => (
-              <tr key={customer.id} className="hover:bg-slate-50">
+              <tr key={customer.id} className="odd:bg-slate-50/40 hover:bg-slate-50">
                 <td className="px-4 py-3 font-medium text-slate-800">{customer.full_name}</td>
                 <td className="px-4 py-3 text-slate-600">{customer.phone_raw}</td>
                 <td className="px-4 py-3 text-slate-600">

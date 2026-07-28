@@ -43,7 +43,7 @@ export default async function CallLogsPage({
   if (isAgent) {
     return (
       <div>
-        <h1 className="mb-4 text-xl font-semibold text-slate-900">Call Logs</h1>
+        <h1 className="mb-4 text-page-title text-slate-900">Call Logs</h1>
         <AgentCallLogUpload imageError={sp.error} imageUploaded={Boolean(sp.image_uploaded)} />
       </div>
     );
@@ -51,7 +51,7 @@ export default async function CallLogsPage({
 
   return (
     <div>
-      <h1 className="mb-4 text-xl font-semibold text-slate-900">Call Logs</h1>
+      <h1 className="mb-4 text-page-title text-slate-900">Call Logs</h1>
 
       {sp.error && (
         <Alert kind="error" className="mb-4">

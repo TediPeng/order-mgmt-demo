@@ -22,7 +22,7 @@ export default async function SystemSettingsPage({
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <h1 className="text-xl font-semibold text-slate-900">System Settings</h1>
+      <h1 className="text-page-title text-slate-900">System Settings</h1>
 
       {sp.saved && <Alert kind="success">Settings updated.</Alert>}
       {sp.error && <Alert kind="error">{sp.error}</Alert>}

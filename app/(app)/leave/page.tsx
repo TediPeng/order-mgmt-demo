@@ -65,7 +65,7 @@ export default async function LeavePage({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">Leave Requests</h1>
+        <h1 className="text-page-title text-slate-900">Leave Requests</h1>
         {/* Filing now happens through the popup (Section 5) -- also available
             from the Attendance module. Resubmitting a returned request stays
             an inline flow below since it's tied to a specific existing request. */}

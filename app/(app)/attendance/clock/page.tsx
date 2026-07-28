@@ -48,7 +48,7 @@ export default async function TimeClockPage({
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <h1 className="text-xl font-semibold text-slate-900">Time In / Time Out</h1>
+      <h1 className="text-page-title text-slate-900">Time In / Time Out</h1>
 
       {sp.error && <Alert kind="error">{sp.error}</Alert>}
       {sp.timedin && <Alert kind="success">Timed in successfully.</Alert>}

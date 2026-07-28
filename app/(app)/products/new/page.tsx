@@ -13,7 +13,7 @@ export default async function NewProductPage({
 
   return (
     <div className="mx-auto max-w-lg">
-      <h1 className="mb-4 text-xl font-semibold text-slate-900">Add Product</h1>
+      <h1 className="mb-4 text-page-title text-slate-900">Add Product</h1>
       <Card>
         <CardHeader>
           <CardTitle>Product details</CardTitle>

@@ -105,7 +105,7 @@ export default async function AttendancePage({
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">Attendance</h1>
+        <h1 className="text-page-title text-slate-900">Attendance</h1>
         <div className="flex gap-2">
           {canFileLeave && <RequestLeaveButton action={fileLeaveAction} today={todayStr} />}
           {canManage && (

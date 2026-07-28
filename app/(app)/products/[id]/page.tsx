@@ -48,7 +48,7 @@ export default async function ProductDetailPage({
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
         <div className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold text-slate-900">{product.name}</h1>
+          <h1 className="text-page-title text-slate-900">{product.name}</h1>
           <Badge className={product.is_active ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-600"}>
             {product.is_active ? "Active" : "Inactive"}
           </Badge>

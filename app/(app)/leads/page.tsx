@@ -193,7 +193,7 @@ export default async function LeadsPage({
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">Leads</h1>
+        <h1 className="text-page-title text-slate-900">Leads</h1>
         <div className="flex gap-2">
           {canExport && (
             <a href={`/api/leads/export${qs({})}`}>

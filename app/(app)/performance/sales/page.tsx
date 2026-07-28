@@ -26,7 +26,7 @@ export default async function SalesMonitoringPage({
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-slate-900">Daily Sales Monitoring</h1>
+      <h1 className="text-page-title text-slate-900">Daily Sales Monitoring</h1>
       <DateRangeFilter defaultPreset="this_month" />
       <SalesChartClient dailyData={daily} agents={agents} />
     </div>

@@ -43,7 +43,7 @@ export default async function AttendanceManagePage({
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold text-slate-900">Attendance Management</h1>
+      <h1 className="text-page-title text-slate-900">Attendance Management</h1>
 
       {sp.saved && <Alert kind="success">Attendance record saved.</Alert>}
       {sp.error && <Alert kind="error">{sp.error}</Alert>}

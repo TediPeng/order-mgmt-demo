@@ -70,8 +70,8 @@ export function AgentLeadsTable({
   return (
     <>
       <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
-        <table className="w-full min-w-[2100px] text-left text-sm">
-          <thead className="sticky top-0 z-20 bg-slate-50 text-xs uppercase text-slate-500 shadow-sm">
+        <table className="w-full min-w-[2100px] text-left text-table">
+          <thead className="sticky top-0 z-20 bg-slate-50 text-table font-medium uppercase tracking-wide text-slate-500 shadow-sm">
             <tr>
               <th className="sticky left-0 z-30 bg-slate-50 px-3 py-3">Order Date</th>
               <th className="px-3 py-3">Order Source</th>

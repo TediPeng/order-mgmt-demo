@@ -44,7 +44,7 @@ export default async function CallLogDetailPage({
           <LinkButton href="/call-logs" variant="ghost" size="sm" className="mb-2 -ml-2">
             <ArrowLeft className="h-4 w-4" /> Back to Call Logs
           </LinkButton>
-          <h1 className="text-xl font-semibold text-slate-900">{callLog.file_name}</h1>
+          <h1 className="text-page-title text-slate-900">{callLog.file_name}</h1>
           <p className="text-sm text-slate-500">
             Uploaded by {uploader?.full_name || "—"} on {formatDateTime(callLog.uploaded_at)} · {callLog.record_count}{" "}
             records

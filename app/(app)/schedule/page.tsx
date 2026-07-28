@@ -41,7 +41,7 @@ export default async function SchedulePage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">Schedule</h1>
+        <h1 className="text-page-title text-slate-900">Schedule</h1>
         <div className="flex gap-2">
           {canExport && (
             <a href="/api/schedule/export">

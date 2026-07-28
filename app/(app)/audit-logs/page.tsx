@@ -68,7 +68,7 @@ export default async function AuditLogsPage({
     <div>
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Audit Logs</h1>
+          <h1 className="text-page-title text-slate-900">Audit Logs</h1>
           {!isFullAccess(user.role) && <span className="text-xs text-slate-400">Read-only</span>}
         </div>
         {sp.entity_id && (

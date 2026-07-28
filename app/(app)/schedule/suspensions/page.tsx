@@ -39,7 +39,7 @@ export default async function SuspensionsPage({
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold text-slate-900">{isAgentView ? "My Disciplinary History" : "Disciplinary Actions"}</h1>
+      <h1 className="text-page-title text-slate-900">{isAgentView ? "My Disciplinary History" : "Disciplinary Actions"}</h1>
 
       {sp.error && <Alert kind="error">{sp.error}</Alert>}
       {sp.issued && (

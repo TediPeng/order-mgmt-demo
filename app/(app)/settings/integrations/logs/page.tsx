@@ -54,7 +54,7 @@ export default async function SyncLogsPage({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">Pancake Sync Logs</h1>
+        <h1 className="text-page-title text-slate-900">Pancake Sync Logs</h1>
         <Link href="/settings/integrations" className="text-sm font-medium text-[var(--brand-primary)] hover:underline">
           ← Integration Settings
         </Link>

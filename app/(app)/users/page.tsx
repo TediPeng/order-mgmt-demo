@@ -35,7 +35,7 @@ export default async function UsersPage({
 
   return (
     <div>
-      <h1 className="mb-4 text-xl font-semibold text-slate-900">User Management</h1>
+      <h1 className="mb-4 text-page-title text-slate-900">User Management</h1>
 
       {sp.error && (
         <Alert kind="error" className="mb-4">

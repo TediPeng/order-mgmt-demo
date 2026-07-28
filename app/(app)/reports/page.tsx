@@ -39,7 +39,7 @@ export default async function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold text-slate-900">Reports</h1>
+      <h1 className="text-page-title text-slate-900">Reports</h1>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {reports

@@ -5,7 +5,7 @@ import { LeadImportClient } from "@/components/LeadImportClient";
 export default async function LeadImportPage() {
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="mb-4 text-xl font-semibold text-slate-900">Import Leads from Excel</h1>
+      <h1 className="mb-4 text-page-title text-slate-900">Import Leads from Excel</h1>
       <Card className="mb-4">
         <CardContent className="flex items-center justify-between">
           <div>

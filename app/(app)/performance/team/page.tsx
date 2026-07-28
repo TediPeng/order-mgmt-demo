@@ -50,7 +50,7 @@ export default async function TeamPerformancePage({
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold text-slate-900">Team Performance</h1>
+      <h1 className="text-page-title text-slate-900">Team Performance</h1>
       <DateRangeFilter />
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">

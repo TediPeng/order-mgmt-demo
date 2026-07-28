@@ -166,7 +166,7 @@ export default async function IntegrationsSettingsPage({
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">Pancake POS Integration</h1>
+        <h1 className="text-page-title text-slate-900">Pancake POS Integration</h1>
         <div className="flex gap-3 text-sm">
           <Link href="/settings/integrations/status-map" className="font-medium text-[var(--brand-primary)] hover:underline">
             Status Map

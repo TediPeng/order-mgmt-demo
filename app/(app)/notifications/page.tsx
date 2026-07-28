@@ -17,7 +17,7 @@ export default async function NotificationsPage() {
   return (
     <div className="mx-auto max-w-2xl">
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">Notifications</h1>
+        <h1 className="text-page-title text-slate-900">Notifications</h1>
         {unreadCount > 0 && (
           <form action={markAllNotificationsReadAction}>
             <Button type="submit" variant="outline" size="sm">

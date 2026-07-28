@@ -90,7 +90,7 @@ export default async function RankingPage({
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">Agent Ranking</h1>
+        <h1 className="text-page-title text-slate-900">Agent Ranking</h1>
         <div className="flex rounded-md border border-slate-200 bg-white p-1 text-xs">
           <Link
             href={qs({ view: undefined })}

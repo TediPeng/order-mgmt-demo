@@ -65,7 +65,7 @@ export default async function AgentPerformancePage({ searchParams }: { searchPar
 
   return (
     <div>
-      <h1 className="mb-4 text-xl font-semibold text-slate-900">Agent Performance</h1>
+      <h1 className="mb-4 text-page-title text-slate-900">Agent Performance</h1>
 
       <div className="mb-4">
         <DateRangeFilter />

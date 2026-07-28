@@ -73,8 +73,8 @@ export function LeadsTable({
   return (
     <>
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-        <table className="w-full min-w-[2200px] text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+        <table className="w-full min-w-[2200px] text-left text-table">
+          <thead className="bg-slate-50 text-table font-medium uppercase tracking-wide text-slate-500">
             <tr>
               <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3">Order Number</th>
               <th className="px-4 py-3">Order Date</th>

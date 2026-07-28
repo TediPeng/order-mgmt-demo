@@ -41,7 +41,7 @@ export default async function FileUploadsPage() {
 
   return (
     <div>
-      <h1 className="mb-4 text-xl font-semibold text-slate-900">File Uploads</h1>
+      <h1 className="mb-4 text-page-title text-slate-900">File Uploads</h1>
       <Card>
         <CardHeader>
           <CardTitle>All uploads across the system</CardTitle>

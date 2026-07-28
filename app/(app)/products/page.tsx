@@ -55,7 +55,7 @@ export default async function ProductsPage({
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">Products</h1>
+        <h1 className="text-page-title text-slate-900">Products</h1>
         {canCreate && <LinkButton href="/products/new">Add Product</LinkButton>}
       </div>
 

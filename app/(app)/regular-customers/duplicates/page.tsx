@@ -50,7 +50,7 @@ export default async function DuplicatesPage({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900">Possible Duplicate Customers</h1>
+        <h1 className="text-page-title text-slate-900">Possible Duplicate Customers</h1>
         <Link href="/regular-customers" className="text-sm font-medium text-[var(--brand-primary)] hover:underline">
           ← Regular Customers
         </Link>
