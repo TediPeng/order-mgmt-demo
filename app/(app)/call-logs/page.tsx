@@ -15,10 +15,22 @@ import { AgentCallLogReview } from "@/components/AgentCallLogReview";
 import { listAgentCallLogUploads, listCallLogImages } from "@/lib/agent-call-logs";
 import { isFullAccess } from "@/lib/permissions";
 
+/** Applies the agent filter on top of the viewer's own scope.
+ *
+ * The filter may only ever narrow. An undefined scope means Management, who
+ * has no limit, so the choice stands alone; otherwise the chosen agent must
+ * already be inside the viewer's scope, and a choice outside it yields nothing
+ * rather than quietly ignoring the filter and showing more than was asked for. */
+function narrowToAgent(scope: string[] | undefined, agentId: string): string[] | undefined {
+  if (!agentId) return scope;
+  if (!scope) return [agentId];
+  return scope.includes(agentId) ? [agentId] : [];
+}
+
 export default async function CallLogsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; uploaded?: string; deleted?: string; q?: string; from?: string; to?: string; image_uploaded?: string }>;
+  searchParams: Promise<{ error?: string; uploaded?: string; deleted?: string; q?: string; from?: string; to?: string; image_uploaded?: string; agent?: string }>;
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
@@ -28,6 +40,13 @@ export default async function CallLogsPage({
   const canUpload = can(user.role, "call_logs", "upload", db.role_permissions);
   const canDelete = can(user.role, "call_logs", "delete", db.role_permissions);
   const agents = db.profiles.filter((p) => p.is_active);
+  /** Agents as this screen labels them: Call Name is what appears in a call-log
+   * file, so it is what someone scanning uploads is looking for. Anyone without
+   * one still appears under their full name rather than dropping off the list. */
+  const agentOptions = db.profiles
+    .filter((p) => p.is_active && p.role === "agent")
+    .map((p) => ({ id: p.id, label: p.call_name?.trim() || `${p.full_name} (no Call Name)` }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 
   let logs = [...db.call_logs].sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at));
   const byId = new Map(db.profiles.map((p) => [p.id, p.full_name]));
@@ -35,9 +54,10 @@ export default async function CallLogsPage({
   if (sp.q) {
     const q = sp.q.toLowerCase();
     logs = logs.filter(
-      (l) => l.file_name.toLowerCase().includes(q) || (byId.get(l.uploaded_by) || "").toLowerCase().includes(q)
+      (l) => l.file_name.toLowerCase().includes(q)
     );
   }
+  if (sp.agent) logs = logs.filter((l) => l.uploaded_by === sp.agent);
   if (sp.from) logs = logs.filter((l) => l.uploaded_at.slice(0, 10) >= sp.from!);
   if (sp.to) logs = logs.filter((l) => l.uploaded_at.slice(0, 10) <= sp.to!);
 
@@ -57,10 +77,12 @@ export default async function CallLogsPage({
   const reviewAgentIds = isFullAccess(user.role)
     ? undefined
     : [user.id, ...db.profiles.filter((p) => p.team_lead_id === user.id).map((p) => p.id)];
-  const agentUploads = await listAgentCallLogUploads(reviewAgentIds);
-  const callLogImages = await listCallLogImages(reviewAgentIds);
+  const selectedAgent = sp.agent || "";
+  const reviewIds = narrowToAgent(reviewAgentIds, selectedAgent);
+  const agentUploads = await listAgentCallLogUploads(reviewIds);
+  const callLogImages = await listCallLogImages(reviewIds);
   const agentById = Object.fromEntries(
-    db.profiles.map((p) => [p.id, { name: p.full_name, avatar_url: p.avatar_url }])
+    db.profiles.map((p) => [p.id, { name: p.full_name, call_name: p.call_name, avatar_url: p.avatar_url }])
   );
 
   return (
@@ -130,9 +152,15 @@ export default async function CallLogsPage({
       {canView ? (
         <>
           <form className="mb-4 grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-4">
-            <div className="sm:col-span-2">
-              <Input name="q" placeholder="Search file name / uploader" defaultValue={sp.q} />
-            </div>
+            <Input name="q" placeholder="Search file name" defaultValue={sp.q} />
+            <Select name="agent" defaultValue={sp.agent || ""}>
+              <option value="">All agents</option>
+              {agentOptions.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.label}
+                </option>
+              ))}
+            </Select>
             <Input type="date" name="from" defaultValue={sp.from} />
             <div className="flex gap-2">
               <Input type="date" name="to" defaultValue={sp.to} />

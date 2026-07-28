@@ -6,6 +6,9 @@ import type { AgentCallLogUpload, CallLogImage } from "@/lib/agent-call-logs";
 
 interface AgentInfo {
   name: string;
+  /** The label a call-log file carries; shown beside the name so the row reads
+   * the way the filter above it is phrased. */
+  call_name: string | null;
   avatar_url: string | null;
 }
 
@@ -60,7 +63,10 @@ export function AgentCallLogReview({
                       <td className="px-4 py-3">
                         <span className="flex items-center gap-2">
                           <Avatar name={agent?.name || "—"} src={agent?.avatar_url} size="sm" />
-                          <span className="text-slate-700">{agent?.name || "Unknown"}</span>
+                          <span className="text-slate-700">
+                            {agent?.call_name || agent?.name || "Unknown"}
+                            {agent?.call_name && <span className="ml-1 text-slate-400">· {agent.name}</span>}
+                          </span>
                         </span>
                       </td>
                       <td className="px-4 py-3 text-slate-700">{u.file_name}</td>
@@ -112,7 +118,7 @@ export function AgentCallLogReview({
                     <div className="space-y-1 px-3 py-2 text-xs">
                       <p className="flex items-center gap-2 text-slate-700">
                         <Avatar name={agent?.name || "—"} src={agent?.avatar_url} size="sm" />
-                        {agent?.name || "Unknown"}
+                        {agent?.call_name || agent?.name || "Unknown"}
                       </p>
                       <p className="truncate text-slate-500" title={img.original_filename}>
                         {img.original_filename}
