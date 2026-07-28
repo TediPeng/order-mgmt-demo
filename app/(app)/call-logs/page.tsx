@@ -11,6 +11,9 @@ import { Alert } from "@/components/ui/Alert";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { uploadCallLogAction, deleteCallLogAction } from "@/lib/actions/call-logs";
 import { AgentCallLogUpload } from "@/components/AgentCallLogUpload";
+import { AgentCallLogReview } from "@/components/AgentCallLogReview";
+import { listAgentCallLogUploads, listCallLogImages } from "@/lib/agent-call-logs";
+import { isFullAccess } from "@/lib/permissions";
 
 export default async function CallLogsPage({
   searchParams,
@@ -48,6 +51,17 @@ export default async function CallLogsPage({
       </div>
     );
   }
+
+  // What agents uploaded. Scoped the same way leads are: a team lead sees their
+  // team, Management sees everyone.
+  const reviewAgentIds = isFullAccess(user.role)
+    ? undefined
+    : [user.id, ...db.profiles.filter((p) => p.team_lead_id === user.id).map((p) => p.id)];
+  const agentUploads = await listAgentCallLogUploads(reviewAgentIds);
+  const callLogImages = await listCallLogImages(reviewAgentIds);
+  const agentById = Object.fromEntries(
+    db.profiles.map((p) => [p.id, { name: p.full_name, avatar_url: p.avatar_url }])
+  );
 
   return (
     <div>
@@ -191,6 +205,7 @@ export default async function CallLogsPage({
       ) : (
         <Alert kind="info">You don&apos;t have permission to view uploaded call logs.</Alert>
       )}
+      <AgentCallLogReview uploads={agentUploads} images={callLogImages} agentById={agentById} />
     </div>
   );
 }
