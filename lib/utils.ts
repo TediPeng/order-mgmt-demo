@@ -55,6 +55,20 @@ export function normalizePhone(phone: string): string {
   return digits;
 }
 
+/** Canonical stored form of a PH mobile number: +639XXXXXXXXX.
+ *
+ * normalizePhone() strips the trunk prefix for comparison and is what existing
+ * lookups use; this builds the single value written to phone_normalized
+ * columns, so the same subscriber typed as 0917…, +63917… or 63 917 … lands on
+ * one string across leads, call logs, customers and search. Numbers that don't
+ * look like PH mobiles (landlines, foreign) fall back to a +63-prefixed form
+ * rather than being discarded — matching still works, it just isn't reformatted. */
+export function canonicalPhone(phone: string): string {
+  const core = normalizePhone(phone);
+  if (!core) return "";
+  return `+63${core}`;
+}
+
 /** Digits, optional leading +, spaces/dashes tolerated — anything else (letters, etc.) is invalid. */
 export function isValidPhoneQuery(raw: string): boolean {
   const trimmed = raw.trim();

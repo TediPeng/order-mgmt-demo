@@ -1,4 +1,5 @@
 import { LogOut } from "lucide-react";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { logoutAction } from "@/lib/actions/auth";
 import { initials } from "@/lib/utils";
 import { NotificationBell } from "./NotificationBell";
@@ -17,6 +18,7 @@ export function Topbar({
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
       <div />
       <div className="flex items-center gap-3">
+        <ThemeToggle current={user.theme_preference || "light"} />
         <NotificationBell notifications={notifications} />
         <div className="text-right">
           <p className="text-sm font-medium text-slate-800">{user.full_name}</p>

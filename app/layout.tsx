@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
+import { getThemeCookie } from "@/lib/auth";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -19,13 +20,25 @@ export const metadata: Metadata = {
   icons: { icon: "/brand-logo.png" },
 };
 
-export default function RootLayout({
+// "system" can only be resolved in the browser, so it is applied by this
+// snippet before first paint rather than after hydration — otherwise the page
+// would flash the wrong theme. Light and dark are already decided server-side.
+const SYSTEM_THEME_SCRIPT = `try{if(document.documentElement.dataset.theme==='system'){
+if(window.matchMedia('(prefers-color-scheme: dark)').matches)document.documentElement.classList.add('dark');
+}}catch(e){}`;
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const theme = await getThemeCookie();
+
   return (
-    <html lang="en">
+    <html lang="en" data-theme={theme} className={theme === "dark" ? "dark" : undefined}>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: SYSTEM_THEME_SCRIPT }} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

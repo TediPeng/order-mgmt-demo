@@ -89,6 +89,7 @@ function seedDb(): DbShape {
       password_hash: bcrypt.hashSync("admin123", 10),
       must_change_password: false,
       avatar_url: null,
+      theme_preference: "light" as const,
       created_at: nowIso(),
     },
     {
@@ -103,6 +104,7 @@ function seedDb(): DbShape {
       password_hash: bcrypt.hashSync("manager123", 10),
       must_change_password: false,
       avatar_url: null,
+      theme_preference: "light" as const,
       created_at: nowIso(),
     },
     {
@@ -117,6 +119,7 @@ function seedDb(): DbShape {
       password_hash: bcrypt.hashSync("employee123", 10),
       must_change_password: false,
       avatar_url: null,
+      theme_preference: "light" as const,
       created_at: nowIso(),
     },
   ];

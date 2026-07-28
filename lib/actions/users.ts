@@ -47,6 +47,7 @@ export async function createUserAction(formData: FormData) {
     password_hash: hashPassword(data.temp_password),
     must_change_password: true,
     avatar_url: null,
+    theme_preference: "light" as const,
     created_at: nowIso(),
   };
   db.profiles.push(newUser);

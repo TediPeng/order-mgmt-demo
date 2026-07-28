@@ -36,9 +36,37 @@ export async function createSession(userId: string) {
   });
 }
 
+const THEME_COOKIE = "theme";
+
+/** Mirrors the account's theme into a plain cookie.
+ *
+ * profiles.theme_preference stays the source of truth — that is what makes the
+ * choice follow the user to another device — but the root layout has to set
+ * the class on <html> before anything renders, and reading the profile there
+ * would mean a database round-trip on every request, including the login page.
+ * The cookie is written at login and whenever the toggle is used, so the first
+ * paint is already correct and there is no flash. */
+export async function setThemeCookie(theme: string) {
+  const store = await cookies();
+  store.set(THEME_COOKIE, theme, {
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 60 * 60 * 24 * 365,
+    path: "/",
+  });
+}
+
+export async function getThemeCookie(): Promise<string> {
+  const store = await cookies();
+  return store.get(THEME_COOKIE)?.value || "light";
+}
+
 export async function destroySession() {
   const store = await cookies();
   store.delete(COOKIE_NAME);
+  // The theme cookie deliberately survives logout: the login page should look
+  // the way this browser last had it, and the account's stored preference
+  // reasserts itself on the next sign-in anyway.
 }
 
 export async function getSessionUserId(): Promise<string | null> {

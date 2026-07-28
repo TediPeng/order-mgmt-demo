@@ -21,7 +21,7 @@ export function NotificationBell({ notifications }: { notifications: AppNotifica
       >
         <Bell className="h-5 w-5" />
         {unread.length > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold text-white">
             {unread.length > 9 ? "9+" : unread.length}
           </span>
         )}

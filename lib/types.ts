@@ -12,6 +12,8 @@ export interface RoleDef {
   created_at: string;
 }
 
+export type ThemePreference = "light" | "dark" | "system";
+
 export interface Profile {
   id: string;
   username: string;
@@ -26,6 +28,8 @@ export interface Profile {
   password_hash: string;
   must_change_password: boolean;
   avatar_url: string | null;
+  /** Per-account theme, applied server-side on first paint. */
+  theme_preference: ThemePreference;
   created_at: string;
 }
 
@@ -491,4 +495,92 @@ export interface DbShape {
   order_seq: Record<string, number>; // date -> last sequence number
   performance_thresholds: PerformanceThresholds;
   work_schedule: WorkSchedule;
+}
+
+
+// --- Regular Customers, calling sessions, agent call logs -------------------
+// Accessed through targeted supabaseAdmin queries (lib/customers.ts,
+// lib/call-sessions.ts, lib/agent-call-logs.ts), not through DbShape.
+
+export interface Customer {
+  id: string;
+  full_name: string;
+  phone_raw: string;
+  phone_normalized: string;
+  purok: string | null;
+  barangay: string | null;
+  city: string | null;
+  province: string | null;
+  landmark: string | null;
+  owner_agent_id: string;
+  original_agent_id: string | null;
+  is_regular_customer: boolean;
+  regular_since: string | null;
+  customer_status: string;
+  total_orders: number;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export type DuplicateMatchType = "phone" | "name_address" | "name_barangay_city" | "other";
+export type DuplicateConfidence = "high" | "medium" | "low";
+export type DuplicateStatus = "open" | "confirmed_duplicate" | "not_duplicate" | "merged";
+
+export interface CustomerDuplicateMatch {
+  id: string;
+  customer_id: string;
+  matched_customer_id: string;
+  match_type: DuplicateMatchType;
+  confidence: DuplicateConfidence;
+  status: DuplicateStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+export interface CallSession {
+  id: string;
+  agent_id: string;
+  order_id: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number | null;
+  previous_status: string | null;
+  new_status: string | null;
+  remarks: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface AgentCallLogUpload {
+  id: string;
+  agent_id: string;
+  file_name: string;
+  storage_path: string | null;
+  total_rows: number | null;
+  imported_rows: number | null;
+  duplicate_rows: number | null;
+  invalid_rows: number | null;
+  failed_rows: number | null;
+  uploaded_at: string;
+}
+
+export interface AgentCallLogRecord {
+  id: string;
+  upload_id: string | null;
+  agent_id: string;
+  call_name: string | null;
+  phone_raw: string | null;
+  phone_normalized: string | null;
+  call_date: string;
+}
+
+export interface CallLogImage {
+  id: string;
+  agent_id: string;
+  storage_path: string;
+  original_filename: string;
+  file_size_bytes: number | null;
+  related_call_date: string | null;
+  uploaded_at: string;
 }

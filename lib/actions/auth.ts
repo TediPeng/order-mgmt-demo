@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { readDb, writeDb } from "@/lib/db";
-import { createSession, destroySession, getCurrentUser, hashPassword, verifyPassword } from "@/lib/auth";
+import { createSession, destroySession, getCurrentUser, hashPassword, setThemeCookie, verifyPassword } from "@/lib/auth";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { passwordChangeSchema } from "@/lib/validation";
@@ -37,6 +37,7 @@ export async function loginAction(formData: FormData) {
   logActivity(db, user.id, "LOGIN", "auth", user.id, { username: user.username }, { module: "settings", ...info });
   await writeDb(db);
   await createSession(user.id);
+  await setThemeCookie(user.theme_preference || "light");
   redirect("/dashboard");
 }
 
