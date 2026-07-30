@@ -88,6 +88,14 @@ export const LEAD_STATUS_STYLES: Record<OrderStatus, LeadStatusStyle> = {
     header: "bg-slate-600",
   },
   deleted: { badge: "bg-gray-200 text-gray-600", row: "bg-gray-100", rowHover: "hover:bg-gray-200", header: "bg-gray-500" },
+  // Out of delivery zone: a solid dark blue-gray, deliberately the only filled
+  // badge in the set so it never reads as Cancelled's light slate.
+  odz: {
+    badge: "bg-slate-700 text-white",
+    row: "bg-slate-200/60",
+    rowHover: "hover:bg-slate-300/70",
+    header: "bg-slate-700",
+  },
 };
 
 export function StatusBadge({ status }: { status: OrderStatus }) {

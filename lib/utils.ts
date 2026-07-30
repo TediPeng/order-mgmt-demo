@@ -87,6 +87,17 @@ export function isValidPhoneQuery(raw: string): boolean {
   return /^\+?[\d\s-]+$/.test(trimmed);
 }
 
+/** A dialable PH mobile number, for the Packaging gate.
+ *
+ * Stricter than isValidPhoneQuery (which only screens SEARCH input): an order
+ * that reaches Packaging is about to be shipped, so the courier needs a number
+ * that can actually be called. normalizePhone() strips the trunk prefix and any
+ * +63, leaving the 10-digit subscriber number, which for a PH mobile always
+ * starts with 9. */
+export function isValidPhMobile(raw: string): boolean {
+  return /^9\d{9}$/.test(normalizePhone(raw || ""));
+}
+
 export function initials(name: string): string {
   return name
     .split(" ")

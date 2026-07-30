@@ -6,6 +6,7 @@ import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { requireUser, requirePermission } from "./guards";
 import { hashPassword } from "@/lib/auth";
+import { randomTempPassword } from "@/lib/passwords";
 import { userFormSchema } from "@/lib/validation";
 import type { Profile } from "@/lib/types";
 
@@ -20,7 +21,8 @@ export async function createUserAction(formData: FormData) {
     role: formData.get("role"),
     team_lead_id: formData.get("team_lead_id"),
     call_name: formData.get("call_name"),
-    temp_password: formData.get("temp_password"),
+    contact_number: formData.get("contact_number"),
+    permission_profile: formData.get("permission_profile"),
   });
 
   if (!parsed.success) {
@@ -35,6 +37,10 @@ export async function createUserAction(formData: FormData) {
     redirect(`/users?error=${encodeURIComponent("Unknown role selected.")}`);
   }
 
+  // Each account gets its own random temporary password, shown to the
+  // Administrator once here and never again. It must be changed on first login.
+  const tempPassword = randomTempPassword();
+
   const newUser: Profile = {
     id: uuid(),
     username: data.username,
@@ -43,22 +49,31 @@ export async function createUserAction(formData: FormData) {
     role: data.role,
     team_lead_id: data.role === "agent" && data.team_lead_id ? data.team_lead_id : null,
     call_name: data.call_name || null,
+    contact_number: data.contact_number || null,
     is_active: true,
-    password_hash: hashPassword(data.temp_password),
+    password_hash: hashPassword(tempPassword),
     must_change_password: true,
     avatar_url: null,
     theme_preference: "light" as const,
+    permission_profile: data.permission_profile || null,
+    last_login_at: null,
+    is_deleted: false,
+    deleted_at: null,
     created_at: nowIso(),
   };
   db.profiles.push(newUser);
   const info = await getRequestInfo();
   logActivity(db, user.id, "USER_CREATED", "user", newUser.id, { username: newUser.username, role: newUser.role }, {
     module: "users",
-    updated_value: newUser,
+    // The hash is not a secret worth keeping out of the log, but there is no
+    // reason to retain it either.
+    updated_value: { ...newUser, password_hash: undefined },
     ...info,
   });
   await writeDb(db);
-  redirect(`/users?created=1`);
+  redirect(
+    `/users?created=1&temp_pw=${encodeURIComponent(tempPassword)}&temp_for=${encodeURIComponent(newUser.username)}`
+  );
 }
 
 export async function updateUserRoleAction(userId: string, role: string) {
@@ -138,11 +153,11 @@ export async function adminResetPasswordAction(userId: string) {
   const target = db.profiles.find((p) => p.id === userId);
   if (!target) redirect("/users");
 
-  const tempPassword = Math.random().toString(36).slice(2, 10);
+  const tempPassword = randomTempPassword();
   target!.password_hash = hashPassword(tempPassword);
   target!.must_change_password = true;
   const info = await getRequestInfo();
-  logActivity(db, user.id, "PASSWORD_CHANGED", "user", userId, { reset_by_management: true }, {
+  logActivity(db, user.id, "PASSWORD_CHANGED", "user", userId, { reset_by_administrator: true }, {
     module: "users",
     ...info,
   });

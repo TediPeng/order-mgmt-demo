@@ -5,6 +5,7 @@ import { orderInScope } from "@/lib/order-access";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { startSession, endSession, getActiveSession } from "@/lib/call-sessions";
+import { timeInBlockReason, TIME_IN_HREF } from "@/lib/time-in-gate";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,12 @@ export async function POST(req: NextRequest) {
   if (!order) return NextResponse.json({ ok: false, error: "Lead not found." }, { status: 404 });
   if (!orderInScope(user, order, db)) {
     return NextResponse.json({ ok: false, error: "You do not have access to that lead." }, { status: 403 });
+  }
+
+  // No call may start before the agent has timed in for the day (Section 2).
+  const notTimedIn = timeInBlockReason(db, user);
+  if (notTimedIn) {
+    return NextResponse.json({ ok: false, error: notTimedIn, timeInRequired: true, timeInHref: TIME_IN_HREF }, { status: 403 });
   }
 
   const result = await startSession(user.id, orderId);

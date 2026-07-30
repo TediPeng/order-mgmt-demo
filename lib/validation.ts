@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PRODUCT_STATUSES, type ProductStatus } from "./types";
 
 // Pre-sale statuses cover the call workflow. `new` sits here because a lead
 // starts there, but agents cannot set it back — see AGENT_EDITABLE_STATUSES.
@@ -28,6 +29,10 @@ export const FULFILLMENT_STATUSES = [
   "returned",
   "cancelled",
   "deleted",
+  // Not a Pancake status: set by the ODZ tag rule (lib/pancake/receive.ts) when
+  // Pancake reports an `ODZ` tag on the order. Listed last so it doesn't
+  // disturb Pancake's own pipeline ordering above.
+  "odz",
 ] as const;
 
 export const LEAD_STATUSES = [...PRE_SALE_STATUSES, ...FULFILLMENT_STATUSES] as const;
@@ -54,11 +59,15 @@ export const LEAD_STATUS_LABELS: Record<(typeof LEAD_STATUSES)[number], string> 
   returned: "Returned",
   cancelled: "Cancelled",
   deleted: "Deleted in Pancake",
+  odz: "ODZ",
 };
 
 // Statuses that represent a converted sale: Packaging plus every stage where
 // the sale is still standing. The return path and cancellations are failed
 // sales and stay excluded, so Sales figures don't count them.
+// ODZ is included: the order reached Packaging and is not Returned, so it stays
+// in Total Orders and Sales while being excluded from RTS % (which compares
+// Delivered against Returned only).
 export const SALE_STATUSES = [
   "waiting_confirmation",
   "confirmed",
@@ -71,6 +80,7 @@ export const SALE_STATUSES = [
   "shipped",
   "delivered",
   "collected_money",
+  "odz",
 ] as const;
 
 /** Packaging is the single "order is ready" status: agents set it, it stamps
@@ -105,6 +115,16 @@ export const POLLABLE_STATUSES = FULFILLMENT_STATUSES.filter(
  * server enforces the same rule (lead-workflow.ts); this just stops the UI
  * offering choices that would be rejected with a 403. `current` is always
  * included so an order already in a fulfillment status still shows its value. */
+/** Statuses a brand-new lead may be created in. Every fulfillment stage past
+ * Packaging requires a prior Packaging (there is no order_date yet), so only the
+ * pre-sale set plus Packaging is offered. `new` is the system's own starting
+ * point and is withheld from agents entirely (Section 3) — a full-access user
+ * may still create a lead sitting in New. */
+export function creatableStatuses(userIsFullAccess: boolean): readonly (typeof LEAD_STATUSES)[number][] {
+  const base = AGENT_EDITABLE_STATUSES as readonly (typeof LEAD_STATUSES)[number][];
+  return userIsFullAccess ? (["new", ...base] as (typeof LEAD_STATUSES)[number][]) : base;
+}
+
 export function selectableStatuses(
   userIsFullAccess: boolean,
   current?: string
@@ -129,6 +149,12 @@ export const leadFormSchema = z.object({
   previous_order_product: z.string().trim().optional().default(""),
   previous_order_amount: z.coerce.number().nonnegative().optional().nullable(),
   product_id: z.string().trim().optional().default(""),
+  // Section 0.6: back on the agent form, so it is part of the schema rather than
+  // being read straight off the raw body.
+  quantity: z.preprocess(
+    (v) => (v === "" || v === null || v === undefined ? 1 : v),
+    z.coerce.number().int("Quantity must be a whole number").min(1, "Quantity must be at least 1").default(1)
+  ),
   unit_price: z.coerce.number().nonnegative("Unit price must be zero or more").optional().nullable(),
   status: z.enum(LEAD_STATUSES).default("new"),
   notes: z.string().trim().optional().default(""),
@@ -163,6 +189,7 @@ export const PACKAGING_REQUIRED_FIELDS: { key: keyof LeadFormInput; label: strin
   { key: "city", label: "City / Municipality" },
   { key: "barangay", label: "Barangay" },
   { key: "product_id", label: "Product" },
+  { key: "quantity", label: "Quantity" },
   { key: "unit_price", label: "Unit Price" },
 ];
 
@@ -218,12 +245,47 @@ export const LEAD_IMPORT_HEADERS = [
 // the system, not supplied by the uploader.
 export const LEAD_IMPORT_FORBIDDEN_HEADERS = ["Order Number", "Order Date", "New Product Order", "Unit Price", "Status"];
 
+const emptyToNull = (v: unknown) => (typeof v === "string" && v.trim() === "" ? null : v);
+
 export const productFormSchema = z.object({
   name: z.string().trim().min(1, "Product name is required"),
   code: z.string().trim().optional().default(""),
+  sku: z.string().trim().optional().default(""),
+  unit: z.string().trim().optional().default(""),
+  selling_price: z.preprocess(
+    emptyToNull,
+    z.coerce.number().nonnegative("Selling price must be zero or more").nullable().default(null)
+  ),
+  stock_quantity: z.preprocess(
+    emptyToNull,
+    z.coerce.number().int("Stock quantity must be a whole number").nonnegative("Stock quantity must be zero or more").nullable().default(null)
+  ),
+  status: z.enum(PRODUCT_STATUSES).default("active"),
   pancake_variation_id: z.string().trim().optional().default(""),
-  is_active: z.coerce.boolean().default(true),
 });
+
+// --- Product list upload ----------------------------------------------------
+
+export const PRODUCT_UPLOAD_HEADERS = [
+  "Product Name",
+  "SKU",
+  "Unit",
+  "Selling Price",
+  "Stock Quantity",
+  "Status",
+  "Date Added",
+] as const;
+
+/** Accepts the label an uploader would actually type, in any casing. */
+export function parseProductStatus(raw: string): ProductStatus | null {
+  const key = raw.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (!key) return "active";
+  if (key === "out_of_stock" || key === "outofstock") return "out_of_stock";
+  if (key === "active" || key === "inactive") return key;
+  return null;
+}
+
+export const MAX_PRODUCT_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 export const CALL_LOG_HEADERS = [
   "Caller Name",
@@ -254,7 +316,8 @@ export const userFormSchema = z
     team_lead_id: z.string().trim().optional().default(""),
     // The label an agent's orders are attributed to; becomes orders.order_source.
     call_name: z.string().trim().optional().default(""),
-    temp_password: z.string().min(8, "Temporary password must be at least 8 characters"),
+    contact_number: z.string().trim().optional().default(""),
+    permission_profile: z.string().trim().optional().default(""),
   })
   // Required for agents specifically: every order they create is stamped with
   // it, so an agent without one would produce orders with no source.

@@ -28,7 +28,6 @@ export function AgentLeadsTable({
   activeProducts,
   canEdit,
   canTagRegular = false,
-  initialCallSession = null,
   callSessionsByOrderId = {},
   agentNameById = {},
   initialOpenOrderNumber,
@@ -39,7 +38,6 @@ export function AgentLeadsTable({
   activeProducts: { id: string; name: string; code: string | null }[];
   canEdit: boolean;
   canTagRegular?: boolean;
-  initialCallSession?: CallSession | null;
   callSessionsByOrderId?: Record<string, CallSession[]>;
   agentNameById?: Record<string, string>;
   initialOpenOrderNumber?: string;
@@ -167,7 +165,6 @@ export function AgentLeadsTable({
           // the same rule is enforced server-side.
           canTagRegular={canTagRegular}
           requiresCallSession
-          initialCallSession={initialCallSession}
           callSessions={callSessionsByOrderId[openOrder.id] || []}
           agentNameById={agentNameById}
           fullPageHref={null}

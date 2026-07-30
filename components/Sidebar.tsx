@@ -26,6 +26,7 @@ import {
   Settings,
   KeyRound,
   Plug,
+  ScrollText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ModuleKey } from "@/lib/types";
@@ -88,6 +89,7 @@ export function Sidebar({ access }: { access: Record<ModuleKey, boolean> }) {
         { href: "/audit-logs", label: "Audit Logs", icon: History, show: access.audit_logs },
         { href: "/settings/system", label: "System Settings", icon: Settings, show: access.settings },
         { href: "/settings/integrations", label: "Integrations", icon: Plug, show: access.integrations },
+        { href: "/settings/update-logs", label: "Update Logs", icon: ScrollText, show: access.settings },
       ],
     },
   ];
@@ -95,8 +97,8 @@ export function Sidebar({ access }: { access: Record<ModuleKey, boolean> }) {
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-r border-slate-200 bg-white">
       <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4">
-        <Image src="/brand-logo.png" alt="4S RETENTION" width={32} height={23} className="h-8 w-auto object-contain" unoptimized priority />
-        <span className="text-sm font-semibold tracking-wide text-slate-800">4S RETENTION</span>
+        <Image src="/brand-logo.png" alt="4S ROMA" width={32} height={23} className="h-8 w-auto object-contain" unoptimized priority />
+        <span className="text-sm font-semibold tracking-wide text-slate-800">4S ROMA</span>
       </div>
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
         {groups.map((group) => {

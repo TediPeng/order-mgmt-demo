@@ -10,6 +10,8 @@ export interface ForwardPayload {
   order_date: string | null;
   agent_name: string;
   agent_account: string;
+  /** The agent's email, sent to Pancake as Customer Care Staff (Section 1.3). */
+  agent_email: string;
   customer_name: string;
   phone: string;
   purok: string;
@@ -63,6 +65,7 @@ export interface GetOrderResult {
   statusName: string | null; // Pancake's own label for that code, for display
   trackingNumber: string | null; // courier tracking URL/id, written to orders.tracking_number
   eventTimestamp: string | null; // Pancake's updated_at, for out-of-order protection
+  tags: string[]; // Pancake order tags, read by the ODZ tag rule
   responseSummary: Record<string, unknown> | null;
 }
 
@@ -77,6 +80,8 @@ export interface IncomingUpdate {
   trackingNumber?: string | null;
   eventTimestamp: string | null;
   shopId: string | null;
+  /** Pancake order tags. An `ODZ` tag here overrides the mapped status. */
+  tags?: string[] | null;
 }
 
 export interface AccountWithSecrets {
@@ -99,6 +104,7 @@ export function buildForwardPayload(
     order_date: order.order_date,
     agent_name: agentName,
     agent_account: agentAccount,
+    agent_email: order.assigned_agent_email,
     customer_name: order.customer_name,
     phone: order.customer_phone,
     purok: order.purok,

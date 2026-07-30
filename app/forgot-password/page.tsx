@@ -14,14 +14,14 @@ export default async function ForgotPasswordPage({
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center">
-          <Image src="/brand-logo.png" alt="4S RETENTION" width={140} height={99} className="h-16 w-auto object-contain" unoptimized priority />
+          <Image src="/brand-logo.png" alt="4S ROMA" width={140} height={99} className="h-16 w-auto object-contain" unoptimized priority />
           <h1 className="mt-3 text-lg font-semibold text-slate-900">Reset your password</h1>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           {sent ? (
             <Alert kind="success">
-              If an account exists for that email, a password reset link has been sent. (Demo mode: no email is
-              actually sent — Management can reset your password from User Management.)
+              If an account exists for that email, a password reset link has been sent. No email is actually sent in
+              this environment — ask an Administrator to reset your password from User Management.
             </Alert>
           ) : (
             <form action={requestPasswordResetAction} className="space-y-4">

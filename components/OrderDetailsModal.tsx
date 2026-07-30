@@ -10,6 +10,9 @@ import { ProductCombobox } from "@/components/ProductCombobox";
 import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { cn, formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import { LEAD_STATUS_LABELS, PAYMENT_METHOD_SUGGESTIONS, selectableStatuses } from "@/lib/validation";
+import { isOrderLocked, SYNCED_LOCK_MESSAGE } from "@/lib/lead-workflow";
+import { useCallSession } from "@/components/CallSessionProvider";
+import { PANCAKE_SYNC_SOURCE_LABELS, type PancakeSyncSource } from "@/lib/types";
 import { AddressSelect } from "@/components/AddressSelect";
 import { CallingPanel } from "@/components/CallingPanel";
 import { CallHistory } from "@/components/CallHistory";
@@ -135,7 +138,6 @@ export function OrderDetailsModal({
   canTagRegular = false,
   duplicateWarnings = [],
   requiresCallSession = false,
-  initialCallSession = null,
   callSessions = [],
   agentNameById = {},
   fullPageHref,
@@ -161,7 +163,6 @@ export function OrderDetailsModal({
   duplicateWarnings?: { name: string; phone: string; agent: string; fields: string[]; confidence: string }[];
   /** Agents must have a calling session open before editing; Management does not. */
   requiresCallSession?: boolean;
-  initialCallSession?: CallSession | null;
   callSessions?: CallSession[];
   agentNameById?: Record<string, string>;
   fullPageHref: string | null;
@@ -253,14 +254,15 @@ export function OrderDetailsModal({
 
   // Calling session state. `locked` is what disables the controls; the server
   // refuses the same edits independently, so this is only the visible half.
-  const [callSession, setCallSession] = useState<CallSession | null>(initialCallSession);
+  // The session is app-level state (CallSessionProvider) so the timer survives
+  // so a server-rendered open popup has the right state on first paint.
+  const { session: callSession, clearSession } = useCallSession();
   const [callRemarks, setCallRemarks] = useState("");
   const callActive = Boolean(callSession && callSession.order_id === order.id);
-  const blockedBy =
-    callSession && callSession.order_id !== order.id
-      ? { id: callSession.order_id, order_number: callSession.order_id.slice(0, 8) }
-      : null;
-  const locked = requiresCallSession && !callActive;
+  // A synced order is frozen for everyone (the server rejects the same edits);
+  // an Administrator unlock sets manual_unlock_active and reopens it for one save.
+  const syncedLocked = isOrderLocked(order);
+  const locked = syncedLocked || (requiresCallSession && !callActive);
 
   function update<K extends keyof EditForm>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -314,6 +316,10 @@ export function OrderDetailsModal({
         setError(msg);
         return;
       }
+      // A save closes the calling session server-side (it records the transition
+      // the call produced), so drop it here too rather than leaving a timer
+      // running against a session that no longer exists.
+      if (callActive) clearSession();
       onSaved(json.order as Order);
       setMode("view");
       setStatusDraft(json.order.status);
@@ -402,16 +408,17 @@ export function OrderDetailsModal({
         </div>
 
         <div className="space-y-4 p-5">
-          {requiresCallSession && (
+          {syncedLocked && <Alert kind="info">{SYNCED_LOCK_MESSAGE}</Alert>}
+          {order.manual_unlock_active && (
+            <Alert kind="warning">
+              Unlocked for editing by an Administrator{order.manual_unlock_reason ? `: ${order.manual_unlock_reason}` : ""}. It
+              relocks as soon as you save.
+            </Alert>
+          )}
+          {requiresCallSession && !syncedLocked && (
             <CallingPanel
               orderId={order.id}
-              session={callSession}
-              blockedBy={blockedBy}
-              onStarted={(s) => setCallSession(s)}
-              onEnded={() => {
-                setCallSession(null);
-                setMode("view");
-              }}
+              onEnded={() => setMode("view")}
               onOpenActive={(id) => {
                 window.location.href = `/leads?open_id=${id}`;
               }}
@@ -850,9 +857,14 @@ export function OrderDetailsModal({
                       <span className={h.result === "failed" ? "font-medium text-red-600" : "font-medium text-green-700"}>
                         {h.action.replaceAll("_", " ")}
                       </span>{" "}
-                      · {h.source ? h.source.replaceAll("_", " ") : "—"} · {formatDateTime(h.request_at)}
+                      · {h.source ? PANCAKE_SYNC_SOURCE_LABELS[h.source as PancakeSyncSource] || h.source : "—"} ·{" "}
+                      {formatDateTime(h.request_at)}
                       {h.old_status || h.new_status ? (
-                        <> · {h.old_status || "—"} → {h.new_status || "—"}</>
+                        <>
+                          {" "}
+                          · <span className="text-slate-500">{h.old_status || "—"}</span> →{" "}
+                          <span className="font-medium text-slate-700">{h.new_status || "—"}</span>
+                        </>
                       ) : null}
                       {h.error_message && <p className="mt-0.5 text-red-500">{h.error_message}</p>}
                     </li>

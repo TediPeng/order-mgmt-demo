@@ -6,19 +6,26 @@ import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { requireUser, requirePermission } from "./guards";
 import { productFormSchema } from "@/lib/validation";
-import type { Product } from "@/lib/types";
+import type { Product, ProductStatus } from "@/lib/types";
+
+function productFormFields(formData: FormData) {
+  return {
+    name: formData.get("name"),
+    code: formData.get("code"),
+    sku: formData.get("sku"),
+    unit: formData.get("unit"),
+    selling_price: formData.get("selling_price"),
+    stock_quantity: formData.get("stock_quantity"),
+    status: formData.get("status") || undefined,
+    pancake_variation_id: formData.get("pancake_variation_id"),
+  };
+}
 
 export async function createProductAction(formData: FormData) {
   const { user, db } = await requireUser();
   requirePermission(user, "products", "create", db, "/products/new");
 
-  const raw = {
-    name: formData.get("name"),
-    code: formData.get("code"),
-    pancake_variation_id: formData.get("pancake_variation_id"),
-    is_active: true,
-  };
-  const parsed = productFormSchema.safeParse(raw);
+  const parsed = productFormSchema.safeParse(productFormFields(formData));
   if (!parsed.success) {
     const msg = parsed.error.issues[0]?.message || "Invalid input.";
     redirect(`/products/new?error=${encodeURIComponent(msg)}`);
@@ -28,15 +35,23 @@ export async function createProductAction(formData: FormData) {
   if (code && db.products.some((p) => p.code?.toLowerCase() === code.toLowerCase())) {
     redirect(`/products/new?error=${encodeURIComponent("A product with that code already exists.")}`);
   }
+  const sku = data.sku.trim() || null;
+  if (sku && db.products.some((p) => p.sku?.toLowerCase() === sku.toLowerCase())) {
+    redirect(`/products/new?error=${encodeURIComponent("A product with that SKU already exists.")}`);
+  }
 
   const now = nowIso();
   const product: Product = {
     id: uuid(),
     name: data.name,
     code,
+    sku,
+    unit: data.unit.trim() || null,
+    selling_price: data.selling_price,
+    stock_quantity: data.stock_quantity,
     pancake_variation_id: data.pancake_variation_id.trim() || null,
     variants: null,
-    is_active: true,
+    status: data.status,
     created_by: user.id,
     created_at: now,
     updated_by: null,
@@ -60,13 +75,10 @@ export async function updateProductAction(productId: string, formData: FormData)
   const product = db.products.find((p) => p.id === productId);
   if (!product) redirect("/products");
 
-  const raw = {
-    name: formData.get("name"),
-    code: formData.get("code"),
-    pancake_variation_id: formData.get("pancake_variation_id"),
-    is_active: product!.is_active,
-  };
-  const parsed = productFormSchema.safeParse(raw);
+  const parsed = productFormSchema.safeParse({
+    ...productFormFields(formData),
+    status: formData.get("status") || product!.status,
+  });
   if (!parsed.success) {
     const msg = parsed.error.issues[0]?.message || "Invalid input.";
     redirect(`/products/${productId}?error=${encodeURIComponent(msg)}`);
@@ -76,10 +88,19 @@ export async function updateProductAction(productId: string, formData: FormData)
   if (code && db.products.some((p) => p.id !== productId && p.code?.toLowerCase() === code.toLowerCase())) {
     redirect(`/products/${productId}?error=${encodeURIComponent("A product with that code already exists.")}`);
   }
+  const sku = data.sku.trim() || null;
+  if (sku && db.products.some((p) => p.id !== productId && p.sku?.toLowerCase() === sku.toLowerCase())) {
+    redirect(`/products/${productId}?error=${encodeURIComponent("A product with that SKU already exists.")}`);
+  }
 
   const before = { ...product! };
   product!.name = data.name;
   product!.code = code;
+  product!.sku = sku;
+  product!.unit = data.unit.trim() || null;
+  product!.selling_price = data.selling_price;
+  product!.stock_quantity = data.stock_quantity;
+  product!.status = data.status;
   product!.pancake_variation_id = data.pancake_variation_id.trim() || null;
   product!.updated_by = user.id;
   product!.updated_at = nowIso();
@@ -95,7 +116,7 @@ export async function updateProductAction(productId: string, formData: FormData)
   redirect(`/products/${productId}?updated=1`);
 }
 
-export async function setProductActiveAction(productId: string, active: boolean) {
+export async function setProductStatusAction(productId: string, status: ProductStatus) {
   "use server";
   const { user, db } = await requireUser();
   requirePermission(user, "products", "edit", db, "/products");
@@ -104,7 +125,7 @@ export async function setProductActiveAction(productId: string, active: boolean)
   if (!product) redirect("/products");
 
   const before = { ...product! };
-  product!.is_active = active;
+  product!.status = status;
   product!.updated_by = user.id;
   product!.updated_at = nowIso();
 
@@ -112,14 +133,14 @@ export async function setProductActiveAction(productId: string, active: boolean)
   logActivity(
     db,
     user.id,
-    active ? "PRODUCT_ACTIVATED" : "PRODUCT_DEACTIVATED",
+    status === "active" ? "PRODUCT_ACTIVATED" : "PRODUCT_DEACTIVATED",
     "product",
     product!.id,
-    { name: product!.name },
+    { name: product!.name, status },
     { module: "products", previous_value: before, updated_value: product, ...info }
   );
   await writeDb(db);
-  redirect(`/products?${active ? "activated" : "deactivated"}=1`);
+  redirect(`/products?status_set=${encodeURIComponent(status)}`);
 }
 
 export async function deleteProductAction(productId: string) {

@@ -263,7 +263,7 @@ export function LeadEditForm({
         </div>
       </div>
       {!canSeePreviousOrderFields && (
-        <p className="-mt-2 text-xs text-slate-400">Previous order information is informational and can only be corrected by Management.</p>
+        <p className="-mt-2 text-xs text-slate-400">Previous order information is informational and can only be corrected by an Administrator.</p>
       )}
 
       <div className="grid grid-cols-2 gap-4">
@@ -399,7 +399,7 @@ export function LeadEditForm({
             <input type="hidden" name="agent_id" value={form.agent_id} />
           </>
         )}
-        {!canReassign && <p className="mt-1 text-xs text-slate-400">Only Management or Administrator can reassign a lead to a different agent.</p>}
+        {!canReassign && <p className="mt-1 text-xs text-slate-400">Only an Administrator can reassign a lead to a different agent.</p>}
       </div>
 
       <div>

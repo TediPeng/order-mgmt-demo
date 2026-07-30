@@ -5,13 +5,10 @@ import {
   PACKAGING_STATUS,
   AGENT_EDITABLE_STATUSES,
 } from "@/lib/validation";
-import { normalizePhone } from "@/lib/utils";
+import { normalizePhone, isValidPhMobile } from "@/lib/utils";
 import type { DbShape, Order, OrderStatus } from "@/lib/types";
 
-/** Missing-field labels blocking a transition into Packaging. Address codes are
- * checked here for presence only; whether the province/city/barangay actually
- * nest is a database question, answered by validateAddressCodes in lib/psgc.ts. */
-export function validatePackaging(candidate: {
+export interface PackagingCandidate {
   customer_name: string;
   customer_phone: string;
   purok?: string;
@@ -19,8 +16,21 @@ export function validatePackaging(candidate: {
   city: string;
   province: string;
   product_id?: string | null;
+  quantity?: number | null;
   unit_price?: number | null;
-}): string[] {
+}
+
+export interface PackagingFieldProblem {
+  /** Form field name, so the UI can put the message on the field itself. */
+  field: string;
+  label: string;
+  message: string;
+}
+
+/** Per-field problems blocking a transition into Packaging. Address codes are
+ * checked here for presence only; whether the province/city/barangay actually
+ * nest is a database question, answered by validateAddressCodes in lib/psgc.ts. */
+export function packagingProblems(candidate: PackagingCandidate): PackagingFieldProblem[] {
   const values: Record<string, unknown> = {
     customer_name: candidate.customer_name,
     customer_phone: candidate.customer_phone,
@@ -29,14 +39,45 @@ export function validatePackaging(candidate: {
     city: candidate.city,
     province: candidate.province,
     product_id: candidate.product_id,
+    quantity: candidate.quantity,
     unit_price: candidate.unit_price,
   };
-  return PACKAGING_REQUIRED_FIELDS.filter(({ key }) => {
+
+  const problems: PackagingFieldProblem[] = [];
+  for (const { key, label } of PACKAGING_REQUIRED_FIELDS) {
     const v = values[key];
-    // Unit Price must be present AND greater than zero.
-    if (key === "unit_price") return v === null || v === undefined || Number(v) <= 0;
-    return !String(v ?? "").trim();
-  }).map((f) => f.label);
+    if (key === "unit_price") {
+      // Present AND greater than zero — a free order is not a sale.
+      if (v === null || v === undefined || Number(v) <= 0) {
+        problems.push({ field: key, label, message: `${label} is required and must be greater than 0.` });
+      }
+      continue;
+    }
+    if (key === "quantity") {
+      if (v === null || v === undefined || !Number.isFinite(Number(v)) || Number(v) < 1) {
+        problems.push({ field: key, label, message: `${label} must be at least 1.` });
+      }
+      continue;
+    }
+    if (!String(v ?? "").trim()) {
+      problems.push({ field: key, label, message: `${label} is required.` });
+      continue;
+    }
+    // Presence is not enough for the phone: the courier has to be able to call it.
+    if (key === "customer_phone" && !isValidPhMobile(String(v))) {
+      problems.push({
+        field: key,
+        label,
+        message: "Enter a valid PH mobile number (e.g. 09171234567).",
+      });
+    }
+  }
+  return problems;
+}
+
+/** Labels only — the shape the existing error strings are built from. */
+export function validatePackaging(candidate: PackagingCandidate): string[] {
+  return packagingProblems(candidate).map((p) => p.label);
 }
 
 /** Every fulfillment stage past Packaging is downstream of it — a lead must
@@ -61,7 +102,8 @@ export function restrictedStatusBlockReason(newStatus: OrderStatus, userIsFullAc
 }
 
 /** Once an order has been forwarded to Pancake POS, its status is driven by
- * sync — manual changes are Management-only. Pre-forward leads are unaffected. */
+ * sync — manual changes are Administrator-only. Pre-forward leads are
+ * unaffected. */
 export function fulfillmentOverrideBlockReason(
   order: Pick<Order, "pancake_order_id" | "forwarded_to_pancake_at" | "status">,
   newStatus: OrderStatus,
@@ -69,7 +111,35 @@ export function fulfillmentOverrideBlockReason(
 ): string | null {
   const forwarded = Boolean(order.pancake_order_id || order.forwarded_to_pancake_at);
   if (!forwarded || newStatus === order.status || userIsFullAccess) return null;
-  return "This order was forwarded to Pancake POS; its status is managed by sync. Only Management can change it manually.";
+  return "This order was forwarded to Pancake POS; its status is managed by sync. Only an Administrator can change it manually.";
+}
+
+/** The exact wording shown wherever a synced order blocks an edit. */
+export const SYNCED_LOCK_MESSAGE =
+  "This order has already been synced to Pancake POS and can no longer be edited.";
+
+/**
+ * A synced order is frozen: customer, address, product, price and status are all
+ * off-limits, and only Pancake may move it afterwards. An Administrator can lift
+ * the lock for a single save via the unlock flow, which sets
+ * `manual_unlock_active` and is cleared again as soon as that save lands.
+ *
+ * Incoming Pancake updates are deliberately NOT routed through this check — they
+ * write via lib/pancake/store.ts#updateOrderSyncFields, which is the intended
+ * update path for a locked order.
+ */
+export function isOrderLocked(
+  order: Pick<Order, "pancake_sync_status" | "manual_unlock_active">
+): boolean {
+  return order.pancake_sync_status === "synced" && !order.manual_unlock_active;
+}
+
+/** Non-null reason when a manual edit must be rejected. Callers turn this into a
+ * 403 as well as disabling the inputs. */
+export function lockedEditBlockReason(
+  order: Pick<Order, "pancake_sync_status" | "manual_unlock_active">
+): string | null {
+  return isOrderLocked(order) ? SYNCED_LOCK_MESSAGE : null;
 }
 
 /** Order Date is stamped/overwritten only when entering Packaging (including

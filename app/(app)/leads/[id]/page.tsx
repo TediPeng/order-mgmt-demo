@@ -8,10 +8,14 @@ import { Alert } from "@/components/ui/Alert";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { formatDateTime } from "@/lib/utils";
-import { deleteLeadAction, updateLeadAction } from "@/lib/actions/leads";
+import { deleteLeadAction, updateLeadAction, unlockOrderForEditingAction } from "@/lib/actions/leads";
 import { LeadEditForm } from "@/components/LeadEditForm";
 import { listSyncLogs, getAccount } from "@/lib/pancake/store";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
+import { isOrderLocked, SYNCED_LOCK_MESSAGE } from "@/lib/lead-workflow";
+import { displayUserName } from "@/lib/types";
+import { Button } from "@/components/ui/Button";
+import { Input, Label } from "@/components/ui/Field";
 
 function summarizeValue(v: unknown): string {
   if (v === null || v === undefined) return "—";
@@ -27,10 +31,10 @@ export default async function LeadDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; created?: string; updated?: string }>;
+  searchParams: Promise<{ error?: string; created?: string; updated?: string; unlocked?: string }>;
 }) {
   const { id } = await params;
-  const { error, created, updated } = await searchParams;
+  const { error, created, updated, unlocked } = await searchParams;
   const db = await readDb();
   const order = db.orders.find((o) => o.id === id);
   if (!order) notFound();
@@ -38,18 +42,25 @@ export default async function LeadDetailPage({
   const user = (await getCurrentUser())!;
   if (!orderInScope(user, order, db)) redirect("/forbidden");
 
-  const canEdit = can(user.role, "orders", "edit", db.role_permissions);
+  // A synced order is locked: every field goes read-only until an Administrator
+  // unlocks it for one save. The server enforces the same rule independently.
+  const locked = isOrderLocked(order);
+  const canEdit = can(user.role, "orders", "edit", db.role_permissions) && !locked;
   const canDelete = can(user.role, "orders", "delete", db.role_permissions);
-  const canReassign = isFullAccess(user.role);
+  const canReassign = isFullAccess(user.role) && !locked;
+  const canUnlock = isFullAccess(user.role);
   const creator = db.profiles.find((p) => p.id === order.created_by);
   const updater = order.updated_by ? db.profiles.find((p) => p.id === order.updated_by) : null;
-  const agents = db.profiles.filter((p) => p.is_active).map((p) => ({ id: p.id, full_name: p.full_name, username: p.username }));
+  const unlockedBy = order.manual_unlock_by ? db.profiles.find((p) => p.id === order.manual_unlock_by) : null;
+  const agents = db.profiles
+    .filter((p) => p.is_active && !p.is_deleted)
+    .map((p) => ({ id: p.id, full_name: displayUserName(p), username: p.username }));
   const activeProducts = db.products
-    .filter((p) => p.is_active)
+    .filter((p) => p.status === "active")
     .map((p) => ({ id: p.id, name: p.name, code: p.code, variants: p.variants }));
   const currentProductName = order.product_id ? db.products.find((p) => p.id === order.product_id)?.name || order.product_name : order.product_name;
 
-  const byId = new Map(db.profiles.map((p) => [p.id, p.full_name]));
+  const byId = new Map(db.profiles.map((p) => [p.id, displayUserName(p)]));
   const history = db.activity_log
     .filter((e) => e.entity_id === order.id && e.module === "orders")
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
@@ -64,6 +75,7 @@ export default async function LeadDetailPage({
   const pancakeAccount = order.pancake_pos_account_id ? await getAccount(order.pancake_pos_account_id) : null;
 
   const boundUpdate = updateLeadAction.bind(null, order.id);
+  const boundUnlock = unlockOrderForEditingAction.bind(null, order.id);
   const boundDelete = async () => {
     "use server";
     await deleteLeadAction(order.id);
@@ -123,13 +135,54 @@ export default async function LeadDetailPage({
               Lead updated successfully.
             </Alert>
           )}
+          {unlocked && (
+            <Alert kind="success" className="mb-4">
+              Unlocked for editing. Saving will relock this order.
+            </Alert>
+          )}
+          {locked && (
+            <div className="mb-4 space-y-3">
+              <Alert kind="info">{SYNCED_LOCK_MESSAGE}</Alert>
+              {canUnlock && (
+                <form action={boundUnlock} className="rounded-md border border-amber-200 bg-amber-50 p-3">
+                  <Label htmlFor="unlock_reason">Unlock for editing</Label>
+                  <p className="mb-2 text-xs text-amber-800">
+                    Administrator override. The reason is recorded in the audit log, and the order relocks as soon as you
+                    save.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Input
+                      id="unlock_reason"
+                      name="unlock_reason"
+                      required
+                      minLength={5}
+                      placeholder="Why does this synced order need editing?"
+                      className="flex-1"
+                    />
+                    <Button type="submit" variant="secondary">
+                      Unlock
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
+          {order.manual_unlock_active && (
+            <Alert kind="warning" className="mb-4">
+              Unlocked by {unlockedBy ? displayUserName(unlockedBy) : "an Administrator"}
+              {order.manual_unlock_reason ? `: ${order.manual_unlock_reason}` : ""}. This order relocks on save.
+            </Alert>
+          )}
+          {/* canSeePreviousOrderFields / canSetFulfillmentStatus are gated on the
+              lock as well as the role: they drive edit controls, so a synced
+              order has to freeze them like every other field. */}
           <LeadEditForm
             order={order}
             action={boundUpdate}
             canEdit={canEdit}
             canReassign={canReassign}
-            canSeePreviousOrderFields={isFullAccess(user.role)}
-            canSetFulfillmentStatus={isFullAccess(user.role)}
+            canSeePreviousOrderFields={isFullAccess(user.role) && !locked}
+            canSetFulfillmentStatus={isFullAccess(user.role) && !locked}
             productName={currentProductName}
             agents={agents}
             activeProducts={activeProducts}

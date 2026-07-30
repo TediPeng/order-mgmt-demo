@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "crypto";
-import { WEBHOOK } from "./config";
+import { WEBHOOK, readTags } from "./config";
 import type { IncomingUpdate } from "./types";
 
 function safeEqual(a: string, b: string): boolean {
@@ -56,6 +56,7 @@ export function parseWebhookPayload(payload: Record<string, unknown>): { event: 
       statusName: s("status_name"),
       eventTimestamp: s(f.event_timestamp),
       shopId: s(f.shop_id),
+      tags: readTags(inner[f.tags]),
     },
   };
 }

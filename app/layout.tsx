@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { getThemeCookie } from "@/lib/auth";
+import { APP_FULL_NAME } from "@/lib/version";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -15,8 +16,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "4S RETENTION",
-  description: "Order management and agent performance monitoring for 4S Retention",
+  title: APP_FULL_NAME,
+  description: "Retention order management and agent performance monitoring for 4S ROMA",
   icons: { icon: "/brand-logo.png" },
 };
 

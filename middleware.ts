@@ -19,7 +19,13 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.next();
+  // The authenticated layout needs the current path to enforce the
+  // must-change-password lockout (it cannot read the URL itself). Middleware
+  // runs on the edge and has no database access, so the decision itself belongs
+  // in the layout — this only carries the path across.
+  const headers = new Headers(req.headers);
+  headers.set("x-pathname", pathname);
+  return NextResponse.next({ request: { headers } });
 }
 
 export const config = {

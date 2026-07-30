@@ -1,105 +1,75 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import Link from "next/link";
 import { PhoneCall, PhoneOff } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
-import type { CallSession } from "@/lib/types";
-
-/** HH:MM elapsed, computed from the server's started_at.
- *
- * Deliberately not a counter the client increments from zero: a refresh, a
- * reopened popup or a second tab all read the same start instant, so they all
- * agree on the elapsed time instead of each restarting. */
-function elapsedHhMm(startedAt: string, now: number): string {
-  const secs = Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000));
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-}
+import { formatElapsed, useCallSession } from "@/components/CallSessionProvider";
+import { TIME_IN_HREF } from "@/lib/time-in-gate";
 
 export interface CallingState {
-  session: CallSession | null;
+  session: { id: string; order_id: string; started_at: string } | null;
   /** Another order already holds this agent's active call. */
   blockedBy: { id: string; order_number: string } | null;
 }
 
+/**
+ * Start/stop control and the live call timer for one order.
+ *
+ * The session itself lives in CallSessionProvider (app-level), so the timer
+ * keeps running across route changes and is restored from the server after a
+ * refresh. This component only renders whichever state that session implies for
+ * *this* order.
+ */
 export function CallingPanel({
   orderId,
-  session,
-  blockedBy,
   onStarted,
   onEnded,
   onOpenActive,
 }: {
   orderId: string;
-  session: CallSession | null;
-  blockedBy: { id: string; order_number: string } | null;
-  onStarted: (session: CallSession) => void;
-  onEnded: () => void;
+  onStarted?: () => void;
+  onEnded?: () => void;
   onOpenActive: (orderId: string) => void;
 }) {
+  const { session, now, startCall, endCall } = useCallSession();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
-  const active = session && session.order_id === orderId;
+  const [timeInBlocked, setTimeInBlocked] = useState(false);
 
-  // Ticks only to re-render the elapsed label; the value itself always derives
-  // from started_at, so a missed tick or a sleeping tab cannot skew it.
-  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  useEffect(() => {
-    if (!active) return;
-    setNow(Date.now());
-    tickRef.current = setInterval(() => setNow(Date.now()), 1000);
-    return () => {
-      if (tickRef.current) clearInterval(tickRef.current);
-    };
-  }, [active]);
+  const active = Boolean(session && session.order_id === orderId);
+  const blockedByOtherOrder = session && session.order_id !== orderId ? session.order_id : null;
 
   async function start() {
     setBusy(true);
     setError(null);
-    try {
-      const res = await fetch("/api/call-sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId }),
-      });
-      const json = await res.json();
-      if (!json.ok) {
-        setError(json.error || "Could not start the call.");
-        if (json.activeOrder) onOpenActive(json.activeOrder.id);
-        return;
-      }
-      onStarted(json.session as CallSession);
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setBusy(false);
+    setTimeInBlocked(false);
+    const result = await startCall(orderId);
+    setBusy(false);
+    if (result.ok) {
+      onStarted?.();
+      return;
     }
+    setError(result.error || "Could not start the call.");
+    if (result.timeInRequired) setTimeInBlocked(true);
+    if (result.activeOrder) onOpenActive(result.activeOrder.id);
   }
 
   async function endWithoutUpdate() {
     if (!window.confirm("End this call without recording a status update?")) return;
     setBusy(true);
     setError(null);
-    try {
-      await fetch("/api/call-sessions", { method: "DELETE" });
-      onEnded();
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setBusy(false);
-    }
+    await endCall();
+    setBusy(false);
+    onEnded?.();
   }
 
-  if (blockedBy && !active) {
+  if (blockedByOtherOrder && !active) {
     return (
       <Alert kind="error" className="flex items-center justify-between gap-3">
-        <span>
-          You already have a call in progress on <strong>{blockedBy.order_number}</strong>.
-        </span>
-        <Button type="button" size="sm" variant="secondary" onClick={() => onOpenActive(blockedBy.id)}>
+        <span>You already have a call in progress on another order.</span>
+        <Button type="button" size="sm" variant="secondary" onClick={() => onOpenActive(blockedByOtherOrder)}>
           Return to active call
         </Button>
       </Alert>
@@ -109,7 +79,21 @@ export function CallingPanel({
   if (!active) {
     return (
       <div className="space-y-2">
-        {error && <Alert kind="error">{error}</Alert>}
+        {error && (
+          <Alert kind={timeInBlocked ? "warning" : "error"}>
+            <div className="flex flex-wrap items-center gap-3">
+              <span>{error}</span>
+              {timeInBlocked && (
+                <Link
+                  href={TIME_IN_HREF}
+                  className="rounded-md bg-amber-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-700"
+                >
+                  Go to Time In
+                </Link>
+              )}
+            </div>
+          </Alert>
+        )}
         <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
           <p className="text-xs text-slate-500">Click Calling before editing or updating this order.</p>
           <Button type="button" size="sm" disabled={busy} onClick={start}>
@@ -131,7 +115,7 @@ export function CallingPanel({
           </span>
           <span className="text-sm font-medium text-green-800">Call in progress</span>
           <span className="font-mono text-sm tabular-nums text-green-900" aria-live="off">
-            {elapsedHhMm(session!.started_at, now)}
+            {formatElapsed(session!.started_at, now)}
           </span>
         </div>
         <Button type="button" size="sm" variant="outline" disabled={busy} onClick={endWithoutUpdate}>

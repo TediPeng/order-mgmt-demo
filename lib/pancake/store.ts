@@ -138,6 +138,26 @@ export async function insertSyncLog(input: SyncLogInput): Promise<void> {
   if (error) throw new Error(`pancake_sync_logs insert failed: ${error.message}`);
 }
 
+/** Identity of one Pancake state change: which order, what status, at what
+ * Pancake-clock instant. Stored on every processed inbound log row so a repeat
+ * delivery of the same event can be recognized and skipped. */
+export function eventKey(pancakeOrderId: string, rawStatus: string, eventTimestamp: string): string {
+  return `${pancakeOrderId}|${rawStatus}|${eventTimestamp}`;
+}
+
+/** True when this exact event was already processed. Pancake (and any webhook
+ * transport) can deliver the same event more than once — at-least-once delivery
+ * is normal — so the second copy must not be applied again. */
+export async function hasProcessedEvent(key: string): Promise<boolean> {
+  const { data, error } = await supabaseAdmin
+    .from("pancake_sync_logs")
+    .select("id")
+    .eq("payload_summary->>event_key", key)
+    .limit(1);
+  if (error) throw new Error(`pancake_sync_logs read failed: ${error.message}`);
+  return (data || []).length > 0;
+}
+
 export interface SyncLogFilters {
   order_id?: string;
   pancake_account_id?: string;
@@ -320,18 +340,19 @@ export async function updateOrderSyncFields(
 
 // --- notifications + audit log (standalone, no DbShape) ---------------------
 
-export async function activeManagementIds(): Promise<string[]> {
+export async function activeAdministratorIds(): Promise<string[]> {
   const { data, error } = await supabaseAdmin
     .from("profiles")
-    .select("id, role, is_active")
-    .in("role", ["management", "administrator"])
-    .eq("is_active", true);
+    .select("id, role, is_active, is_deleted")
+    .eq("role", "administrator")
+    .eq("is_active", true)
+    .eq("is_deleted", false);
   if (error) throw new Error(`profiles read failed: ${error.message}`);
   return (data || []).map((p) => p.id as string);
 }
 
-export async function notifyManagement(type: string, title: string, body: string | null, link: string | null): Promise<void> {
-  const ids = await activeManagementIds();
+export async function notifyAdministrators(type: string, title: string, body: string | null, link: string | null): Promise<void> {
+  const ids = await activeAdministratorIds();
   if (ids.length === 0) return;
   const now = new Date().toISOString();
   const rows = ids.map((recipient_id) => ({

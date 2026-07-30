@@ -1,18 +1,20 @@
 import { cn } from "@/lib/utils";
-import { AlertCircle, CheckCircle2, Info } from "lucide-react";
+import { AlertCircle, AlertTriangle, CheckCircle2, Info } from "lucide-react";
 
-type Kind = "error" | "success" | "info";
+type Kind = "error" | "success" | "info" | "warning";
 
 const styles: Record<Kind, string> = {
   error: "bg-red-50 text-red-700 border-red-200",
   success: "bg-green-50 text-green-700 border-green-200",
   info: "bg-blue-50 text-blue-700 border-blue-200",
+  warning: "bg-amber-50 text-amber-800 border-amber-200",
 };
 
 const icons: Record<Kind, React.ElementType> = {
   error: AlertCircle,
   success: CheckCircle2,
   info: Info,
+  warning: AlertTriangle,
 };
 
 export function Alert({ kind = "info", children, className }: { kind?: Kind; children: React.ReactNode; className?: string }) {

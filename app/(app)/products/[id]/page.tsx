@@ -3,12 +3,13 @@ import { readDb } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Input, Label } from "@/components/ui/Field";
+import { Input, Label, Select } from "@/components/ui/Field";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { formatDateTime } from "@/lib/utils";
 import { updateProductAction } from "@/lib/actions/products";
+import { displayUserName, PRODUCT_STATUSES, PRODUCT_STATUS_LABELS } from "@/lib/types";
 
 function summarizeValue(v: unknown): string {
   if (v === null || v === undefined) return "—";
@@ -37,7 +38,7 @@ export default async function ProductDetailPage({
   const canEdit = can(user.role, "products", "edit", db.role_permissions);
 
   const creator = db.profiles.find((p) => p.id === product.created_by);
-  const byId = new Map(db.profiles.map((p) => [p.id, p.full_name]));
+  const byId = new Map(db.profiles.map((p) => [p.id, displayUserName(p)]));
   const history = db.activity_log
     .filter((e) => e.entity_id === product.id && e.module === "products")
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
@@ -49,12 +50,20 @@ export default async function ProductDetailPage({
       <div>
         <div className="flex items-center gap-2">
           <h1 className="text-page-title text-slate-900">{product.name}</h1>
-          <Badge className={product.is_active ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-600"}>
-            {product.is_active ? "Active" : "Inactive"}
+          <Badge
+            className={
+              product.status === "active"
+                ? "bg-green-100 text-green-700"
+                : product.status === "out_of_stock"
+                  ? "bg-amber-100 text-amber-800"
+                  : "bg-slate-200 text-slate-600"
+            }
+          >
+            {PRODUCT_STATUS_LABELS[product.status]}
           </Badge>
         </div>
         <p className="text-sm text-slate-500">
-          Created by {creator?.full_name || "—"} on {formatDateTime(product.created_at)}
+          Created by {creator ? displayUserName(creator) : "—"} on {formatDateTime(product.created_at)}
         </p>
       </div>
 
@@ -83,9 +92,53 @@ export default async function ProductDetailPage({
               <Label htmlFor="name">Product name</Label>
               <Input id="name" name="name" defaultValue={product.name} disabled={!canEdit} required />
             </div>
-            <div>
-              <Label htmlFor="code">Product code</Label>
-              <Input id="code" name="code" defaultValue={product.code || ""} disabled={!canEdit} />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="code">Product code</Label>
+                <Input id="code" name="code" defaultValue={product.code || ""} disabled={!canEdit} />
+              </div>
+              <div>
+                <Label htmlFor="sku">SKU</Label>
+                <Input id="sku" name="sku" defaultValue={product.sku || ""} disabled={!canEdit} />
+              </div>
+              <div>
+                <Label htmlFor="unit">Unit</Label>
+                <Input id="unit" name="unit" defaultValue={product.unit || ""} disabled={!canEdit} placeholder="pc, box, bottle" />
+              </div>
+              <div>
+                <Label htmlFor="status">Status</Label>
+                <Select id="status" name="status" defaultValue={product.status} disabled={!canEdit}>
+                  {PRODUCT_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {PRODUCT_STATUS_LABELS[s]}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="selling_price">Selling price</Label>
+                <Input
+                  id="selling_price"
+                  name="selling_price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  defaultValue={product.selling_price ?? ""}
+                  disabled={!canEdit}
+                />
+              </div>
+              <div>
+                <Label htmlFor="stock_quantity">Stock quantity</Label>
+                <Input
+                  id="stock_quantity"
+                  name="stock_quantity"
+                  type="number"
+                  min="0"
+                  step="1"
+                  defaultValue={product.stock_quantity ?? ""}
+                  disabled={!canEdit}
+                />
+              </div>
             </div>
             <div>
               <Label htmlFor="pancake_variation_id">Pancake variation ID / SKU</Label>

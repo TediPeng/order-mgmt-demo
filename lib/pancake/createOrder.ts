@@ -4,6 +4,7 @@ import {
   CREATE_ORDER_PATH,
   CREATE_STATUS_PACKAGING,
   CREATE_STATUS_PACKAGING_LABEL,
+  OUTBOUND_FIELDS,
   PANCAKE_STATUS_HINTS,
   RESPONSE_FIELDS,
   mockMode,
@@ -20,15 +21,6 @@ import { pancakeFetch, resolvePath, unwrapData } from "./client";
  * instead (name + price only, no Pancake inventory movement). */
 export function buildCreateOrderBody(payload: ForwardPayload): Record<string, unknown> {
   const productLabel = [payload.product, payload.variant].filter(Boolean).join(" — ");
-  const noteParts = [
-    `Order ${payload.order_number} (agent: ${payload.agent_name || payload.agent_account})`,
-    `${productLabel} x${payload.quantity}` + (payload.unit_price != null ? ` @ ${payload.unit_price}` : ""),
-    payload.discount ? `Discount: ${payload.discount}` : null,
-    payload.payment_method ? `Payment: ${payload.payment_method}` : null,
-    payload.courier ? `Courier: ${payload.courier}` : null,
-    payload.order_source ? `Source: ${payload.order_source}` : null,
-    payload.notes || null,
-  ].filter(Boolean);
 
   return {
     // Stable external reference — also what incoming updates are matched on.
@@ -37,16 +29,25 @@ export function buildCreateOrderBody(payload: ForwardPayload): Record<string, un
     status: CREATE_STATUS_PACKAGING,
     bill_full_name: payload.customer_name,
     bill_phone_number: payload.phone,
-    note: noteParts.join(" | "),
+    // Internal Note is sent EMPTY, always (Section 1.3). It used to carry a
+    // composed summary of the order; that leaked internal wording into a field
+    // the fulfillment team writes in, so nothing is ever populated here now.
+    [OUTBOUND_FIELDS.internal_note]: "",
+    // Agent Call Name → Order Source; Agent Email → Customer Care Staff.
+    [OUTBOUND_FIELDS.order_source]: payload.order_source ?? "",
+    [OUTBOUND_FIELDS.customer_care_staff]: payload.agent_email,
+    // Landmark → Shipping Notes.
+    [OUTBOUND_FIELDS.shipping_notes]: payload.landmark,
     shipping_fee: payload.shipping_fee ?? 0,
     total_discount: payload.discount ?? 0,
     shipping_address: {
       full_name: payload.customer_name,
       phone_number: payload.phone,
       // PH address mapped onto Pancake's VN-shaped address fields:
-      // province -> province_name, city -> district_name, barangay -> commune_name.
-      address: [payload.purok, payload.landmark].filter(Boolean).join(", ") || payload.complete_address,
-      full_address: [payload.complete_address, payload.landmark].filter(Boolean).join(" — "),
+      // Address/Purok → Full Address, Province → province_name,
+      // City → district_name, Barangay → commune_name.
+      address: payload.purok || payload.complete_address,
+      full_address: payload.purok || payload.complete_address,
       province_name: payload.province,
       district_name: payload.city,
       commnue_name: payload.barangay, // (sic) misspelled in Pancake's own schema

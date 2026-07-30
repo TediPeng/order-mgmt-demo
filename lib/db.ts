@@ -3,6 +3,7 @@ import { v4 as uuid } from "uuid";
 import type { DbShape, Profile, RolePermission, RoleDef, WorkSchedule } from "./types";
 import { ORDER_PANCAKE_DEFAULTS } from "./types";
 import { buildDefaultRows } from "./permissions";
+import { randomTempPassword } from "./passwords";
 import { supabaseAdmin } from "./supabaseAdmin";
 
 const SCHEMA_VERSION = 7;
@@ -39,17 +40,10 @@ const DEFAULT_WORK_SCHEDULE: WorkSchedule = {
 const SYSTEM_ROLE_DEFS: RoleDef[] = [
   {
     id: uuid(),
-    key: "management",
-    name: "Management",
-    description: "Full system access: manage users, roles, settings, and view/export everything.",
-    is_system: true,
-    created_at: nowIso(),
-  },
-  {
-    id: uuid(),
     key: "administrator",
     name: "Administrator",
-    description: "Full system access: account management, permissions, order reassignment, and system configuration. Equivalent bypass to Management.",
+    description:
+      "Full system access: users, roles and permissions, all leads and reports, products, Pancake POS integration, update logs, and permanent deletion.",
     is_system: true,
     created_at: nowIso(),
   },
@@ -72,55 +66,62 @@ const SYSTEM_ROLE_DEFS: RoleDef[] = [
 ];
 
 function seedDb(): DbShape {
-  const managementId = uuid();
+  const administratorId = uuid();
   const teamLeadId = uuid();
   const agentId = uuid();
 
+  // Seeded only into a completely empty database. Each account gets a random
+  // password it must change on first login — there is no documented default.
+  const seedPassword = () => bcrypt.hashSync(randomTempPassword(), 10);
+
+  const profileDefaults = {
+    contact_number: null,
+    avatar_url: null,
+    theme_preference: "light" as const,
+    permission_profile: null,
+    last_login_at: null,
+    is_deleted: false,
+    deleted_at: null,
+    must_change_password: true,
+    is_active: true,
+  };
+
   const profiles: Profile[] = [
     {
-      id: managementId,
-      username: "admin",
+      id: administratorId,
+      username: "ROMA_admin",
       full_name: "Alex Rivera",
       email: "admin@demo.local",
-      role: "management",
+      role: "administrator",
       team_lead_id: null,
       call_name: null,
-      is_active: true,
-      password_hash: bcrypt.hashSync("admin123", 10),
-      must_change_password: false,
-      avatar_url: null,
-      theme_preference: "light" as const,
+      password_hash: seedPassword(),
       created_at: nowIso(),
+      ...profileDefaults,
     },
     {
       id: teamLeadId,
-      username: "manager",
+      username: "ROMA_morgan",
       full_name: "Morgan Chen",
       email: "manager@demo.local",
       role: "team_lead",
       team_lead_id: null,
       call_name: null,
-      is_active: true,
-      password_hash: bcrypt.hashSync("manager123", 10),
-      must_change_password: false,
-      avatar_url: null,
-      theme_preference: "light" as const,
+      password_hash: seedPassword(),
       created_at: nowIso(),
+      ...profileDefaults,
     },
     {
       id: agentId,
-      username: "employee",
+      username: "ROMA_jamie",
       full_name: "Jamie Santos",
       email: "employee@demo.local",
       role: "agent",
       team_lead_id: teamLeadId,
       call_name: "JAMIE",
-      is_active: true,
-      password_hash: bcrypt.hashSync("employee123", 10),
-      must_change_password: false,
-      avatar_url: null,
-      theme_preference: "light" as const,
+      password_hash: seedPassword(),
       created_at: nowIso(),
+      ...profileDefaults,
     },
   ];
 
@@ -133,43 +134,27 @@ function seedDb(): DbShape {
   const productSpeakerId = uuid();
   const productChargerId = uuid();
 
+  const seedProduct = (id: string, name: string, code: string, price: number) => ({
+    id,
+    name,
+    code,
+    sku: code,
+    unit: "pc",
+    selling_price: price,
+    stock_quantity: 0,
+    pancake_variation_id: null,
+    variants: null,
+    status: "active" as const,
+    created_by: administratorId,
+    created_at: nowIso(),
+    updated_by: null,
+    updated_at: null,
+  });
+
   const products = [
-    {
-      id: productMouseId,
-      name: "Wireless Mouse",
-      code: "PRD-0001",
-      pancake_variation_id: null,
-      variants: null,
-      is_active: true,
-      created_by: managementId,
-      created_at: nowIso(),
-      updated_by: null,
-      updated_at: null,
-    },
-    {
-      id: productSpeakerId,
-      name: "Bluetooth Speaker",
-      code: "PRD-0002",
-      pancake_variation_id: null,
-      variants: null,
-      is_active: true,
-      created_by: managementId,
-      created_at: nowIso(),
-      updated_by: null,
-      updated_at: null,
-    },
-    {
-      id: productChargerId,
-      name: "USB-C Charger",
-      code: "PRD-0003",
-      pancake_variation_id: null,
-      variants: null,
-      is_active: true,
-      created_by: managementId,
-      created_at: nowIso(),
-      updated_by: null,
-      updated_at: null,
-    },
+    seedProduct(productMouseId, "Wireless Mouse", "PRD-0001", 450),
+    seedProduct(productSpeakerId, "Bluetooth Speaker", "PRD-0002", 1200),
+    seedProduct(productChargerId, "USB-C Charger", "PRD-0003", 350),
   ];
 
   const orders = [
@@ -369,7 +354,7 @@ function seedDb(): DbShape {
     activity_log: [
       {
         id: uuid(),
-        user_id: managementId,
+        user_id: administratorId,
         user_email: profiles[0].email,
         action: "SYSTEM_SEEDED",
         entity_type: null,

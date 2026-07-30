@@ -6,7 +6,7 @@
   --background: #ffffff;
   --foreground: #171717;
 
-  /* Brand theme derived from the 4S RETENTION logo (gold). */
+  /* Brand theme derived from the 4S ROMA logo (gold). */
   --brand-primary: #8f660c;
   --brand-primary-hover: #79560a;
   --brand-secondary: #6b5310;
@@ -90,7 +90,7 @@ body {
   }
 }
 
-/* FullCalendar themed with the 4S RETENTION brand vars (Section 3/9). */
+/* FullCalendar themed with the 4S ROMA brand vars (Section 3/9). */
 .schedule-calendar {
   --fc-button-bg-color: var(--brand-primary);
   --fc-button-border-color: var(--brand-primary);

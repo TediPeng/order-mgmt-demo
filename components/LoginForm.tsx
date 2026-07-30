@@ -18,7 +18,7 @@ export function LoginForm() {
     >
       <div>
         <Label htmlFor="username">Username</Label>
-        <Input id="username" name="username" autoComplete="username" placeholder="e.g. admin" required />
+        <Input id="username" name="username" autoComplete="username" required />
       </div>
       <div>
         <Label htmlFor="password">Password</Label>

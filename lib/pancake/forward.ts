@@ -13,9 +13,17 @@ import {
   resolveAccount,
   updateOrderSyncFields,
   insertSyncLog,
-  notifyManagement,
+  notifyAdministrators,
   logActivityDirect,
 } from "./store";
+
+/** Sources that describe a status Pancake told US about. Nothing carrying one of
+ * these may trigger an outbound create — see the loop guard below. */
+const PANCAKE_DRIVEN_SOURCES: ReadonlySet<PancakeSyncSource> = new Set<PancakeSyncSource>([
+  "webhook",
+  "api_polling",
+  "tag_rule",
+]);
 
 export interface ForwardResult {
   ok: boolean;
@@ -65,7 +73,7 @@ async function failSync(
     payload_summary: { order_number: order.order_number, system_order_id: order.system_order_id },
   });
   if (extra.notify !== false) {
-    await notifyManagement(
+    await notifyAdministrators(
       "pancake_sync_failed",
       `Pancake sync failed: ${order.order_number}`,
       reason,
@@ -87,6 +95,20 @@ export async function forwardOrderToPancake(
   orderId: string,
   opts: { source: PancakeSyncSource; triggeredBy?: string | null; allowRetry?: boolean }
 ): Promise<ForwardResult> {
+  // --- Loop prevention ------------------------------------------------------
+  // A status that Pancake itself gave us must never travel back to Pancake.
+  // Pancake's code 8 maps to Packaging, so an inbound update can legitimately
+  // leave an order sitting in the one status this function forwards — without
+  // this guard, a future caller carrying an inbound source could bounce it
+  // straight back and the two systems would talk in circles.
+  if (PANCAKE_DRIVEN_SOURCES.has(opts.source)) {
+    return {
+      ok: true,
+      skipped: true,
+      message: `Refusing to forward an order whose status came from Pancake (source: ${opts.source}).`,
+    };
+  }
+
   const order = await getOrderRow(orderId);
   if (!order) return { ok: false, skipped: true, message: "Order not found." };
 
@@ -248,7 +270,7 @@ export async function forwardOrderToPancake(
     });
 
     if (mismatchReason) {
-      await notifyManagement(
+      await notifyAdministrators(
         "pancake_sync_failed",
         `Pancake status unexpected: ${order.order_number}`,
         mismatchReason,
@@ -274,7 +296,7 @@ export async function forwardOrderToPancake(
     responsePayload: result.responsePayload,
     notify: false,
   });
-  await notifyManagement(
+  await notifyAdministrators(
     "pancake_sync_failed",
     `Pancake sync failed: ${order.order_number}`,
     `Attempt ${attempt}: ${errorMsg}. An automatic retry is scheduled; Retry Sync is also available.`,

@@ -1,6 +1,6 @@
-export const SYSTEM_ROLES = ["management", "administrator", "team_lead", "agent"] as const;
+export const SYSTEM_ROLES = ["administrator", "team_lead", "agent"] as const;
 export type SystemRole = (typeof SYSTEM_ROLES)[number];
-// Role is a free-form key so custom roles (created by Management) work too.
+// Role is a free-form key so custom roles (created by an Administrator) work too.
 export type Role = string;
 
 export interface RoleDef {
@@ -21,16 +21,31 @@ export interface Profile {
   email: string;
   role: Role;
   team_lead_id: string | null;
-  /** Agent's Call Name, assigned by Management. Stamped onto every order they
-   * create as order_source, and read-only to the agent. */
+  /** Agent's Call Name, assigned by an Administrator. Stamped onto every order
+   * they create as order_source, and read-only to the agent. */
   call_name: string | null;
+  contact_number: string | null;
   is_active: boolean;
   password_hash: string;
   must_change_password: boolean;
   avatar_url: string | null;
   /** Per-account theme, applied server-side on first paint. */
   theme_preference: ThemePreference;
+  /** Optional named permission preset this account was created from. */
+  permission_profile: string | null;
+  last_login_at: string | null;
+  /** Anonymized tombstone: the row survives so historical orders, call logs and
+   * audit entries keep a valid FK target, rendered as "Deleted User". */
+  is_deleted: boolean;
+  deleted_at: string | null;
   created_at: string;
+}
+
+/** Display name for a profile that may have been anonymized by a permanent
+ * account deletion. */
+export function displayUserName(profile: Pick<Profile, "full_name" | "is_deleted"> | null | undefined): string {
+  if (!profile) return "Unknown User";
+  return profile.is_deleted ? "Deleted User" : profile.full_name;
 }
 
 // Pre-sale statuses (new/ringing/hung_up/cbr/rsrv) are agent-driven; a lead
@@ -61,7 +76,10 @@ export type OrderStatus =
   | "partial_return"
   | "returned"
   | "cancelled"
-  | "deleted";
+  | "deleted"
+  // Out of delivery zone. Set only by the Pancake ODZ tag rule, never by an
+  // agent. Neither Delivered nor Returned, so it is excluded from RTS %.
+  | "odz";
 
 /** Outbound sync state. "Needs review" is not a status of its own — it is the
  * sync_failed state once the retry budget is exhausted, rendered as
@@ -106,6 +124,10 @@ export const ORDER_PANCAKE_DEFAULTS = {
   pancake_sync_error: null,
   forwarded_to_pancake_at: null,
   pancake_retry_count: 0,
+  manual_unlock_active: false,
+  manual_unlock_reason: null,
+  manual_unlock_by: null,
+  manual_unlock_at: null,
 } satisfies Partial<Order>;
 
 export interface Order {
@@ -179,6 +201,12 @@ export interface Order {
   pancake_sync_error: string | null;
   forwarded_to_pancake_at: string | null;
   pancake_retry_count: number;
+  // A synced order is locked from manual editing. An Administrator may unlock
+  // it for one save, which relocks it again.
+  manual_unlock_active: boolean;
+  manual_unlock_reason: string | null;
+  manual_unlock_by: string | null;
+  manual_unlock_at: string | null;
   notes: string;
   created_by: string;
   updated_by: string | null;
@@ -188,21 +216,56 @@ export interface Order {
   updated_at: string;
 }
 
+export const PRODUCT_STATUSES = ["active", "inactive", "out_of_stock"] as const;
+export type ProductStatus = (typeof PRODUCT_STATUSES)[number];
+
+export const PRODUCT_STATUS_LABELS: Record<ProductStatus, string> = {
+  active: "Active",
+  inactive: "Inactive",
+  out_of_stock: "Out of Stock",
+};
+
 export interface Product {
   id: string;
   name: string;
   code: string | null;
+  sku: string | null;
+  unit: string | null;
+  selling_price: number | null;
+  stock_quantity: number | null;
   // Pancake POS variation ID (or SKU) this product maps to. Pancake requires
   // items[].variation_id on every forwarded order; `code` is used as a
   // fallback since Pancake accepts a SKU in the same field.
   pancake_variation_id: string | null;
   /** Optional variant names; when set, an order using this product picks one. */
   variants: string[] | null;
-  is_active: boolean;
+  /** Only "active" products are offered in the agent product dropdown. */
+  status: ProductStatus;
   created_by: string;
   created_at: string;
   updated_by: string | null;
   updated_at: string | null;
+}
+
+export interface ProductUpload {
+  id: string;
+  file_name: string;
+  uploaded_by: string | null;
+  total_rows: number;
+  imported: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  update_existing: boolean;
+  /** Per-row rejection reasons, replayed to build the downloadable error report. */
+  errors: ProductUploadRowError[] | null;
+  uploaded_at: string;
+}
+
+export interface ProductUploadRowError {
+  row: number;
+  product_name: string;
+  reason: string;
 }
 
 export type AttendanceStatus =
@@ -456,15 +519,33 @@ export interface PancakeStatusMapEntry {
   updated_at: string;
 }
 
-export type PancakeSyncAction = "forward" | "status_update" | "poll" | "manual_sync" | "retry";
+export type PancakeSyncAction =
+  | "forward"
+  | "status_update"
+  | "poll"
+  | "manual_sync"
+  | "retry"
+  | "duplicate_ignored";
 export type PancakeSyncSource =
   | "webhook"
   | "api_polling"
   | "manual_sync"
   | "internal_user"
   | "auto_retry"
+  | "tag_rule"
   | "ready_to_ship_event" // historical: renamed to packaging_event
   | "packaging_event";
+
+export const PANCAKE_SYNC_SOURCE_LABELS: Record<PancakeSyncSource, string> = {
+  webhook: "Webhook",
+  api_polling: "Polling",
+  manual_sync: "Manual Sync",
+  internal_user: "Internal User",
+  auto_retry: "Auto Retry",
+  tag_rule: "Tag Rule",
+  ready_to_ship_event: "Packaging Event",
+  packaging_event: "Packaging Event",
+};
 
 export interface PancakeSyncLog {
   id: string;
@@ -569,4 +650,39 @@ export interface CallSession {
   /** Generated column: true while ended_at is null. */
   is_active: boolean;
   created_at: string;
+}
+
+// --- Release notes & account deletion audit --------------------------------
+// Both are append-mostly and read outside the authenticated session (the login
+// page shows published release notes), so they use targeted queries rather
+// than DbShape.
+
+export interface UpdateLog {
+  id: string;
+  version: string;
+  release_date: string; // YYYY-MM-DD
+  title: string;
+  new_features: string[] | null;
+  fixes: string[] | null;
+  improvements: string[] | null;
+  known_issues: string[] | null;
+  is_published: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
+export type DeletionHandling = "anonymized" | "hard_deleted";
+
+export interface AccountDeletion {
+  id: string;
+  deleted_profile_id: string | null;
+  deleted_username: string | null;
+  deleted_full_name: string | null;
+  deleted_email: string | null;
+  deleted_role: string | null;
+  deleted_by: string | null;
+  reason: string;
+  handling_method: DeletionHandling;
+  linked_record_counts: Record<string, number> | null;
+  deleted_at: string;
 }

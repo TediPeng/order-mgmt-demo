@@ -54,7 +54,7 @@ export const MODULE_ACTIONS: Record<ModuleKey, ActionKey[]> = {
   reports: ["view", "export"],
   audit_logs: ["view", "export"],
   settings: ["view", "manage"],
-  // Management-only by default: no team_lead/agent grants below, so only
+  // Administrator-only by default: no team_lead/agent grants below, so only
   // full-access roles (or an explicit matrix grant) can see/manage the
   // Pancake POS integration settings, manual sync/retry, and sync logs.
   integrations: ["view", "manage"],
@@ -64,13 +64,13 @@ export const MODULE_ACTIONS: Record<ModuleKey, ActionKey[]> = {
 
 type Grant = [ModuleKey, ActionKey];
 
-/** "management" and "administrator" both always bypass permission checks
- * (full system access) — neither is stored in role_permissions. */
+/** "administrator" always bypasses permission checks (full system access) and
+ * is never stored in role_permissions. Team Lead and Agent access is entirely
+ * permission-driven through the roles matrix. */
 export function isFullAccess(role: Role): boolean {
-  return role === "management" || role === "administrator";
+  return role === "administrator";
 }
 
-// "management" is not stored — it always bypasses (full access), per spec.
 const TEAM_LEAD_DEFAULTS: Grant[] = [
   ["dashboard", "view"],
   ["orders", "view"],
@@ -139,10 +139,6 @@ export function defaultAllowed(role: string, moduleKey: ModuleKey, action: Actio
   const grants = SYSTEM_ROLE_DEFAULTS[role as "team_lead" | "agent"];
   if (!grants) return false; // custom roles start with nothing granted
   return grants.some(([m, a]) => m === moduleKey && a === action);
-}
-
-export function isManagement(role: Role) {
-  return role === "management";
 }
 
 export function can(role: Role, moduleKey: ModuleKey, action: ActionKey, rolePermissions: RolePermission[]): boolean {

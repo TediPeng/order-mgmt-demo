@@ -11,7 +11,7 @@ import {
   listSyncLogs,
   updateOrderSyncFields,
   insertSyncLog,
-  notifyManagement,
+  notifyAdministrators,
 } from "./store";
 
 export interface SweepSummary {
@@ -96,7 +96,7 @@ export async function runPancakeSync(opts: SweepOptions = {}): Promise<SweepSumm
             result: "failed",
             error_message: `Max ${MAX_ATTEMPTS} attempts reached — needs review.`,
           });
-          await notifyManagement(
+          await notifyAdministrators(
             "pancake_needs_review",
             `Pancake sync needs review: ${order.order_number}`,
             `Syncing failed ${MAX_ATTEMPTS} times. Manual attention required (Retry Sync stays available).`,

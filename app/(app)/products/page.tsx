@@ -2,18 +2,37 @@ import Link from "next/link";
 import { readDb } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/Badge";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
-import { setProductActiveAction, deleteProductAction } from "@/lib/actions/products";
+import { setProductStatusAction, deleteProductAction } from "@/lib/actions/products";
+import { displayUserName, PRODUCT_STATUS_LABELS, PRODUCT_STATUSES, type ProductStatus } from "@/lib/types";
+import { formatCurrency, formatDate } from "@/lib/utils";
+
+const STATUS_BADGE: Record<ProductStatus, string> = {
+  active: "bg-green-100 text-green-700",
+  inactive: "bg-slate-200 text-slate-600",
+  out_of_stock: "bg-amber-100 text-amber-800",
+};
 
 export default async function ProductsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; error?: string; deleted?: string; activated?: string; deactivated?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    status?: string;
+    error?: string;
+    deleted?: string;
+    status_set?: string;
+    uploaded?: string;
+    imported?: string;
+    updated?: string;
+    skipped?: string;
+    failed?: string;
+    upload_id?: string;
+  }>;
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
@@ -30,22 +49,28 @@ export default async function ProductsPage({
   let products = [...db.products];
   if (sp.q) {
     const q = sp.q.toLowerCase();
-    products = products.filter((p) => p.name.toLowerCase().includes(q) || (p.code || "").toLowerCase().includes(q));
+    products = products.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.code || "").toLowerCase().includes(q) ||
+        (p.sku || "").toLowerCase().includes(q)
+    );
   }
-  if (sp.status === "active") products = products.filter((p) => p.is_active);
-  if (sp.status === "inactive") products = products.filter((p) => !p.is_active);
+  if (sp.status && (PRODUCT_STATUSES as readonly string[]).includes(sp.status)) {
+    products = products.filter((p) => p.status === sp.status);
+  }
   products.sort((a, b) => b.created_at.localeCompare(a.created_at));
 
-  const byId = new Map(db.profiles.map((p) => [p.id, p.full_name]));
+  const byId = new Map(db.profiles.map((p) => [p.id, displayUserName(p)]));
   const usedProductIds = new Set(db.orders.filter((o) => o.product_id).map((o) => o.product_id));
 
   const boundDeactivate = async (id: string) => {
     "use server";
-    await setProductActiveAction(id, false);
+    await setProductStatusAction(id, "inactive");
   };
   const boundActivate = async (id: string) => {
     "use server";
-    await setProductActiveAction(id, true);
+    await setProductStatusAction(id, "active");
   };
   const boundDelete = async (id: string) => {
     "use server";
@@ -54,9 +79,22 @@ export default async function ProductsPage({
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-page-title text-slate-900">Products</h1>
-        {canCreate && <LinkButton href="/products/new">Add Product</LinkButton>}
+        <div className="flex flex-wrap gap-2">
+          {canCreate && (
+            <LinkButton href="/products/upload" variant="outline">
+              Upload Product List
+            </LinkButton>
+          )}
+          <LinkButton href="/api/products/template" variant="outline">
+            Download Product Template
+          </LinkButton>
+          <LinkButton href="/products/upload/history" variant="outline">
+            View Upload History
+          </LinkButton>
+          {canCreate && <LinkButton href="/products/new">Add Product</LinkButton>}
+        </div>
       </div>
 
       {sp.error && (
@@ -69,25 +107,41 @@ export default async function ProductsPage({
           Product deleted.
         </Alert>
       )}
-      {sp.activated && (
+      {sp.uploaded && (
         <Alert kind="success" className="mb-4">
-          Product activated.
+          <div className="flex flex-wrap items-center gap-3">
+            <span>
+              Upload complete — {sp.imported || 0} imported, {sp.updated || 0} updated, {sp.skipped || 0} skipped,{" "}
+              {sp.failed || 0} failed.
+            </span>
+            {Number(sp.skipped || 0) + Number(sp.failed || 0) > 0 && sp.upload_id && (
+              <a
+                href={`/api/products/uploads/${sp.upload_id}/errors`}
+                className="text-xs font-medium underline hover:no-underline"
+              >
+                Download error report
+              </a>
+            )}
+          </div>
         </Alert>
       )}
-      {sp.deactivated && (
+      {sp.status_set && (
         <Alert kind="success" className="mb-4">
-          Product deactivated.
+          Product status set to {PRODUCT_STATUS_LABELS[sp.status_set as ProductStatus] || sp.status_set}.
         </Alert>
       )}
 
       <form className="mb-4 grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-4">
         <div className="sm:col-span-2">
-          <Input name="q" placeholder="Search name or code" defaultValue={sp.q} />
+          <Input name="q" placeholder="Search name, code or SKU" defaultValue={sp.q} />
         </div>
         <Select name="status" defaultValue={sp.status || ""}>
           <option value="">All statuses</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
+          {PRODUCT_STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {PRODUCT_STATUS_LABELS[s]}
+            </option>
+          ))}
         </Select>
         <Button type="submit" variant="secondary">
           Filter
@@ -95,13 +149,16 @@ export default async function ProductsPage({
       </form>
 
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-        <table className="w-full min-w-[800px] text-left text-sm">
+        <table className="w-full min-w-[1000px] text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
             <tr>
               <th className="px-4 py-3">Product Name</th>
-              <th className="px-4 py-3">Code</th>
+              <th className="px-4 py-3">SKU</th>
+              <th className="px-4 py-3">Unit</th>
+              <th className="px-4 py-3 text-right">Selling Price</th>
+              <th className="px-4 py-3 text-right">Stock</th>
               <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Date Created</th>
+              <th className="px-4 py-3">Date Added</th>
               <th className="px-4 py-3">Created By</th>
               <th className="px-4 py-3 text-right">Actions</th>
             </tr>
@@ -114,17 +171,20 @@ export default async function ProductsPage({
                     {p.name}
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-slate-500">{p.code || "—"}</td>
+                <td className="px-4 py-3 text-slate-500">{p.sku || p.code || "—"}</td>
+                <td className="px-4 py-3 text-slate-500">{p.unit || "—"}</td>
+                <td className="px-4 py-3 text-right text-slate-500">
+                  {p.selling_price === null ? "—" : formatCurrency(p.selling_price)}
+                </td>
+                <td className="px-4 py-3 text-right text-slate-500">{p.stock_quantity ?? "—"}</td>
                 <td className="px-4 py-3">
-                  <Badge className={p.is_active ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-600"}>
-                    {p.is_active ? "Active" : "Inactive"}
-                  </Badge>
+                  <Badge className={STATUS_BADGE[p.status]}>{PRODUCT_STATUS_LABELS[p.status]}</Badge>
                 </td>
                 <td className="px-4 py-3 text-slate-500">{formatDate(p.created_at)}</td>
                 <td className="px-4 py-3 text-slate-500">{byId.get(p.created_by) || "—"}</td>
                 <td className="px-4 py-3">
                   <div className="flex justify-end gap-2">
-                    {canEdit && p.is_active && (
+                    {canEdit && p.status !== "inactive" && (
                       <ConfirmButton
                         action={boundDeactivate.bind(null, p.id)}
                         variant="outline"
@@ -134,7 +194,7 @@ export default async function ProductsPage({
                         confirmBody="It will no longer appear in the New Product Order dropdown. Existing leads keep referencing it."
                       />
                     )}
-                    {canEdit && !p.is_active && (
+                    {canEdit && p.status !== "active" && (
                       <ConfirmButton
                         action={boundActivate.bind(null, p.id)}
                         variant="outline"
@@ -164,7 +224,7 @@ export default async function ProductsPage({
             ))}
             {products.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={9} className="px-4 py-10 text-center text-slate-400">
                   No products found.
                 </td>
               </tr>

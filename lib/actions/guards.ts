@@ -23,8 +23,8 @@ export function requirePermission(
   }
 }
 
-export function requireManagement(user: Profile, redirectTo: string) {
+export function requireAdministrator(user: Profile, redirectTo: string) {
   if (!isFullAccess(user.role)) {
-    redirect(`${redirectTo}?error=${encodeURIComponent("Management access required.")}`);
+    redirect(`${redirectTo}?error=${encodeURIComponent("Administrator access required.")}`);
   }
 }

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { isFullAccess } from "@/lib/permissions";
 
 /** Read side of the agent call-log tables.
  *
@@ -107,7 +108,7 @@ export function canViewAgentRecords(
   agentId: string,
   profiles: { id: string; team_lead_id: string | null }[]
 ): boolean {
-  if (viewer.role === "management" || viewer.role === "administrator") return true;
+  if (isFullAccess(viewer.role)) return true;
   if (viewer.id === agentId) return true;
   if (viewer.role === "team_lead") {
     return profiles.some((p) => p.id === agentId && p.team_lead_id === viewer.id);

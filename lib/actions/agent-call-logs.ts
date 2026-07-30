@@ -237,7 +237,7 @@ export async function attachOriginalCallLogFileAction(formData: FormData): Promi
 export async function deleteCallLogUploadAction(uploadId: string) {
   const { user, db } = await requireUser();
   if (!isFullAccess(user.role)) {
-    redirect(`${PATH}?error=${encodeURIComponent("Only Management can delete an upload.")}`);
+    redirect(`${PATH}?error=${encodeURIComponent("Only an Administrator can delete an upload.")}`);
   }
 
   const { data: upload } = await supabaseAdmin

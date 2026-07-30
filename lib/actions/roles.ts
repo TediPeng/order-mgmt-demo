@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { writeDb, uuid, nowIso } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
-import { requireUser, requireManagement } from "./guards";
+import { requireUser, requireAdministrator } from "./guards";
 import { buildDefaultRows, defaultAllowed, isFullAccess } from "@/lib/permissions";
 import { roleFormSchema } from "@/lib/validation";
 import type { ActionKey, ModuleKey } from "@/lib/types";
@@ -19,7 +19,7 @@ function slugify(name: string): string {
 
 export async function createRoleAction(formData: FormData) {
   const { user, db } = await requireUser();
-  requireManagement(user, "/settings/roles");
+  requireAdministrator(user, "/settings/roles");
 
   const parsed = roleFormSchema.safeParse({
     name: formData.get("name"),
@@ -57,7 +57,7 @@ export async function createRoleAction(formData: FormData) {
 export async function deleteRoleAction(roleKey: string) {
   "use server";
   const { user, db } = await requireUser();
-  requireManagement(user, "/settings/roles");
+  requireAdministrator(user, "/settings/roles");
 
   const role = db.roles.find((r) => r.key === roleKey);
   if (!role) redirect("/settings/roles");
@@ -83,7 +83,7 @@ export async function deleteRoleAction(roleKey: string) {
 export async function updatePermissionAction(role: string, moduleKey: ModuleKey, action: ActionKey, allowed: boolean) {
   "use server";
   const { user, db } = await requireUser();
-  requireManagement(user, "/settings/roles");
+  requireAdministrator(user, "/settings/roles");
 
   if (isFullAccess(role)) {
     redirect(`/settings/roles?error=${encodeURIComponent("Management and Administrator permissions cannot be reduced.")}`);
@@ -118,7 +118,7 @@ export async function updatePermissionAction(role: string, moduleKey: ModuleKey,
 export async function resetRolePermissionsAction(role: "team_lead" | "agent") {
   "use server";
   const { user, db } = await requireUser();
-  requireManagement(user, "/settings/roles");
+  requireAdministrator(user, "/settings/roles");
 
   db.role_permissions = db.role_permissions.filter((r) => r.role !== role);
   db.role_permissions.push(...buildDefaultRows(role, uuid, nowIso));

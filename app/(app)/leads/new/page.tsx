@@ -1,183 +1,81 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Input, Label, Select, Textarea } from "@/components/ui/Field";
-import { Button, LinkButton } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
-import { ProductCombobox } from "@/components/ProductCombobox";
+import { LinkButton } from "@/components/ui/Button";
+import { RegularCustomerForm } from "@/components/RegularCustomerForm";
 import { createLeadAction } from "@/lib/actions/leads";
 import { allowedAssigneeIds } from "@/lib/order-access";
 import { getCurrentUser } from "@/lib/auth";
 import { readDb } from "@/lib/db";
-import { isFullAccess } from "@/lib/permissions";
-import { PRE_SALE_STATUSES, LEAD_STATUS_LABELS, PAYMENT_METHOD_SUGGESTIONS } from "@/lib/validation";
+import { can, isFullAccess } from "@/lib/permissions";
+import { displayUserName } from "@/lib/types";
+import { creatableStatuses } from "@/lib/validation";
+import { timeInBlockReason, TIME_IN_HREF } from "@/lib/time-in-gate";
 
 export default async function NewLeadPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; time_in_required?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, time_in_required } = await searchParams;
   const user = (await getCurrentUser())!;
   const db = await readDb();
+
+  if (!can(user.role, "orders", "create", db.role_permissions)) {
+    return <Alert kind="error">You do not have permission to create leads.</Alert>;
+  }
+
   const allowedIds = new Set(allowedAssigneeIds(user, db));
-  const agents = db.profiles.filter((p) => p.is_active && allowedIds.has(p.id));
+  const agents = db.profiles
+    .filter((p) => p.is_active && !p.is_deleted && allowedIds.has(p.id))
+    .map((p) => ({ id: p.id, full_name: displayUserName(p), username: p.username }));
   const canReassign = isFullAccess(user.role);
-  const activeProducts = db.products.filter((p) => p.is_active).map((p) => ({ id: p.id, name: p.name, code: p.code }));
+  const activeProducts = db.products
+    .filter((p) => p.status === "active")
+    .map((p) => ({ id: p.id, name: p.name, code: p.code }));
+
+  // Section 2: an agent who has not timed in cannot create an order. Shown up
+  // front rather than only on submit, so the block is obvious before they type.
+  const notTimedIn = timeInBlockReason(db, user);
 
   return (
     <div className="mx-auto max-w-2xl">
       <h1 className="mb-4 text-page-title text-slate-900">Regular Customer</h1>
+
+      {(notTimedIn || time_in_required) && (
+        <Alert kind="warning" className="mb-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <span>{notTimedIn || error}</span>
+            <LinkButton href={TIME_IN_HREF} variant="secondary" size="sm">
+              Go to Time In
+            </LinkButton>
+          </div>
+        </Alert>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Lead details</CardTitle>
         </CardHeader>
         <CardContent>
-          {error && (
+          {error && !time_in_required && (
             <Alert kind="error" className="mb-4">
               {error}
             </Alert>
           )}
-          <form action={createLeadAction} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="customer_name">Customer name</Label>
-                <Input id="customer_name" name="customer_name" required />
-              </div>
-              <div>
-                <Label htmlFor="customer_phone">Phone number</Label>
-                <Input id="customer_phone" name="customer_phone" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="purok">Purok</Label>
-                <Input id="purok" name="purok" />
-              </div>
-              <div>
-                <Label htmlFor="barangay">Barangay</Label>
-                <Input id="barangay" name="barangay" />
-              </div>
-              <div>
-                <Label htmlFor="city">City</Label>
-                <Input id="city" name="city" />
-              </div>
-              <div>
-                <Label htmlFor="province">Province</Label>
-                <Input id="province" name="province" />
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="landmark">Landmark</Label>
-              <Input id="landmark" name="landmark" />
-            </div>
-
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <Label htmlFor="previous_order_date">Previous order date</Label>
-                <Input id="previous_order_date" name="previous_order_date" type="date" />
-              </div>
-              <div>
-                <Label htmlFor="previous_order_product">Previous order product</Label>
-                <Input id="previous_order_product" name="previous_order_product" />
-              </div>
-              <div>
-                <Label htmlFor="previous_order_amount">Previous order amount</Label>
-                <Input id="previous_order_amount" name="previous_order_amount" type="number" min={0} step={0.01} />
-              </div>
-            </div>
-            <p className="-mt-2 text-xs text-slate-400">
-              Leave blank to auto-fill from this customer&apos;s most recent packaged lead, matched by phone number.
+          {notTimedIn ? (
+            <p className="py-6 text-center text-sm text-slate-400">
+              Time in for today to start creating orders.
             </p>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="product_id">New Product Order</Label>
-                <ProductCombobox name="product_id" products={activeProducts} />
-              </div>
-              <div>
-                <Label htmlFor="unit_price">Unit price</Label>
-                <Input id="unit_price" name="unit_price" type="number" min={0} step={0.01} inputMode="decimal" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="variant">Variant</Label>
-                <Input id="variant" name="variant" placeholder="Optional" />
-              </div>
-              <div>
-                <Label htmlFor="discount">Discount</Label>
-                <Input id="discount" name="discount" type="number" min={0} step={0.01} inputMode="decimal" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="shipping_fee">Shipping fee</Label>
-                <Input id="shipping_fee" name="shipping_fee" type="number" min={0} step={0.01} inputMode="decimal" />
-              </div>
-              <div>
-                <Label htmlFor="courier">Courier</Label>
-                <Input id="courier" name="courier" />
-              </div>
-              <div>
-                <Label htmlFor="payment_method">Payment method</Label>
-                <Input id="payment_method" name="payment_method" list="payment_method_options" />
-                <datalist id="payment_method_options">
-                  {PAYMENT_METHOD_SUGGESTIONS.map((p) => (
-                    <option key={p} value={p} />
-                  ))}
-                </datalist>
-              </div>
-              <div>
-                <Label htmlFor="order_source">Order source</Label>
-                <Input id="order_source" name="order_source" placeholder="Optional Pancake routing tag" />
-              </div>
-            </div>
-
-            <div>
-              <Label htmlFor="status">Status</Label>
-              {/* Fulfillment statuses are Pancake-driven and require a prior
-                  Packaging — a brand-new lead can only start pre-sale. */}
-              <Select id="status" name="status" defaultValue="new">
-                {PRE_SALE_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {LEAD_STATUS_LABELS[s]}
-                  </option>
-                ))}
-              </Select>
-            </div>
-
-            <div>
-              <Label htmlFor="agent_id">Agent</Label>
-              {canReassign ? (
-                <Select id="agent_id" name="agent_id" defaultValue={user.id}>
-                  {agents.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.full_name} ({a.username})
-                    </option>
-                  ))}
-                </Select>
-              ) : (
-                <>
-                  <Input value={`${user.full_name} (${user.username})`} disabled />
-                  <input type="hidden" name="agent_id" value={user.id} />
-                </>
-              )}
-              <p className="mt-1 text-xs text-slate-400">This determines whose performance metrics the sale counts toward.</p>
-            </div>
-
-            <div>
-              <Label htmlFor="notes">Notes</Label>
-              <Textarea id="notes" name="notes" rows={3} />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <LinkButton href="/leads" variant="outline">
-                Cancel
-              </LinkButton>
-              <Button type="submit">Save Lead</Button>
-            </div>
-          </form>
+          ) : (
+            <RegularCustomerForm
+              action={createLeadAction}
+              agents={agents}
+              activeProducts={activeProducts}
+              currentUser={{ id: user.id, full_name: user.full_name, username: user.username }}
+              canReassign={canReassign}
+              agentStatuses={creatableStatuses(isFullAccess(user.role))}
+            />
+          )}
         </CardContent>
       </Card>
     </div>

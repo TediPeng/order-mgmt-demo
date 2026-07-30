@@ -3,14 +3,17 @@ import { TERMINAL_STATUSES } from "@/lib/validation";
 import { normalizePhone } from "@/lib/utils";
 import type { IncomingUpdate } from "./types";
 import { mapStatus } from "./mapStatus";
+import { hasOdzTag } from "./config";
 import {
+  eventKey,
   findForwardedOrdersByPhone,
   findOrderByExternalReference,
   findOrderByOrderNumber,
   findOrderByPancakeId,
+  hasProcessedEvent,
   listStatusMap,
   insertSyncLog,
-  notifyManagement,
+  notifyAdministrators,
   logActivityDirect,
   updateOrderSyncFields,
 } from "./store";
@@ -67,7 +70,7 @@ export async function applyIncomingUpdate(update: IncomingUpdate, source: Pancak
       ? "Phone-number fallback matched more than one forwarded order — refusing to guess."
       : "No order matched (pancake id / external reference / order number / phone all failed).";
     await insertSyncLog({ ...base, result: "failed", error_message: reason, new_status: update.rawStatus });
-    await notifyManagement("pancake_needs_review", "Pancake update needs review: unmatched order", reason, "/settings/integrations/logs");
+    await notifyAdministrators("pancake_needs_review", "Pancake update needs review: unmatched order", reason, "/settings/integrations/logs");
     return { applied: false, reason, orderId: null };
   }
 
@@ -91,16 +94,53 @@ export async function applyIncomingUpdate(update: IncomingUpdate, source: Pancak
     return { applied: false, reason, orderId: order.id };
   }
 
+  // --- Duplicate delivery ---------------------------------------------------
+  // Webhook transports are at-least-once, so the same event can arrive twice
+  // (and polling can race a webhook for the same change). Identity is the
+  // (pancake order, status, Pancake-clock timestamp) triple; a repeat is logged
+  // as a duplicate and never re-applied. Needs all three parts to be a real
+  // key — without a timestamp the "status unchanged" path below already
+  // absorbs repeats harmlessly.
+  const key =
+    update.pancakeOrderId && update.eventTimestamp
+      ? eventKey(update.pancakeOrderId, update.rawStatus, update.eventTimestamp)
+      : null;
+  if (key && (await hasProcessedEvent(key))) {
+    const reason = `Duplicate delivery of an already-applied event (${update.rawStatus} @ ${update.eventTimestamp}) — ignored.`;
+    await insertSyncLog({
+      ...base,
+      order_id: order.id,
+      action: "duplicate_ignored",
+      old_status: order.status,
+      new_status: update.rawStatus,
+      result: "success",
+      error_message: reason,
+      payload_summary: { duplicate_of_event_key: key },
+    });
+    return { applied: false, reason, orderId: order.id };
+  }
+
+  // --- ODZ tag rule ---------------------------------------------------------
+  // An `ODZ` tag on the Pancake order means "out of delivery zone" and wins over
+  // whatever the status map would otherwise resolve to. Recorded with source
+  // `tag_rule` so the history shows why the status moved.
+  const odzTagged = hasOdzTag(update.tags);
+
   // Unknown incoming status: do NOT touch the lead; surface for review (Section 5).
   const statusMap = await listStatusMap();
-  const internalStatus = mapStatus(update.rawStatus, statusMap);
+  const mappedStatus = mapStatus(update.rawStatus, statusMap);
+  const internalStatus = odzTagged ? "odz" : mappedStatus;
+  const effectiveSource: PancakeSyncSource = odzTagged ? "tag_rule" : source;
+
+  // An unmapped status is only a problem when the tag rule has not already
+  // decided the outcome.
   if (!internalStatus) {
     const reason = `Unknown Pancake status "${update.rawStatus}" — lead untouched, mapping needed.`;
     // The outbound sync succeeded; only the mapping is missing, so the sync
     // status is left alone and the raw Pancake status is still recorded.
     await updateOrderSyncFields(order.id, { pancake_status: update.rawStatus, pancake_sync_error: reason });
     await insertSyncLog({ ...base, order_id: order.id, old_status: order.status, new_status: update.rawStatus, result: "failed", error_message: reason });
-    await notifyManagement(
+    await notifyAdministrators(
       "pancake_needs_review",
       `Unknown Pancake status: "${update.rawStatus}"`,
       `Order ${order.order_number} received an unmapped status. Add it at Settings → Integrations → Status Map.`,
@@ -150,9 +190,9 @@ export async function applyIncomingUpdate(update: IncomingUpdate, source: Pancak
   // Terminal statuses never move backward automatically; terminal-to-terminal
   // is allowed (with the full log entry below).
   if (TERMINAL.includes(order.status) && !TERMINAL.includes(internalStatus)) {
-    const reason = `Refusing automatic move out of terminal status ${order.status} -> ${internalStatus}. Management can override manually.`;
+    const reason = `Refusing automatic move out of terminal status ${order.status} -> ${internalStatus}. An Administrator can override manually.`;
     await insertSyncLog({ ...base, order_id: order.id, old_status: order.status, new_status: internalStatus, result: "failed", error_message: reason });
-    await notifyManagement(
+    await notifyAdministrators(
       "pancake_needs_review",
       `Blocked backward status move: ${order.order_number}`,
       reason,
@@ -176,12 +216,21 @@ export async function applyIncomingUpdate(update: IncomingUpdate, source: Pancak
   });
   await insertSyncLog({
     ...base,
+    source: effectiveSource,
     order_id: order.id,
     old_status: order.status,
     new_status: internalStatus,
     response_at: new Date().toISOString(),
     result: "success",
-    payload_summary: { matched_by: matchedBy, raw_status: update.rawStatus, event_timestamp: update.eventTimestamp },
+    payload_summary: {
+      matched_by: matchedBy,
+      raw_status: update.rawStatus,
+      event_timestamp: update.eventTimestamp,
+      tags: update.tags ?? [],
+      ...(odzTagged ? { odz_tag_applied: true } : {}),
+      // Written last so hasProcessedEvent() can recognize a repeat delivery.
+      ...(key ? { event_key: key } : {}),
+    },
   });
   await logActivityDirect(null, "PANCAKE_STATUS_SYNCED", "order", order.id, {
     order_number: order.order_number,
@@ -189,7 +238,8 @@ export async function applyIncomingUpdate(update: IncomingUpdate, source: Pancak
   }, {
     module: "orders",
     previous_value: { status: order.status },
-    updated_value: { status: internalStatus, source },
+    updated_value: { status: internalStatus, source: effectiveSource },
   });
-  return { applied: true, reason: `Status ${order.status} -> ${internalStatus} (matched by ${matchedBy}).`, orderId: order.id };
+  const how = odzTagged ? "ODZ tag rule" : `matched by ${matchedBy}`;
+  return { applied: true, reason: `Status ${order.status} -> ${internalStatus} (${how}).`, orderId: order.id };
 }

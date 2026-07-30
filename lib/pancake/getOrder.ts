@@ -1,6 +1,6 @@
 import type { Order, PancakeAccount } from "@/lib/types";
 import type { GetOrderResult } from "./types";
-import { GET_ORDER_PATH, RESPONSE_FIELDS, mockMode } from "./config";
+import { GET_ORDER_PATH, RESPONSE_FIELDS, mockMode, readTags } from "./config";
 import { pancakeFetch, resolvePath, unwrapData } from "./client";
 
 /** Fetches the current Pancake-side state of a forwarded order
@@ -16,6 +16,7 @@ export async function getOrder(account: PancakeAccount, order: Pick<Order, "panc
       statusName: null,
       trackingNumber: null,
       eventTimestamp: null,
+      tags: [],
       responseSummary: null,
     };
   }
@@ -31,6 +32,7 @@ export async function getOrder(account: PancakeAccount, order: Pick<Order, "panc
       statusName: "confirmed",
       trackingNumber: "MOCK-TRACK-1",
       eventTimestamp: new Date().toISOString(),
+      tags: [],
       responseSummary: { mock: true, status: "1" },
     };
   }
@@ -43,6 +45,7 @@ export async function getOrder(account: PancakeAccount, order: Pick<Order, "panc
       statusName: null,
       trackingNumber: null,
       eventTimestamp: null,
+      tags: [],
       responseSummary: { mock: true },
     };
   }
@@ -60,6 +63,7 @@ export async function getOrder(account: PancakeAccount, order: Pick<Order, "panc
     (data[RESPONSE_FIELDS.tracking] != null ? String(data[RESPONSE_FIELDS.tracking]) : null) ||
     (partner.extend_code != null ? String(partner.extend_code) : null);
   const eventTimestamp = data[RESPONSE_FIELDS.updated_at] != null ? String(data[RESPONSE_FIELDS.updated_at]) : null;
+  const tags = readTags(data[RESPONSE_FIELDS.tags]);
   return {
     ok: res.ok,
     httpStatus: res.httpStatus,
@@ -68,6 +72,7 @@ export async function getOrder(account: PancakeAccount, order: Pick<Order, "panc
     statusName,
     trackingNumber: tracking,
     eventTimestamp,
-    responseSummary: res.body ? { status: rawStatus, status_name: statusName, updated_at: eventTimestamp } : null,
+    tags,
+    responseSummary: res.body ? { status: rawStatus, status_name: statusName, updated_at: eventTimestamp, tags } : null,
   };
 }

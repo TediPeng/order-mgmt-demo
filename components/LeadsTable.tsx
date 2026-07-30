@@ -21,7 +21,6 @@ export function LeadsTable({
   canTagRegular = false,
   duplicateWarningsByOrderId = {},
   requiresCallSession = false,
-  initialCallSession = null,
   callSessionsByOrderId = {},
   agentNameById = {},
   canSeeFulfillment = false,
@@ -40,7 +39,6 @@ export function LeadsTable({
   canTagRegular?: boolean;
   duplicateWarningsByOrderId?: Record<string, { name: string; phone: string; agent: string; fields: string[]; confidence: string }[]>;
   requiresCallSession?: boolean;
-  initialCallSession?: CallSession | null;
   callSessionsByOrderId?: Record<string, CallSession[]>;
   agentNameById?: Record<string, string>;
   canSeeFulfillment?: boolean;
@@ -161,7 +159,6 @@ export function LeadsTable({
           canTagRegular={canTagRegular}
           duplicateWarnings={duplicateWarningsByOrderId[openOrder.id] || []}
           requiresCallSession={requiresCallSession}
-          initialCallSession={initialCallSession}
           callSessions={callSessionsByOrderId[openOrder.id] || []}
           agentNameById={agentNameById}
           canSeeFulfillment={canSeeFulfillment}

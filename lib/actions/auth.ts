@@ -28,11 +28,23 @@ export async function loginAction(formData: FormData) {
     redirect(`/login?error=${encodeURIComponent("Incorrect username or password.")}`);
   }
 
+  // A deleted account is a tombstone kept only so historical records still
+  // resolve; it can never sign in again, whatever it is asked.
+  if (user.is_deleted) {
+    logActivity(db, user.id, "LOGIN_FAILED", "auth", null, { reason: "deleted" }, { module: "settings", ...info });
+    await writeDb(db);
+    redirect(`/login?error=${encodeURIComponent("Incorrect username or password.")}`);
+  }
+
   if (!user.is_active) {
     logActivity(db, user.id, "LOGIN_FAILED", "auth", null, { reason: "deactivated" }, { module: "settings", ...info });
     await writeDb(db);
     redirect(`/login?error=${encodeURIComponent("This account has been deactivated. Contact your administrator.")}`);
   }
+
+  // Surfaced in the Users list (Section 8), so it is stamped on every successful
+  // sign-in rather than derived from the audit log.
+  user.last_login_at = new Date().toISOString();
 
   logActivity(db, user.id, "LOGIN", "auth", user.id, { username: user.username }, { module: "settings", ...info });
   await writeDb(db);
@@ -84,6 +96,14 @@ export async function changeOwnPasswordAction(formData: FormData) {
 
   if (!verifyPassword(parsed.data.current_password, profile.password_hash)) {
     redirect(`/settings/password?error=${encodeURIComponent("Current password is incorrect.")}`);
+  }
+
+  // Setting the new password to the old one would defeat a forced reset, so the
+  // temporary password an Administrator issued cannot simply be kept.
+  if (verifyPassword(parsed.data.new_password, profile.password_hash)) {
+    redirect(
+      `/settings/password?error=${encodeURIComponent("Your new password must be different from your current one.")}`
+    );
   }
 
   profile.password_hash = hashPassword(parsed.data.new_password);

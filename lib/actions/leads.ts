@@ -7,7 +7,7 @@ import { getRequestInfo } from "@/lib/request-info";
 import { orderInScope, allowedAssigneeIds } from "@/lib/order-access";
 import { getActiveSessionForOrder, endSession } from "@/lib/call-sessions";
 import { isFullAccess } from "@/lib/permissions";
-import { requireUser, requirePermission } from "./guards";
+import { requireUser, requirePermission, requireAdministrator } from "./guards";
 import { leadFormSchema, leadImportRowSchema, PACKAGING_STATUS, PRE_SALE_STATUSES } from "@/lib/validation";
 import { matchAgentByCallName } from "@/lib/agent-match";
 import { todayInTz, restoreTrunkZero } from "@/lib/utils";
@@ -18,7 +18,9 @@ import {
   computeOrderDate,
   findPreviousOrderInfo,
   fulfillmentOverrideBlockReason,
+  lockedEditBlockReason,
 } from "@/lib/lead-workflow";
+import { timeInBlockReason } from "@/lib/time-in-gate";
 import { forwardOrderToPancake } from "@/lib/pancake/forward";
 import { computeOrderTotal, validateForPancake } from "@/lib/pancake/validate";
 import { validateAddressCodes } from "@/lib/psgc";
@@ -59,6 +61,10 @@ export async function createLeadAction(formData: FormData) {
   const { user, db } = await requireUser();
   requirePermission(user, "orders", "create", db, "/leads/new");
 
+  // Creating a Regular Customer order requires being timed in (Section 2).
+  const notTimedIn = timeInBlockReason(db, user);
+  if (notTimedIn) redirect(`/leads/new?error=${encodeURIComponent(notTimedIn)}&time_in_required=1`);
+
   const raw = buildLeadFieldErrors(formData);
   const allowed = allowedAssigneeIds(user, db);
   if (!raw.agent_id || !allowed.includes(String(raw.agent_id))) raw.agent_id = user.id;
@@ -70,11 +76,17 @@ export async function createLeadAction(formData: FormData) {
   }
   const data = parsed.data;
 
+  // Section 3: `New` is the system's own starting point and is never
+  // agent-settable. Enforced here as well as hidden from the dropdown, so a
+  // crafted request cannot post it either.
+  const restricted = restrictedStatusBlockReason(data.status, isFullAccess(user.role));
+  if (restricted) redirect(`/leads/new?error=${encodeURIComponent(restricted)}`);
+
   const blocked = pipelineBlockReason({ order_date: null }, data.status);
   if (blocked) redirect(`/leads/new?error=${encodeURIComponent(blocked)}`);
 
   if (data.status === PACKAGING_STATUS) {
-    const missing = validatePackaging({ ...data, product_id: data.product_id || null });
+    const missing = validatePackaging({ ...data, product_id: data.product_id || null, quantity: data.quantity });
     if (missing.length > 0) {
       redirect(`/leads/new?error=${encodeURIComponent(`Missing required fields for Packaging: ${missing.join(", ")}`)}`);
     }
@@ -103,11 +115,13 @@ export async function createLeadAction(formData: FormData) {
     previous_order_amount: data.previous_order_amount ?? previousInfo?.amount ?? null,
     product_id: data.product_id || null,
     product_name: product?.name || "",
-    quantity: 1,
+    // Section 0.6: Quantity is back on the agent form and feeds the line total
+    // and the Pancake payload.
+    quantity: data.quantity,
     unit_price: data.unit_price ?? null,
     total_amount: computeOrderTotal({
       unit_price: data.unit_price ?? null,
-      quantity: 1,
+      quantity: data.quantity,
       discount: data.discount ?? 0,
       shipping_fee: data.shipping_fee ?? null,
     }),
@@ -173,6 +187,17 @@ export async function applyLeadUpdate(
     return { ok: false, code: "forbidden", error: "You do not have access to that lead." };
   }
 
+  // A synced order is frozen against manual edits from ANY role — the inputs are
+  // disabled in the UI, and this is the check that actually enforces it, so a
+  // crafted request cannot bypass a greyed-out field. An Administrator lifts it
+  // deliberately through unlockOrderForEditingAction, which is audit-logged.
+  const locked = lockedEditBlockReason(order);
+  if (locked) return { ok: false, code: "forbidden", error: locked };
+
+  // Processing an order or moving its status requires being timed in (Section 2).
+  const notTimedIn = timeInBlockReason(db, user);
+  if (notTimedIn) return { ok: false, code: "forbidden", error: notTimedIn };
+
   const requestedAgentId = String(raw.agent_id || order.agent_id);
   raw.agent_id = isFullAccess(user.role) ? requestedAgentId : order.agent_id;
 
@@ -188,6 +213,20 @@ export async function applyLeadUpdate(
     return { ok: false, code: "validation", error: parsed.error.issues[0]?.message || "Invalid input." };
   }
   const data = parsed.data;
+
+  // Quantity is optional on the wire because partial updates (the modal's quick
+  // status change) post a subset of fields — an omitted quantity must leave the
+  // existing one alone rather than reset it to the schema default. A quantity
+  // that IS supplied but nonsensical is an error, not something to quietly
+  // replace with the old value. Resolved before the Packaging gate below so the
+  // validation sees the value actually being saved.
+  const rawQuantity = raw.quantity;
+  const quantitySupplied = rawQuantity !== null && rawQuantity !== undefined && rawQuantity !== "";
+  const parsedQuantity = quantitySupplied ? Number(rawQuantity) : NaN;
+  if (quantitySupplied && (!Number.isInteger(parsedQuantity) || parsedQuantity < 1)) {
+    return { ok: false, code: "validation", error: "Quantity must be a whole number of at least 1." };
+  }
+  const quantity = quantitySupplied ? parsedQuantity : order.quantity;
 
   // Statuses past Packaging belong to fulfillment. This is an authorization
   // decision, not a validation one, so it answers 403 — a hidden dropdown
@@ -223,7 +262,7 @@ export async function applyLeadUpdate(
   if (fulfillmentBlocked) return { ok: false, code: "forbidden", error: fulfillmentBlocked };
 
   if (data.status === PACKAGING_STATUS) {
-    const missing = validatePackaging({ ...data, product_id: data.product_id || null });
+    const missing = validatePackaging({ ...data, product_id: data.product_id || null, quantity });
     if (missing.length > 0) {
       return {
         ok: false,
@@ -260,7 +299,7 @@ export async function applyLeadUpdate(
       city: data.city || "",
       province: data.province || "",
       product_name: candidateProduct?.name || order.product_name,
-      quantity: order.quantity,
+      quantity,
       unit_price: data.unit_price ?? null,
       discount: data.discount ?? 0,
       shipping_fee: data.shipping_fee ?? null,
@@ -280,11 +319,6 @@ export async function applyLeadUpdate(
   const isReassignment = isFullAccess(user.role) && data.agent_id !== before.agent_id;
   const product = data.product_id ? db.products.find((p) => p.id === data.product_id) : undefined;
 
-  // Quantity is hidden on the full-page form (always order.quantity); the
-  // Order Details modal is the only place it's surfaced as an editable field.
-  const rawQuantity = raw.quantity;
-  const parsedQuantity = rawQuantity != null && rawQuantity !== "" ? Number(rawQuantity) : NaN;
-  const quantity = Number.isFinite(parsedQuantity) && parsedQuantity > 0 ? parsedQuantity : order.quantity;
 
   order.customer_name = data.customer_name;
   order.customer_phone = data.customer_phone || "";
@@ -339,7 +373,25 @@ export async function applyLeadUpdate(
   order.updated_by = user.id;
   order.updated_at = nowIso();
 
+  // An Administrator unlock covers exactly one save; consuming it here means the
+  // order relocks the moment those edits land.
+  const consumedUnlock = order.manual_unlock_active;
+  if (consumedUnlock) {
+    order.manual_unlock_active = false;
+    order.manual_unlock_reason = null;
+    order.manual_unlock_by = null;
+    order.manual_unlock_at = null;
+  }
+
   const info = await getRequestInfo();
+  if (consumedUnlock) {
+    logActivity(db, user.id, "ORDER_RELOCKED", "order", order.id, { order_number: order.order_number }, {
+      module: "orders",
+      previous_value: { manual_unlock_active: true, manual_unlock_reason: before.manual_unlock_reason },
+      updated_value: { manual_unlock_active: false },
+      ...info,
+    });
+  }
   if (isReassignment) {
     logActivity(db, user.id, "LEAD_REASSIGNED", "order", order.id, { order_number: order.order_number }, {
       module: "orders",
@@ -416,7 +468,7 @@ export async function afterLeadUpdatePersisted(
       result: "success",
       triggered_by: user.id,
       source: "internal_user",
-      payload_summary: { note: "Manual status change by Management on a forwarded order" },
+      payload_summary: { note: "Manual status change by an Administrator on a forwarded order" },
     });
   }
   if (result.enteredPackaging) {
@@ -437,6 +489,47 @@ export async function updateLeadAction(orderId: string, formData: FormData) {
   await writeDb(db);
   await afterLeadUpdatePersisted(user, result);
   redirect(`/leads/${orderId}?updated=1`);
+}
+
+/**
+ * Lifts the synced-order lock for one save. Administrator-only, requires a
+ * written reason, and is fully audit-logged as ORDER_MANUALLY_UNLOCKED — the
+ * point of the lock is that Pancake owns a synced order, so every deliberate
+ * exception has to be attributable. applyLeadUpdate clears the flag again on the
+ * next save.
+ */
+export async function unlockOrderForEditingAction(orderId: string, formData: FormData) {
+  const { user, db } = await requireUser();
+  requireAdministrator(user, `/leads/${orderId}`);
+
+  const order = db.orders.find((o) => o.id === orderId);
+  if (!order) redirect("/leads");
+
+  const reason = String(formData.get("unlock_reason") || "").trim();
+  if (reason.length < 5) {
+    redirect(`/leads/${orderId}?error=${encodeURIComponent("Give a reason for unlocking this order (at least 5 characters).")}`);
+  }
+  if (order!.pancake_sync_status !== "synced") {
+    redirect(`/leads/${orderId}?error=${encodeURIComponent("This order is not locked — no unlock needed.")}`);
+  }
+
+  order!.manual_unlock_active = true;
+  order!.manual_unlock_reason = reason;
+  order!.manual_unlock_by = user.id;
+  order!.manual_unlock_at = nowIso();
+
+  const info = await getRequestInfo();
+  logActivity(db, user.id, "ORDER_MANUALLY_UNLOCKED", "order", order!.id, {
+    order_number: order!.order_number,
+    reason,
+  }, {
+    module: "orders",
+    previous_value: { manual_unlock_active: false },
+    updated_value: { manual_unlock_active: true, manual_unlock_reason: reason },
+    ...info,
+  });
+  await writeDb(db);
+  redirect(`/leads/${orderId}?unlocked=1`);
 }
 
 export async function deleteLeadAction(orderId: string) {

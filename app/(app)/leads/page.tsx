@@ -2,7 +2,7 @@
 import { readDb } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
-import { scopeOrders } from "@/lib/order-access";
+import { scopeOrders, allowedAssigneeIds } from "@/lib/order-access";
 import { normalizePhone, isValidPhoneQuery, canonicalPhone } from "@/lib/utils";
 import { findDuplicates } from "@/lib/customers";
 import { Button, LinkButton } from "@/components/ui/Button";
@@ -14,7 +14,7 @@ import { LeadStatusCards, QUICK_FILTER_STATUSES } from "@/components/LeadStatusC
 import { StatusBadge } from "@/components/ui/Badge";
 import { LEAD_STATUSES, LEAD_STATUS_LABELS, PRE_SALE_STATUSES } from "@/lib/validation";
 import type { CallSession, OrderStatus } from "@/lib/types";
-import { getActiveSession, listSessionsForOrder } from "@/lib/call-sessions";
+import { listSessionsForOrder } from "@/lib/call-sessions";
 
 const PAGE_SIZE = 25;
 
@@ -45,7 +45,22 @@ export default async function LeadsPage({
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
   const db = await readDb();
-  const isAgent = user.role === "agent";
+
+  // The page was previously reachable by direct URL for any signed-in role: the
+  // sidebar hid the link but nothing here checked the permission, so whether a
+  // Team Lead could open Leads depended on how they navigated. Gate it like
+  // every other module page.
+  if (!can(user.role, "orders", "view", db.role_permissions)) {
+    return <Alert kind="error">You do not have permission to view Leads.</Alert>;
+  }
+
+  // Which Leads UI you get is decided by SCOPE, not by the role's name: anyone
+  // restricted to their own leads gets the identical agent view. Keying this off
+  // `role === "agent"` meant an agent placed on a custom role silently got the
+  // wide management filter panel instead — the same account type, two different
+  // UIs. One predicate, one UI, no per-account drift.
+  const seesBeyondOwnLeads = isFullAccess(user.role) || user.role === "team_lead";
+  const isAgent = !seesBeyondOwnLeads;
   const canImport = can(user.role, "orders", "upload", db.role_permissions);
   const canExport = can(user.role, "orders", "export", db.role_permissions);
 
@@ -113,14 +128,20 @@ export default async function LeadsPage({
   const totalPages = Math.max(1, Math.ceil(orders.length / PAGE_SIZE));
   const pageOrders = orders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const scopedAgents = db.profiles.filter((p) => p.is_active);
+  // The agent filter must list only agents the viewer is allowed to see. It used
+  // to list every active profile, so a Team Lead's dropdown named agents outside
+  // their team — selecting one returned nothing, but the roster still leaked.
+  const allowedAgentIds = new Set(allowedAssigneeIds(user, db));
+  const scopedAgents = db.profiles.filter((p) => p.is_active && !p.is_deleted && allowedAgentIds.has(p.id));
 
   const canEdit = can(user.role, "orders", "edit", db.role_permissions);
   const canManageIntegrations = can(user.role, "integrations", "manage", db.role_permissions);
   const agentUsernameById = Object.fromEntries(db.profiles.map((p) => [p.id, p.username]));
   const agentFullNameById = Object.fromEntries(db.profiles.map((p) => [p.id, p.full_name]));
   const careStaffById = Object.fromEntries(db.profiles.map((p) => [p.id, { name: p.full_name, email: p.email }]));
-  const activeProducts = db.products.filter((p) => p.is_active).map((p) => ({ id: p.id, name: p.name, code: p.code, variants: p.variants }));
+  const activeProducts = db.products
+    .filter((p) => p.status === "active")
+    .map((p) => ({ id: p.id, name: p.name, code: p.code, variants: p.variants }));
   const productNameByOrderId = Object.fromEntries(
     pageOrders.map((o) => [o.id, o.product_id ? db.products.find((p) => p.id === o.product_id)?.name || o.product_name : o.product_name])
   );
@@ -144,7 +165,7 @@ export default async function LeadsPage({
   // Duplicate warnings are computed for Management/Team Lead only. Agents are
   // never given them: the detector spans every agent's customers by design, so
   // surfacing a match would leak exactly what their scoping withholds.
-  const canSeeDuplicateWarnings = isFullAccess(user.role) || user.role === "team_lead";
+  const canSeeDuplicateWarnings = seesBeyondOwnLeads;
   const duplicateWarningsByOrderId: Record<
     string,
     { name: string; phone: string; agent: string; fields: string[]; confidence: string }[]
@@ -172,7 +193,8 @@ export default async function LeadsPage({
     }
   }
 
-  const activeCallSession = isAgent ? await getActiveSession(user.id) : null;
+  // The active session is provided app-wide by CallSessionProvider (mounted in
+  // the layout), so this page no longer fetches or forwards it.
   const callSessionsByOrderId: Record<string, CallSession[]> = {};
   if (isAgent && pageOrders.length > 0) {
     for (const o of pageOrders) {
@@ -330,7 +352,6 @@ export default async function LeadsPage({
           activeProducts={activeProducts}
           canEdit={canEdit}
           canTagRegular={canTagRegular}
-          initialCallSession={activeCallSession}
           callSessionsByOrderId={callSessionsByOrderId}
           agentNameById={agentFullNameById}
           initialOpenOrderNumber={sp.open}
@@ -349,7 +370,6 @@ export default async function LeadsPage({
         canTagRegular={canTagRegular}
         duplicateWarningsByOrderId={duplicateWarningsByOrderId}
         requiresCallSession={!isFullAccess(user.role)}
-        initialCallSession={activeCallSession}
         callSessionsByOrderId={callSessionsByOrderId}
         agentNameById={agentFullNameById}
         canSeeFulfillment={!isAgent}
