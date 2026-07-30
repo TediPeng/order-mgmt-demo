@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { z } from "zod";
 import { writeDb, uuid, nowIso, nextOrderNumber } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
@@ -29,32 +30,55 @@ import type { DbShape, Order, Profile } from "@/lib/types";
 import { ORDER_PANCAKE_DEFAULTS } from "@/lib/types";
 
 function buildLeadFieldErrors(formData: FormData): Record<string, unknown> {
-  return {
-    customer_name: formData.get("customer_name"),
-    customer_phone: formData.get("customer_phone"),
-    purok: formData.get("purok"),
-    barangay: formData.get("barangay"),
-    city: formData.get("city"),
-    province: formData.get("province"),
-    landmark: formData.get("landmark"),
-    previous_order_date: formData.get("previous_order_date"),
-    previous_order_product: formData.get("previous_order_product"),
-    previous_order_amount: formData.get("previous_order_amount") || null,
-    product_id: formData.get("product_id"),
-    unit_price: formData.get("unit_price") || null,
-    status: formData.get("status") || "new",
-    notes: formData.get("notes"),
-    agent_id: formData.get("agent_id"),
-    shipping_fee: formData.get("shipping_fee") || null,
-    courier: formData.get("courier"),
-    payment_method: formData.get("payment_method"),
-    order_source: formData.get("order_source"),
-    province_code: formData.get("province_code"),
-    city_code: formData.get("city_code"),
-    barangay_code: formData.get("barangay_code"),
-    discount: formData.get("discount") || null,
-    variant: formData.get("variant"),
+  // FormData.get() answers `null` for a field the form does not contain, and
+  // Zod's .optional()/.default() only substitute for `undefined` — a null makes
+  // z.string() fail outright. Not every form posts every field (the Regular
+  // Customer form deliberately dropped courier, payment method, order source,
+  // the variant and the previous-order trio), so absent fields are mapped to
+  // undefined here and the schema's own defaults fill them in.
+  const field = (name: string): unknown => formData.get(name) ?? undefined;
+  const numeric = (name: string): unknown => {
+    const raw = formData.get(name);
+    return raw === null || raw === "" ? null : raw;
   };
+
+  return {
+    customer_name: field("customer_name"),
+    customer_phone: field("customer_phone"),
+    purok: field("purok"),
+    barangay: field("barangay"),
+    city: field("city"),
+    province: field("province"),
+    landmark: field("landmark"),
+    previous_order_date: field("previous_order_date"),
+    previous_order_product: field("previous_order_product"),
+    previous_order_amount: numeric("previous_order_amount"),
+    product_id: field("product_id"),
+    quantity: field("quantity"),
+    unit_price: numeric("unit_price"),
+    status: formData.get("status") || "new",
+    notes: field("notes"),
+    agent_id: field("agent_id"),
+    shipping_fee: numeric("shipping_fee"),
+    courier: field("courier"),
+    payment_method: field("payment_method"),
+    order_source: field("order_source"),
+    province_code: field("province_code"),
+    city_code: field("city_code"),
+    barangay_code: field("barangay_code"),
+    discount: numeric("discount"),
+    variant: field("variant"),
+  };
+}
+
+/** Names the offending field. A bare "Invalid input" says nothing about which
+ * of two dozen fields was rejected, which made a schema mismatch effectively
+ * undebuggable from the screen. */
+function describeParseFailure(error: z.ZodError): string {
+  const issue = error.issues[0];
+  if (!issue) return "Invalid input.";
+  const field = issue.path.join(".");
+  return field ? `${field}: ${issue.message}` : issue.message;
 }
 
 export async function createLeadAction(formData: FormData) {
@@ -71,8 +95,7 @@ export async function createLeadAction(formData: FormData) {
 
   const parsed = leadFormSchema.safeParse(raw);
   if (!parsed.success) {
-    const msg = parsed.error.issues[0]?.message || "Invalid input.";
-    redirect(`/leads/new?error=${encodeURIComponent(msg)}`);
+    redirect(`/leads/new?error=${encodeURIComponent(describeParseFailure(parsed.error))}`);
   }
   const data = parsed.data;
 
@@ -210,7 +233,7 @@ export async function applyLeadUpdate(
 
   const parsed = leadFormSchema.safeParse(raw);
   if (!parsed.success) {
-    return { ok: false, code: "validation", error: parsed.error.issues[0]?.message || "Invalid input." };
+    return { ok: false, code: "validation", error: describeParseFailure(parsed.error) };
   }
   const data = parsed.data;
 
