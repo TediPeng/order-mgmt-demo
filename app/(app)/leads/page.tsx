@@ -11,8 +11,8 @@ import { Alert } from "@/components/ui/Alert";
 import { LeadsTable } from "@/components/LeadsTable";
 import { AgentLeadsTable } from "@/components/AgentLeadsTable";
 import { LeadStatusCards, QUICK_FILTER_STATUSES } from "@/components/LeadStatusCards";
-import { StatusBadge } from "@/components/ui/Badge";
-import { LEAD_STATUSES, LEAD_STATUS_LABELS, PRE_SALE_STATUSES } from "@/lib/validation";
+
+import { LEAD_STATUSES, LEAD_STATUS_LABELS } from "@/lib/validation";
 import type { CallSession, OrderStatus } from "@/lib/types";
 import { listSessionsForOrder } from "@/lib/call-sessions";
 
@@ -123,15 +123,24 @@ export default async function LeadsPage({
     if (sp.prev_to) orders = orders.filter((o) => (o.previous_order_date || "") <= sp.prev_to!);
   }
 
-  // Status-card counts are taken from the agent's whole scoped set, before the
+  // Status-card counts come from the viewer's whole scoped set, before the
   // status filter is applied, so selecting a card doesn't zero the others. One
-  // pass builds every bucket rather than a query per card.
-  const agentScoped = isAgent ? scopeOrders(user, db.orders, db).filter((o) => !o.is_regular_customer) : [];
-  const agentTotalLeads = agentScoped.length;
+  // pass builds every bucket rather than a query per card. Everyone gets these
+  // now — a Team Lead counting their team's Ringing leads wants exactly what an
+  // agent wants, just over a wider scope.
+  const cardScoped = scopeOrders(user, db.orders, db).filter((o) => !o.is_regular_customer);
+  const totalLeads = cardScoped.length;
   const countsByStatus = new Map<string, number>();
-  for (const o of agentScoped) countsByStatus.set(o.status, (countsByStatus.get(o.status) ?? 0) + 1);
-  const agentStatusCounts = QUICK_FILTER_STATUSES.map((s) => ({ status: s, count: countsByStatus.get(s) ?? 0 }));
+  for (const o of cardScoped) countsByStatus.set(o.status, (countsByStatus.get(o.status) ?? 0) + 1);
+  const statusCounts = QUICK_FILTER_STATUSES.map((s) => ({ status: s, count: countsByStatus.get(s) ?? 0 }));
   const statusHref = (status?: string) => qs({ status, page: undefined });
+
+  // Any advanced filter already in play keeps that panel open on load, so a
+  // filtered list never looks unfiltered.
+  const advancedFilterActive = Boolean(
+    sp.order_number || sp.agent || sp.customer_name || sp.phone || sp.city || sp.province ||
+      sp.product || sp.date_from || sp.date_to || sp.prev_from || sp.prev_to
+  );
 
   const page = Math.max(1, parseInt(sp.page || "1", 10) || 1);
   const totalPages = Math.max(1, Math.ceil(orders.length / PAGE_SIZE));
@@ -258,99 +267,100 @@ export default async function LeadsPage({
         </Alert>
       )}
 
-      {isAgent ? (
-        <>
-          <form className="sticky top-0 z-30 mb-4 flex gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <input type="hidden" name="status" value={sp.status || ""} />
-            <div className="flex-1">
-              <Input
-                name="q"
-                placeholder="Search order number, customer name, phone number, or tracking number"
-                defaultValue={sp.q || sp.phone}
-              />
-            </div>
-            <Button type="submit" variant="secondary">
-              Search
-            </Button>
-          </form>
-          <LeadStatusCards counts={agentStatusCounts} total={agentTotalLeads} selected={sp.status} hrefFor={statusHref} />
-        </>
-      ) : (
-        <form className="mb-4 grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-4">
-          <div className="sm:col-span-2">
-            <Input name="q" placeholder="Search order #, customer, phone, or agent username" defaultValue={sp.q} />
-          </div>
-          <Select name="status" defaultValue={sp.status || ""}>
-            <option value="">All statuses</option>
-            {LEAD_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {LEAD_STATUS_LABELS[s]}
-              </option>
-            ))}
-          </Select>
-          <Select name="agent" defaultValue={sp.agent || ""}>
-            <option value="">All agents</option>
-            {scopedAgents.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.full_name} ({a.username})
-              </option>
-            ))}
-          </Select>
+      {/* One layout for every role: a single search box, then the status cards.
+          The wide filter grid that used to sit here for Administrators and Team
+          Leads is still available, collapsed, so the wider scoping those roles
+          need is not lost — it just stops being the first thing on the page. */}
+      <form className="sticky top-0 z-30 mb-4 flex gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <input type="hidden" name="status" value={sp.status || ""} />
+        <div className="flex-1">
+          <Input
+            name="q"
+            placeholder={
+              isAgent
+                ? "Search order ID, customer name, phone number, or tracking number"
+                : "Search order ID, customer, phone, or agent username"
+            }
+            defaultValue={sp.q || sp.phone}
+          />
+        </div>
+        <Button type="submit" variant="secondary">
+          Search
+        </Button>
+      </form>
 
-          <Input name="order_number" placeholder="Order ID" defaultValue={sp.order_number} />
-          <Input name="customer_name" placeholder="Customer Name" defaultValue={sp.customer_name} />
-          <Input name="phone" placeholder="Phone Number" defaultValue={sp.phone} />
-          <Select name="product" defaultValue={sp.product || ""}>
-            <option value="">All products</option>
-            {db.products.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </Select>
-
-          <Input name="city" placeholder="City" defaultValue={sp.city} />
-          <Input name="province" placeholder="Province" defaultValue={sp.province} />
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">Order Date from</label>
-            <Input type="date" name="date_from" defaultValue={sp.date_from} />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">Order Date to</label>
-            <Input type="date" name="date_to" defaultValue={sp.date_to} />
-          </div>
-
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">Previous Order Date from</label>
-            <Input type="date" name="prev_from" defaultValue={sp.prev_from} />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-slate-400">Previous Order Date to</label>
-            <Input type="date" name="prev_to" defaultValue={sp.prev_to} />
-          </div>
-          <div className="flex items-end">
-            <Button type="submit" variant="secondary" className="w-full">
-              Filter
-            </Button>
-          </div>
-        </form>
-      )}
+      <LeadStatusCards counts={statusCounts} total={totalLeads} selected={sp.status} hrefFor={statusHref} />
 
       {!isAgent && (
-      <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-3">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
-          <span className="font-semibold uppercase tracking-wide text-slate-400">Pre-sale:</span>
-          {PRE_SALE_STATUSES.map((s) => (
-            <StatusBadge key={s} status={s} />
-          ))}
-        </div>
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
-          <span className="font-semibold uppercase tracking-wide text-slate-400">Fulfillment (Pancake POS):</span>
-          {LEAD_STATUSES.filter((s) => !(PRE_SALE_STATUSES as readonly string[]).includes(s)).map((s) => (
-            <StatusBadge key={s} status={s} />
-          ))}
-        </div>
-      </div>
+        <details open={advancedFilterActive} className="mb-4 rounded-lg border border-slate-200 bg-white">
+          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            More filters
+            {advancedFilterActive && (
+              <span className="ml-2 rounded-full bg-[var(--brand-primary-10)] px-2 py-0.5 text-xs text-[var(--brand-primary)]">
+                active
+              </span>
+            )}
+          </summary>
+          <form className="grid grid-cols-1 gap-3 border-t border-slate-100 p-4 sm:grid-cols-4">
+            <input type="hidden" name="q" value={sp.q || ""} />
+            <Select name="status" defaultValue={sp.status || ""}>
+              <option value="">All statuses</option>
+              {LEAD_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {LEAD_STATUS_LABELS[s]}
+                </option>
+              ))}
+            </Select>
+            <Select name="agent" defaultValue={sp.agent || ""}>
+              <option value="">All agents</option>
+              {scopedAgents.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.full_name} ({a.username})
+                </option>
+              ))}
+            </Select>
+            <Input name="order_number" placeholder="Order ID" defaultValue={sp.order_number} />
+            <Select name="product" defaultValue={sp.product || ""}>
+              <option value="">All products</option>
+              {db.products.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+
+            <Input name="customer_name" placeholder="Customer Name" defaultValue={sp.customer_name} />
+            <Input name="phone" placeholder="Phone Number" defaultValue={sp.phone} />
+            <Input name="city" placeholder="City" defaultValue={sp.city} />
+            <Input name="province" placeholder="Province" defaultValue={sp.province} />
+
+            <div>
+              <label className="mb-1 block text-xs text-slate-400">Order Date from</label>
+              <Input type="date" name="date_from" defaultValue={sp.date_from} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-slate-400">Order Date to</label>
+              <Input type="date" name="date_to" defaultValue={sp.date_to} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-slate-400">Previous Order Date from</label>
+              <Input type="date" name="prev_from" defaultValue={sp.prev_from} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-slate-400">Previous Order Date to</label>
+              <Input type="date" name="prev_to" defaultValue={sp.prev_to} />
+            </div>
+
+            <div className="flex items-end gap-2 sm:col-span-4">
+              <Button type="submit" variant="secondary">
+                Apply filters
+              </Button>
+              <LinkButton href="/leads" variant="outline">
+                Clear
+              </LinkButton>
+            </div>
+          </form>
+        </details>
       )}
 
       {isAgent ? (
