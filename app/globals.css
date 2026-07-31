@@ -13,6 +13,25 @@
   --brand-accent: #f0c000;
   --brand-primary-10: rgba(143, 102, 12, 0.1);
   --brand-primary-20: rgba(143, 102, 12, 0.2);
+
+  /* --- App shell -----------------------------------------------------------
+     The sidebar stays dark in BOTH themes (the CoreUI signature), so its tokens
+     are declared once here rather than being remapped under .dark. Brand gold
+     reads well against this surface, which is the reason the convention works. */
+  --sidebar-bg: #0f1729;
+  --sidebar-bg-elevated: #16203a;
+  --sidebar-fg: #cbd5e1;
+  --sidebar-fg-strong: #f1f5f9;
+  --sidebar-fg-muted: #7c8ba3;
+  --sidebar-active-bg: rgba(224, 165, 32, 0.14);
+  --sidebar-active-fg: #f0c46a;
+  --sidebar-border: #1f2a44;
+
+  --header-bg: #ffffff;
+  --header-border: #e2e8f0;
+  --surface: #ffffff;
+  --surface-muted: #f8fafc;
+  --border: #e2e8f0;
 }
 
 body {
@@ -156,6 +175,11 @@ body {
   --brand-secondary: #c98f16;
   --brand-primary-10: rgba(224, 165, 32, 0.14);
   --brand-primary-20: rgba(224, 165, 32, 0.26);
+  /* Shell surfaces follow the theme; the sidebar tokens above deliberately do
+     not, so the nav looks identical in light and dark. */
+  --header-bg: #111a2b;
+  --header-border: #27354f;
+  --surface-muted: #172136;
 }
 .dark .bg-white{background-color:var(--surface);}
 .dark .bg-slate-50{background-color:var(--surface-2);}

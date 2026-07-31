@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Menu, X } from "lucide-react";
+import { X } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
-import type { AppNotification, ModuleKey, Profile } from "@/lib/types";
+import { Breadcrumb } from "./Breadcrumb";
+import { UpdateLogsPanel } from "./UpdateLogsPanel";
+import { APP_NAME, APP_VERSION } from "@/lib/version";
+import type { AppNotification, ModuleKey, Profile, UpdateLog } from "@/lib/types";
+
+import { SIDEBAR_COOKIE, SIDEBAR_COOKIE_MAX_AGE } from "@/lib/ui-prefs";
 
 const REFRESH_INTERVAL_MS = 30000;
 
@@ -14,40 +19,76 @@ export function AppShell({
   roleName,
   access,
   notifications,
+  releases,
+  initialCollapsed,
   children,
 }: {
   user: Profile;
   roleName: string;
   access: Record<ModuleKey, boolean>;
   notifications: AppNotification[];
+  releases: UpdateLog[];
+  initialCollapsed: boolean;
   children: React.ReactNode;
 }) {
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const router = useRouter();
 
-  // No Supabase/websocket backend here (JSON-file db), so "real-time" dashboard
-  // stats, attendance widgets, and notifications (Section 1/6) are done via
-  // periodic router.refresh() -- re-runs server components in place without a
-  // full page reload or disturbing client-side state (e.g. an open modal).
+  // No websocket backend, so "real-time" dashboard stats, attendance widgets and
+  // notifications are refreshed by re-running the server components in place —
+  // no full reload, and client state (an open modal, a running call timer) is
+  // left undisturbed.
   useEffect(() => {
     const id = setInterval(() => router.refresh(), REFRESH_INTERVAL_MS);
     return () => clearInterval(id);
   }, [router]);
 
+  // Persisted in a cookie rather than localStorage so the server renders the
+  // right width on first paint — reading it after hydration would flash the
+  // sidebar open on every navigation. One year, and scoped to this browser.
+  const toggleSidebar = useCallback(() => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      document.cookie = `${SIDEBAR_COOKIE}=${next ? "1" : "0"}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}; samesite=lax`;
+      return next;
+    });
+  }, []);
+
+  // Below lg the sidebar is an overlay drawer, so the toggle opens that instead
+  // of narrowing a rail nobody can see.
+  const handleToggle = useCallback(() => {
+    if (window.matchMedia("(min-width: 1024px)").matches) toggleSidebar();
+    else setDrawerOpen((v) => !v);
+  }, [toggleSidebar]);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setDrawerOpen(false);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [drawerOpen]);
+
   return (
-    <div className="flex h-screen bg-slate-50">
+    <div className="flex h-screen" style={{ background: "var(--surface-muted)" }}>
       <div className="hidden lg:block">
-        <Sidebar access={access} />
+        <Sidebar access={access} collapsed={collapsed} />
       </div>
 
       {drawerOpen && (
-        <div className="fixed inset-0 z-40 flex lg:hidden">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setDrawerOpen(false)} />
-          <div className="relative z-50">
-            <Sidebar access={access} />
+        <div className="fixed inset-0 z-50 flex lg:hidden">
+          <button
+            aria-label="Close menu"
+            className="absolute inset-0 cursor-pointer bg-black/50"
+            onClick={() => setDrawerOpen(false)}
+          />
+          <div className="relative z-10">
+            <Sidebar access={access} onNavigate={() => setDrawerOpen(false)} />
           </div>
           <button
-            className="absolute right-4 top-4 z-50 rounded-md bg-white p-1.5 shadow"
+            className="absolute right-4 top-4 z-10 cursor-pointer rounded-md bg-white p-1.5 shadow"
             onClick={() => setDrawerOpen(false)}
             aria-label="Close menu"
           >
@@ -56,14 +97,23 @@ export function AppShell({
         </div>
       )}
 
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="flex items-center border-b border-slate-200 bg-white lg:hidden">
-          <button className="p-3 text-slate-600" onClick={() => setDrawerOpen(true)} aria-label="Open menu">
-            <Menu className="h-5 w-5" />
-          </button>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Topbar user={user} roleName={roleName} notifications={notifications} onToggleSidebar={handleToggle} />
+
+        <div className="flex-1 overflow-y-auto">
+          <Breadcrumb />
+          {/* min-w-0 all the way down so a wide table scrolls inside its own
+              container instead of stretching the page. */}
+          <main className="mx-auto w-full min-w-0 max-w-screen-2xl p-4 md:p-6">{children}</main>
+
+          <footer className="mx-auto flex w-full max-w-screen-2xl flex-wrap items-center gap-x-2 gap-y-1 px-4 pb-6 text-xs text-slate-400 md:px-6">
+            <span>{APP_NAME}</span>
+            <span aria-hidden>·</span>
+            <span>Version {APP_VERSION}</span>
+            <span aria-hidden>·</span>
+            <UpdateLogsPanel releases={releases} />
+          </footer>
         </div>
-        <Topbar user={user} roleName={roleName} notifications={notifications} />
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );

@@ -1,10 +1,23 @@
 import Link from "next/link";
-import { PlusCircle, FileSpreadsheet, PhoneCall, Clock3 } from "lucide-react";
+import {
+  PlusCircle,
+  FileSpreadsheet,
+  PhoneCall,
+  Clock3,
+  ShoppingCart,
+  PackageCheck,
+  Wallet,
+  Calculator,
+  Undo2,
+  Percent,
+  Sparkles,
+} from "lucide-react";
 import { readDb } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { formatDate, formatDateTime } from "@/lib/utils";
-import { StatCard } from "@/components/StatCard";
+import { StatCard, StatGrid } from "@/components/StatCard";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { AttendanceWidget } from "@/components/AttendanceWidget";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -100,40 +113,62 @@ export default async function DashboardPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-page-title text-slate-900">Welcome back, {user.full_name.split(" ")[0]}</h1>
-        <p className="text-sm text-slate-500">{today}</p>
-      </div>
+      <PageHeader title={`Welcome back, ${user.full_name.split(" ")[0]}`} description={today} />
 
       {isAgent && agentStats ? (
         <>
           <DateRangeFilter />
           {/* Row 1: volume and value. Row 2: outcomes. Every card links to the
               matching filtered leads view. */}
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <StatCard label="Total Leads" value={agentStats.totalLeads} href="/leads" />
-            <StatCard label="Total Orders" value={agentStats.totalOrders} href="/leads?status=packaging" />
-            <StatCard label="Overall Sales" value={formatCurrency(agentStats.salesAmount)} href="/leads?status=packaging" />
-            <StatCard label="AOV" value={agentStats.aov === null ? formatCurrency(0) : formatCurrency(agentStats.aov)} />
-          </div>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <StatGrid>
+            <StatCard label="Total Leads" value={agentStats.totalLeads} href="/leads" tone="brand" icon={ShoppingCart} />
+            <StatCard
+              label="Total Orders"
+              value={agentStats.totalOrders}
+              href="/leads?status=packaging"
+              tone="blue"
+              icon={PackageCheck}
+            />
+            <StatCard
+              label="Overall Sales"
+              value={formatCurrency(agentStats.salesAmount)}
+              href="/leads?status=packaging"
+              tone="green"
+              icon={Wallet}
+            />
+            <StatCard
+              label="AOV"
+              value={agentStats.aov === null ? formatCurrency(0) : formatCurrency(agentStats.aov)}
+              tone="slate"
+              icon={Calculator}
+            />
+          </StatGrid>
+          <StatGrid>
             <StatCard
               label="Delivered"
               value={agentStats.delivered.count}
               href="/leads?status=delivered"
-              accent="text-teal-700"
+              tone="green"
+              icon={PackageCheck}
               extra={<p>{formatCurrency(agentStats.delivered.amount)}</p>}
             />
             <StatCard
               label="Returned"
               value={agentStats.returned.count}
               href="/leads?status=returned"
-              accent="text-red-900"
+              tone="maroon"
+              icon={Undo2}
               extra={<p>{formatCurrency(agentStats.returned.amount)}</p>}
             />
-            <StatCard label="RTS %" value={`${agentStats.rtsPercentage}%`} href="/leads?status=returned" />
-            <StatCard label="New Leads" value={agentStats.newLeads} href="/leads?status=new" />
-          </div>
+            <StatCard
+              label="RTS %"
+              value={`${agentStats.rtsPercentage}%`}
+              href="/leads?status=returned"
+              tone="amber"
+              icon={Percent}
+            />
+            <StatCard label="New Leads" value={agentStats.newLeads} href="/leads?status=new" tone="blue" icon={Sparkles} />
+          </StatGrid>
         </>
       ) : (
         kpiStats && (

@@ -7,9 +7,12 @@ import { sweepAutoAbsences } from "@/lib/attendance-sweep";
 import { maybeSweepPancakeSync } from "@/lib/pancake/sweep";
 import { MODULES } from "@/lib/types";
 import type { ModuleKey } from "@/lib/types";
+import { cookies } from "next/headers";
 import { AppShell } from "@/components/AppShell";
+import { SIDEBAR_COOKIE } from "@/lib/ui-prefs";
 import { CallSessionProvider } from "@/components/CallSessionProvider";
 import { getActiveSession } from "@/lib/call-sessions";
+import { listUpdateLogs } from "@/lib/update-logs";
 
 /** The only authenticated route reachable while a password reset is pending. */
 const CHANGE_PASSWORD_PATH = "/settings/password";
@@ -45,9 +48,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // a refresh, instead of flashing "no call" until the client fetch lands.
   const activeCallSession = await getActiveSession(user.id);
 
+  // Read server-side so the sidebar renders at its saved width on first paint
+  // rather than flashing open and snapping shut after hydration.
+  const collapsed = (await cookies()).get(SIDEBAR_COOKIE)?.value === "1";
+  const releases = await listUpdateLogs({ publishedOnly: true });
+
   return (
     <CallSessionProvider initialSession={activeCallSession}>
-      <AppShell user={user} roleName={roleName} access={access} notifications={notifications}>
+      <AppShell
+        user={user}
+        roleName={roleName}
+        access={access}
+        notifications={notifications}
+        releases={releases}
+        initialCollapsed={collapsed}
+      >
         {children}
       </AppShell>
     </CallSessionProvider>
