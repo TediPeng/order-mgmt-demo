@@ -5,6 +5,7 @@ import { createOrder } from "./createOrder";
 import { CREATE_STATUS_PACKAGING_LABEL } from "./config";
 import { validateForPancake } from "./validate";
 import { verifyAddressIds } from "./address";
+import { findRecentOrderForRetry } from "./findExisting";
 import {
   fetchOrderSources,
   fetchStaffList,
@@ -233,6 +234,60 @@ export async function forwardOrderToPancake(
     const reason = noStaffMessage(agentEmail);
     await failSync(order, reason, opts, { accountId: account.id });
     return { ok: false, skipped: false, message: reason };
+  }
+
+  // --- Duplicate recovery before any re-send --------------------------------
+  // A previous attempt exists, so this send might be a retry of one that
+  // actually reached Pancake and only failed on the way back (a timeout leaves
+  // us unable to tell). Without `custom_id` there is no external reference to
+  // ask about, so we search Pancake for an order matching this phone and total
+  // in the window since the first attempt, and adopt it rather than creating a
+  // second real order — a duplicate here means a duplicate shipment.
+  if (order.pancake_retry_count > 0) {
+    const since = order.pancake_last_sync_attempt_at || order.updated_at;
+    const existing = await findRecentOrderForRetry(account, order, since);
+
+    if (existing.found && existing.pancakeOrderId) {
+      const now = new Date().toISOString();
+      await updateOrderSyncFields(order.id, {
+        pancake_order_id: existing.pancakeOrderId,
+        pancake_status: existing.pancakeStatus,
+        pancake_sync_status: "synced",
+        pancake_synced_at: now,
+        pancake_event_at: existing.eventTimestamp,
+        pancake_sync_error: null,
+        forwarded_to_pancake_at: order.forwarded_to_pancake_at || now,
+      });
+      await insertSyncLog({
+        order_id: order.id,
+        pancake_order_id: existing.pancakeOrderId,
+        pancake_account_id: account.id,
+        action: "retry",
+        old_status: order.status,
+        new_status: order.status,
+        request_at: new Date().toISOString(),
+        result: "success",
+        triggered_by: opts.triggeredBy ?? null,
+        source: opts.source,
+        payload_summary: {
+          note: "Adopted an order Pancake had already created for an earlier attempt; no second order was sent.",
+        },
+      });
+      return {
+        ok: true,
+        skipped: true,
+        message: `Pancake had already created this order (Order ID: ${existing.pancakeOrderId}) — adopted it instead of sending a duplicate.`,
+        pancakeOrderId: existing.pancakeOrderId,
+      };
+    }
+
+    // Either the lookup failed or it matched more than one order. Both mean we
+    // cannot prove a duplicate would not be created, so the order is held for a
+    // human rather than risking a second shipment.
+    if (existing.error) {
+      await failSync(order, `Retry held for review: ${existing.error}`, opts, { accountId: account.id });
+      return { ok: false, skipped: true, message: `Retry held for review: ${existing.error}` };
+    }
   }
 
   // --- Claim (concurrency guard) -------------------------------------------
