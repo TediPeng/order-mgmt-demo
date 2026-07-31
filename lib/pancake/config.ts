@@ -39,6 +39,25 @@ export const AUTH_QUERY_PARAM = "api_key";
 export const CREATE_ORDER_PATH = "/shops/{shopId}/orders";
 export const GET_ORDER_PATH = "/shops/{shopId}/orders/{orderId}";
 
+/** Lookup endpoints, all VERIFIED against the official OpenAPI spec — see
+ * API_REFERENCE.md for the response shapes each one returns. */
+export const ORDER_SOURCES_PATH = "/shops/{shopId}/order_source";
+export const STAFF_PATH = "/shops/{shopId}/users";
+export const PARTNERS_PATH = "/shops/{shopId}/partners";
+/** Geo lists are shop-independent; they take a country_code query parameter. */
+export const GEO_PROVINCES_PATH = "/geo/provinces";
+export const GEO_DISTRICTS_PATH = "/geo/districts";
+export const GEO_COMMUNES_PATH = "/geo/communes";
+
+/** Philippines. Pancake's own example in the docs is Vietnam = 84. */
+export const PH_COUNTRY_CODE = "63";
+
+/** How long a fetched lookup list stays usable before it is re-fetched. Order
+ * sources and staff change rarely, and the Settings page has a Refresh button
+ * for when they do, so a daily TTL keeps the sync path from paying for a list
+ * request on every order. */
+export const LOOKUP_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
 /** Pancake-side status every order must land in on creation. Pancake's create
  * -order body takes an integer `status`, and 8 = "Packaging" (Đang đóng hàng)
  * per the spec's own enum — so it is set at creation, no follow-up call. The
@@ -47,27 +66,42 @@ export const CREATE_STATUS_PACKAGING = 8;
 export const CREATE_STATUS_PACKAGING_LABEL = "Packaging";
 
 /**
- * Outbound field names for the create-order body (Section 1.3 mapping).
+ * Outbound field names for the create-order body.
  *
- * `custom_id`, `bill_full_name`, `bill_phone_number`, `status` and the
- * `shipping_address` sub-fields are CONFIRMED against the official OpenAPI spec.
- * The four below are NOT yet confirmed and stay marked so a wrong guess is
- * obvious rather than silent — verify each against the official docs before
- * relying on it in production.
+ * ALL VERIFIED against the official OpenAPI spec (see API_REFERENCE.md) — the
+ * earlier guesses (`order_source_name`, `customer_care_email`, `shipping_note`)
+ * did not exist in the schema at all, which is why those fields arrived empty
+ * in Pancake.
  */
 export const OUTBOUND_FIELDS = {
-  /** Agent Call Name → Order Source. TODO(pancake-docs): confirm the name; the
-   * spec also exposes `order_sources` as an id reference. */
-  order_source: "order_source_name",
-  /** Agent Email → Customer Care Staff. TODO(pancake-docs): confirm; Pancake
-   * refers to an assigned care staff, possibly by id (`assigning_care_id`). */
-  customer_care_staff: "customer_care_email",
-  /** Landmark → Shipping Notes. TODO(pancake-docs): confirm whether shipping
-   * notes live on the order or inside shipping_address. */
-  shipping_notes: "shipping_note",
-  /** Internal Note. Deliberately sent EMPTY — see buildCreateOrderBody. */
+  /** Agent Call Name → Order Source. Spec: "Order sources ID" — an ID from
+   * GET /shops/{id}/order_source, never a raw name. */
+  order_source_id: "order_sources",
+  /** Agent Email → Customer Care Staff. Spec: "Assigning care ID" — a user id
+   * from GET /shops/{id}/users, never an email. */
+  customer_care_staff_id: "assigning_care_id",
+  /** Landmark → Extra Note → Printing. Spec: "Note for printing".
+   * There is no `extra_note` object and no `shipping_note` field in the schema;
+   * this is the only printing-note target Pancake exposes. */
+  note_print: "note_print",
+  /** Spec describes this verbatim as "Internal note" — deliberately sent EMPTY. */
   internal_note: "note",
 } as const;
+
+/** Shipment fields on the order's `partner` object (inbound). `tracking_link` is
+ * NOT a courier tracking number — the spec calls it "Link confirm order" — so
+ * the real tracking value is the partner's own shipping-order code. */
+export const PARTNER_FIELDS = {
+  courier_name: "partner_name",
+  /** "Shipping order ID on partner system" — the courier tracking number. */
+  tracking_code: "extend_code",
+  shipper_name: "delivery_name",
+  partner_status: "partner_status",
+} as const;
+
+/** Pancake status code for Shipped — the point at which `partner` carries a
+ * courier and tracking code. */
+export const STATUS_SHIPPED = 2;
 
 /** Response/webhook field names, from the official Order schema. */
 export const RESPONSE_FIELDS = {

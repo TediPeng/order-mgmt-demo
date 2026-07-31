@@ -10,14 +10,24 @@ export interface ForwardPayload {
   order_date: string | null;
   agent_name: string;
   agent_account: string;
-  /** The agent's email, sent to Pancake as Customer Care Staff (Section 1.3). */
   agent_email: string;
+  /** Pancake Order Source ID, resolved by matching the agent's Call Name against
+   * Pancake's own Order Sources list. Null means unresolved — the forward is
+   * refused rather than sent with an empty source. */
+  order_source_id: string | null;
+  /** Pancake staff (user) ID, resolved by matching the agent's email against
+   * Pancake's staff list. Becomes `assigning_care_id`. */
+  care_staff_id: string | null;
   customer_name: string;
   phone: string;
   purok: string;
   barangay: string;
   city: string;
   province: string;
+  /** Pancake's own address IDs — the values that actually set the location. */
+  province_id: string;
+  district_id: string;
+  commune_id: string;
   landmark: string;
   complete_address: string;
   product: string;
@@ -63,7 +73,13 @@ export interface GetOrderResult {
   error: string | null;
   rawStatus: string | null; // Pancake's raw status code — what the status map keys on
   statusName: string | null; // Pancake's own label for that code, for display
-  trackingNumber: string | null; // courier tracking URL/id, written to orders.tracking_number
+  /** partner.extend_code — the courier's own shipping-order code. */
+  trackingNumber: string | null;
+  /** partner.partner_name (or delivery_name) — written to orders.courier. */
+  courier: string | null;
+  /** tracking_link — Pancake calls this "Link confirm order". Kept for
+   * reference; it is NOT a tracking number and never goes in that column. */
+  confirmLink: string | null;
   eventTimestamp: string | null; // Pancake's updated_at, for out-of-order protection
   tags: string[]; // Pancake order tags, read by the ODZ tag rule
   responseSummary: Record<string, unknown> | null;
@@ -78,6 +94,8 @@ export interface IncomingUpdate {
   rawStatus: string | null;
   statusName?: string | null;
   trackingNumber?: string | null;
+  /** Courier name from the shipment partner, written to orders.courier. */
+  courier?: string | null;
   eventTimestamp: string | null;
   shopId: string | null;
   /** Pancake order tags. An `ODZ` tag here overrides the mapped status. */
@@ -95,7 +113,8 @@ export function buildForwardPayload(
   agentName: string,
   agentAccount: string,
   variationId: string,
-  oneTimeProduct = false
+  oneTimeProduct = false,
+  resolved: { orderSourceId?: string | null; careStaffId?: string | null } = {}
 ): ForwardPayload {
   return {
     internal_order_id: order.id,
@@ -105,12 +124,17 @@ export function buildForwardPayload(
     agent_name: agentName,
     agent_account: agentAccount,
     agent_email: order.assigned_agent_email,
+    order_source_id: resolved.orderSourceId ?? null,
+    care_staff_id: resolved.careStaffId ?? null,
     customer_name: order.customer_name,
     phone: order.customer_phone,
     purok: order.purok,
     barangay: order.barangay,
     city: order.city,
     province: order.province,
+    province_id: order.pancake_province_id || "",
+    district_id: order.pancake_district_id || "",
+    commune_id: order.pancake_commune_id || "",
     landmark: order.landmark,
     complete_address: [order.purok, order.barangay, order.city, order.province].filter(Boolean).join(", "),
     product: order.product_name,

@@ -167,6 +167,11 @@ export const leadFormSchema = z.object({
   province_code: z.string().trim().optional().default(""),
   city_code: z.string().trim().optional().default(""),
   barangay_code: z.string().trim().optional().default(""),
+  // Pancake POS address IDs from the Select Address picker — what actually
+  // gets sent to Pancake.
+  pancake_province_id: z.string().trim().optional().default(""),
+  pancake_district_id: z.string().trim().optional().default(""),
+  pancake_commune_id: z.string().trim().optional().default(""),
   discount: z.coerce.number().nonnegative("Discount must be zero or more").optional().nullable(),
   variant: z.string().trim().optional().default(""),
 });

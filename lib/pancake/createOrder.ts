@@ -29,25 +29,35 @@ export function buildCreateOrderBody(payload: ForwardPayload): Record<string, un
     status: CREATE_STATUS_PACKAGING,
     bill_full_name: payload.customer_name,
     bill_phone_number: payload.phone,
-    // Internal Note is sent EMPTY, always (Section 1.3). It used to carry a
-    // composed summary of the order; that leaked internal wording into a field
-    // the fulfillment team writes in, so nothing is ever populated here now.
+    // Internal Note is sent EMPTY, always. It used to carry a composed summary
+    // of the order; that leaked internal wording into a field the fulfillment
+    // team writes in, so nothing is ever populated here now.
     [OUTBOUND_FIELDS.internal_note]: "",
-    // Agent Call Name → Order Source; Agent Email → Customer Care Staff.
-    [OUTBOUND_FIELDS.order_source]: payload.order_source ?? "",
-    [OUTBOUND_FIELDS.customer_care_staff]: payload.agent_email,
-    // Landmark → Shipping Notes.
-    [OUTBOUND_FIELDS.shipping_notes]: payload.landmark,
+    // Order Source and Care Staff are IDs resolved from Pancake's own lists
+    // (lib/pancake/lookups.ts). Pancake ignores raw names here, which is why
+    // both fields used to arrive empty. Omitted entirely when unresolved rather
+    // than sent blank, so a partial payload never silently clears them.
+    ...(payload.order_source_id ? { [OUTBOUND_FIELDS.order_source_id]: payload.order_source_id } : {}),
+    ...(payload.care_staff_id ? { [OUTBOUND_FIELDS.customer_care_staff_id]: payload.care_staff_id } : {}),
+    // Landmark → Extra Note → Printing.
+    [OUTBOUND_FIELDS.note_print]: payload.landmark,
     shipping_fee: payload.shipping_fee ?? 0,
     total_discount: payload.discount ?? 0,
     shipping_address: {
       full_name: payload.customer_name,
       phone_number: payload.phone,
-      // PH address mapped onto Pancake's VN-shaped address fields:
-      // Address/Purok → Full Address, Province → province_name,
-      // City → district_name, Barangay → commune_name.
+      // Purok / street stays a manual free-text field and maps to Full Address.
+      // Pancake auto-parses `address` into province/district/commune ONLY when
+      // no province_id is supplied — we always supply IDs, so that guesswork
+      // never runs and the location is exactly what the agent picked.
       address: payload.purok || payload.complete_address,
       full_address: payload.purok || payload.complete_address,
+      // Pancake's own IDs from its Select Address data. These are what actually
+      // set the location; sending names alone left it null on their side.
+      province_id: payload.province_id,
+      district_id: payload.district_id,
+      commune_id: payload.commune_id,
+      // Names ride along as display labels only.
       province_name: payload.province,
       district_name: payload.city,
       commnue_name: payload.barangay, // (sic) misspelled in Pancake's own schema

@@ -273,6 +273,12 @@ export async function manualSyncNow(user: Profile, orderId: string): Promise<{ o
       orderNumber: order.order_number,
       phone: null,
       rawStatus: res.rawStatus,
+      statusName: res.statusName,
+      // Manual Sync was dropping everything but the status, so a manual sync
+      // could neither pick up courier/tracking nor fire the ODZ tag rule.
+      trackingNumber: res.trackingNumber,
+      courier: res.courier,
+      tags: res.tags,
       eventTimestamp: res.eventTimestamp,
       shopId: account.shop_or_page_id,
     },

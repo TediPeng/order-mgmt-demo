@@ -24,7 +24,7 @@ import {
 import { timeInBlockReason } from "@/lib/time-in-gate";
 import { forwardOrderToPancake } from "@/lib/pancake/forward";
 import { computeOrderTotal, validateForPancake } from "@/lib/pancake/validate";
-import { validateAddressCodes } from "@/lib/psgc";
+import { verifyOrderAddress } from "@/lib/pancake/verifyAddress";
 import { insertSyncLog } from "@/lib/pancake/store";
 import type { DbShape, Order, Profile } from "@/lib/types";
 import { ORDER_PANCAKE_DEFAULTS } from "@/lib/types";
@@ -66,6 +66,9 @@ function buildLeadFieldErrors(formData: FormData): Record<string, unknown> {
     province_code: field("province_code"),
     city_code: field("city_code"),
     barangay_code: field("barangay_code"),
+    pancake_province_id: field("pancake_province_id"),
+    pancake_district_id: field("pancake_district_id"),
+    pancake_commune_id: field("pancake_commune_id"),
     discount: numeric("discount"),
     variant: field("variant"),
   };
@@ -152,6 +155,11 @@ export async function createLeadAction(formData: FormData) {
     order_date: data.status === PACKAGING_STATUS ? today : null,
     source: "manual",
     ...ORDER_PANCAKE_DEFAULTS,
+    // After the defaults spread, which would otherwise null these back out.
+    // Pancake's own address IDs, straight from the Select Address picker.
+    pancake_province_id: data.pancake_province_id || null,
+    pancake_district_id: data.pancake_district_id || null,
+    pancake_commune_id: data.pancake_commune_id || null,
     shipping_fee: data.shipping_fee ?? null,
     courier: data.courier || null,
     payment_method: data.payment_method || null,
@@ -293,20 +301,19 @@ export async function applyLeadUpdate(
         error: `Missing required fields for Packaging: ${missing.join(", ")}`,
       };
     }
-    const address = await validateAddressCodes({
-      province_code: data.province_code || null,
-      city_code: data.city_code || null,
-      barangay_code: data.barangay_code || null,
+    // The address is verified against PANCAKE's own hierarchy, not PSGC: the
+    // picker sources its options from Pancake, so this re-checks that the three
+    // IDs still exist and still nest before the order can be forwarded. Names
+    // are then taken from Pancake's response, so a stale or hand-edited label
+    // can never disagree with the location actually selected.
+    const address = await verifyOrderAddress({
+      provinceId: data.pancake_province_id || order.pancake_province_id,
+      districtId: data.pancake_district_id || order.pancake_district_id,
+      communeId: data.pancake_commune_id || order.pancake_commune_id,
     });
     if (!address.ok) {
-      return {
-        ok: false,
-        code: "validation",
-        error: `Invalid address: ${Object.values(address.errors).join(" ")}`,
-      };
+      return { ok: false, code: "validation", error: `Invalid address: ${address.error}` };
     }
-    // Trust the codes over the submitted names, so a stale or edited label
-    // cannot disagree with the location actually chosen.
     order.province = address.names.province;
     order.city = address.names.city;
     order.barangay = address.names.barangay;
@@ -349,6 +356,11 @@ export async function applyLeadUpdate(
   order.barangay = data.barangay || "";
   order.city = data.city || "";
   order.province = data.province || "";
+  // Only overwrite a Pancake address ID when the form actually supplied one —
+  // a partial update (the modal's quick status change) must not wipe it.
+  order.pancake_province_id = data.pancake_province_id || order.pancake_province_id;
+  order.pancake_district_id = data.pancake_district_id || order.pancake_district_id;
+  order.pancake_commune_id = data.pancake_commune_id || order.pancake_commune_id;
   order.province_code = data.province_code || null;
   order.city_code = data.city_code || null;
   order.barangay_code = data.barangay_code || null;

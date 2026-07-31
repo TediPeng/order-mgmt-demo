@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Input, Label, Select, Textarea } from "@/components/ui/Field";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
-import { AddressSelect, type AddressValue } from "@/components/AddressSelect";
+import { AddressSelect, EMPTY_ADDRESS, type AddressValue } from "@/components/AddressSelect";
 import { ProductCombobox } from "@/components/ProductCombobox";
 import { AGENT_EDITABLE_STATUSES, LEAD_STATUS_LABELS, PACKAGING_STATUS } from "@/lib/validation";
 import { packagingProblems } from "@/lib/lead-workflow";
@@ -14,15 +14,6 @@ interface ProductOption {
   name: string;
   code: string | null;
 }
-
-const EMPTY_ADDRESS: AddressValue = {
-  province_code: "",
-  province: "",
-  city_code: "",
-  city: "",
-  barangay_code: "",
-  barangay: "",
-};
 
 /**
  * Section 5: the Regular Customer order form, in the exact required field order —

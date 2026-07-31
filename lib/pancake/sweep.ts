@@ -160,7 +160,10 @@ export async function runPancakeSync(opts: SweepOptions = {}): Promise<SweepSumm
             rawStatus: res.rawStatus,
             statusName: res.statusName,
             trackingNumber: res.trackingNumber,
+            courier: res.courier,
             eventTimestamp: res.eventTimestamp,
+            // The ODZ tag rule must fire on polling too, not only on webhooks.
+            tags: res.tags,
             shopId: account.shop_or_page_id,
           },
           "api_polling",

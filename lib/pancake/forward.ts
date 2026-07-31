@@ -4,6 +4,15 @@ import { buildForwardPayload } from "./types";
 import { createOrder } from "./createOrder";
 import { CREATE_STATUS_PACKAGING_LABEL } from "./config";
 import { validateForPancake } from "./validate";
+import { verifyAddressIds } from "./address";
+import {
+  fetchOrderSources,
+  fetchStaffList,
+  matchOrderSource,
+  matchStaffByEmail,
+  noOrderSourceMessage,
+  noStaffMessage,
+} from "./lookups";
 import { PACKAGING_STATUS } from "@/lib/validation";
 import {
   claimOrderForSync,
@@ -150,7 +159,7 @@ export async function forwardOrderToPancake(
   // --- Account resolution ---------------------------------------------------
   const { data: agentProfile } = await supabaseAdmin
     .from("profiles")
-    .select("id, full_name, username, team_lead_id")
+    .select("id, full_name, username, team_lead_id, call_name, email")
     .eq("id", order.agent_id)
     .maybeSingle();
   const accounts = await listAccounts();
@@ -174,6 +183,54 @@ export async function forwardOrderToPancake(
 
   if (!variationId && !oneTimeProduct) {
     const reason = `Product "${product?.name || order.product_name}" has no Pancake variation ID. Map it under Products, or enable quick-add products on the ${account.account_name} account.`;
+    await failSync(order, reason, opts, { accountId: account.id });
+    return { ok: false, skipped: false, message: reason };
+  }
+
+  // --- Address verification -------------------------------------------------
+  // Last check before submitting: the three Pancake address IDs must still
+  // exist and still nest under one another. Refusing here means an order never
+  // lands in Pancake with a silently empty location.
+  const address = await verifyAddressIds(account, {
+    provinceId: order.pancake_province_id,
+    districtId: order.pancake_district_id,
+    communeId: order.pancake_commune_id,
+  });
+  if (!address.ok) {
+    const reason = `Address not valid in Pancake POS: ${address.error}`;
+    await failSync(order, reason, opts, { accountId: account.id });
+    return { ok: false, skipped: false, message: reason };
+  }
+
+  // --- Order Source + Care Staff resolution --------------------------------
+  // Pancake takes IDs from its own lists here, not free text. Resolved BEFORE
+  // the claim so an unmatched value fails cheaply without burning a retry slot
+  // or leaving the order stuck in `syncing`.
+  const agentCallName = (agentProfile?.call_name as string) || order.order_source || null;
+  const agentEmail = (agentProfile?.email as string) || order.assigned_agent_email || null;
+
+  const sources = await fetchOrderSources(account);
+  if (!sources.ok) {
+    const reason = `Could not read Order Sources from Pancake POS: ${sources.error}`;
+    await failSync(order, reason, opts, { accountId: account.id });
+    return { ok: false, skipped: false, message: reason };
+  }
+  const matchedSource = matchOrderSource(sources.items, agentCallName);
+  if (!matchedSource) {
+    const reason = noOrderSourceMessage(agentCallName);
+    await failSync(order, reason, opts, { accountId: account.id });
+    return { ok: false, skipped: false, message: reason };
+  }
+
+  const staff = await fetchStaffList(account);
+  if (!staff.ok) {
+    const reason = `Could not read the Staff list from Pancake POS: ${staff.error}`;
+    await failSync(order, reason, opts, { accountId: account.id });
+    return { ok: false, skipped: false, message: reason };
+  }
+  const matchedStaff = matchStaffByEmail(staff.items, agentEmail);
+  if (!matchedStaff) {
+    const reason = noStaffMessage(agentEmail);
     await failSync(order, reason, opts, { accountId: account.id });
     return { ok: false, skipped: false, message: reason };
   }
@@ -214,7 +271,8 @@ export async function forwardOrderToPancake(
     (agentProfile?.full_name as string) || "",
     (agentProfile?.username as string) || order.assigned_agent_email,
     variationId,
-    oneTimeProduct
+    oneTimeProduct,
+    { orderSourceId: matchedSource.id, careStaffId: matchedStaff.id }
   );
   const result = await createOrder(account, payload);
   const responseAt = new Date().toISOString();

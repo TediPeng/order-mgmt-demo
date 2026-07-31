@@ -548,21 +548,22 @@ export function OrderDetailsModal({
                   )}
                   <AddressSelect
                     value={{
-                      province_code: form.province_code,
+                      province_id: form.province_code,
                       province: form.province,
-                      city_code: form.city_code,
+                      city_id: form.city_code,
                       city: form.city,
-                      barangay_code: form.barangay_code,
+                      barangay_id: form.barangay_code,
                       barangay: form.barangay,
                     }}
                     onChange={(next) =>
                       setForm((prev) => ({
                         ...prev,
-                        province_code: next.province_code,
+                        // The form's *_code slots now carry Pancake's own IDs.
+                        province_code: next.province_id,
                         province: next.province,
-                        city_code: next.city_code,
+                        city_code: next.city_id,
                         city: next.city,
-                        barangay_code: next.barangay_code,
+                        barangay_code: next.barangay_id,
                         barangay: next.barangay,
                       }))
                     }

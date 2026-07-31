@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "crypto";
-import { WEBHOOK, readTags } from "./config";
+import { PARTNER_FIELDS, RESPONSE_FIELDS, WEBHOOK, readTags } from "./config";
 import type { IncomingUpdate } from "./types";
 
 function safeEqual(a: string, b: string): boolean {
@@ -54,9 +54,23 @@ export function parseWebhookPayload(payload: Record<string, unknown>): { event: 
       phone: s(f.phone),
       rawStatus: s(f.status),
       statusName: s("status_name"),
+      // Shipment details ride on the order's `partner` object. `tracking_link`
+      // is deliberately ignored here — Pancake documents it as "Link confirm
+      // order", not a courier tracking number.
+      trackingNumber: partnerField(inner, PARTNER_FIELDS.tracking_code),
+      courier:
+        partnerField(inner, PARTNER_FIELDS.courier_name) || partnerField(inner, PARTNER_FIELDS.shipper_name),
       eventTimestamp: s(f.event_timestamp),
       shopId: s(f.shop_id),
       tags: readTags(inner[f.tags]),
     },
   };
+}
+
+/** Reads one field off the order's shipment `partner` object, when present. */
+function partnerField(inner: Record<string, unknown>, key: string): string | null {
+  const partner = inner[RESPONSE_FIELDS.partner];
+  if (!partner || typeof partner !== "object" || Array.isArray(partner)) return null;
+  const v = (partner as Record<string, unknown>)[key];
+  return v != null && v !== "" ? String(v) : null;
 }

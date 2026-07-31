@@ -171,6 +171,9 @@ export default async function IntegrationsSettingsPage({
           <Link href="/settings/integrations/status-map" className="font-medium text-[var(--brand-primary)] hover:underline">
             Status Map
           </Link>
+          <Link href="/settings/integrations/mappings" className="font-medium text-[var(--brand-primary)] hover:underline">
+            Order Source &amp; Staff
+          </Link>
           <Link href="/settings/integrations/logs" className="font-medium text-[var(--brand-primary)] hover:underline">
             Sync Logs
           </Link>

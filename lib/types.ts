@@ -104,6 +104,9 @@ export const ORDER_PANCAKE_DEFAULTS = {
   province_code: null,
   city_code: null,
   barangay_code: null,
+  pancake_province_id: null,
+  pancake_district_id: null,
+  pancake_commune_id: null,
   address_needs_review: false,
   shipping_fee: null,
   courier: null,
@@ -179,6 +182,14 @@ export interface Order {
   barangay_code: string | null;
   // Legacy free-text address that could not be matched to PSGC on migration.
   address_needs_review: boolean;
+  // Pancake POS's own province/district/commune IDs, captured by the address
+  // picker. These are what the create-order payload sends — Pancake ignores a
+  // name-only address, so without them the order arrives with no location. Held
+  // separately from the PSGC *_code columns above, which are a different
+  // identifier space kept for legacy rows.
+  pancake_province_id: string | null;
+  pancake_district_id: string | null;
+  pancake_commune_id: string | null;
   // Pancake POS sync state. Managed by lib/pancake/*; the DbShape write path
   // carries these along unchanged.
   // Stable external reference sent to Pancake (defaults to order_number).
