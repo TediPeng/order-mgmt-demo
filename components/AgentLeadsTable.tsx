@@ -6,6 +6,7 @@ import { StatusBadge, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { OrderDetailsModal } from "@/components/OrderDetailsModal";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import type { CallSession, Order } from "@/lib/types";
+import { displayOrderId } from "@/lib/types";
 
 export interface CareStaff {
   name: string;
@@ -133,7 +134,7 @@ export function AgentLeadsTable({
                     <button
                       type="button"
                       onClick={() => setOpenId(o.id)}
-                      title={o.order_number}
+                      title={displayOrderId(o)}
                       className="font-medium text-[var(--brand-primary)] hover:underline"
                     >
                       {o.order_date ? formatDate(o.order_date) : "Open"}

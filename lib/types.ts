@@ -41,6 +41,24 @@ export interface Profile {
   created_at: string;
 }
 
+/**
+ * The Order ID users see, search and quote.
+ *
+ * Pancake generates the order id once an order is forwarded, and from that
+ * point it is the reference both systems share — so it wins. The internal
+ * ORD-YYYYMMDD-#### stays in the database for matching and history, and is
+ * shown only while an order has not reached Pancake yet.
+ */
+export function displayOrderId(order: Pick<Order, "order_number" | "pancake_order_id">): string {
+  return order.pancake_order_id || order.order_number;
+}
+
+/** True while an order still shows its internal number because Pancake has not
+ * issued one yet — the UI dims it and adds "(pending sync)". */
+export function isPendingOrderId(order: Pick<Order, "pancake_order_id">): boolean {
+  return !order.pancake_order_id;
+}
+
 /** Display name for a profile that may have been anonymized by a permanent
  * account deletion. */
 export function displayUserName(profile: Pick<Profile, "full_name" | "is_deleted"> | null | undefined): string {

@@ -7,6 +7,7 @@ import { OrderDetailsModal } from "@/components/OrderDetailsModal";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 import type { CallSession, Order, OrderStatus } from "@/lib/types";
+import { displayOrderId, isPendingOrderId } from "@/lib/types";
 
 export function LeadsTable({
   orders: initialOrders,
@@ -74,7 +75,7 @@ export function LeadsTable({
         <table className="w-full min-w-[2200px] text-left text-table">
           <thead className="bg-slate-50 text-table font-medium uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3">Order Number</th>
+              <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3">Order ID</th>
               <th className="px-4 py-3">Order Date</th>
               <th className="px-4 py-3">Agent</th>
               <th className="px-4 py-3">Customer Name</th>
@@ -102,9 +103,14 @@ export function LeadsTable({
                     <button
                       type="button"
                       onClick={() => setOpenId(o.id)}
-                      className="font-medium text-[var(--brand-primary)] hover:underline"
+                      title={isPendingOrderId(o) ? "Not yet forwarded to Pancake POS" : `Internal reference: ${o.order_number}`}
+                      className={cn(
+                        "font-medium hover:underline",
+                        isPendingOrderId(o) ? "text-slate-400" : "text-[var(--brand-primary)]"
+                      )}
                     >
-                      {o.order_number}
+                      {displayOrderId(o)}
+                      {isPendingOrderId(o) && <span className="ml-1 text-xs font-normal">(pending sync)</span>}
                     </button>
                   </td>
                   <td className="px-4 py-3 text-slate-600">{o.order_date ? formatDate(o.order_date) : "—"}</td>

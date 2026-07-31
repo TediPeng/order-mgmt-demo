@@ -8,6 +8,7 @@ import { getRequestInfo } from "@/lib/request-info";
 import { buildBrandedCsv } from "@/lib/csv";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { LEAD_STATUS_LABELS } from "@/lib/validation";
+import { displayOrderId } from "@/lib/types";
 
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
@@ -44,7 +45,8 @@ export async function GET(req: NextRequest) {
 
   const byId = new Map(db.profiles.map((p) => [p.id, p.full_name]));
   const header = [
-    "Order Number",
+    "Order ID",
+    "Internal Reference",
     "Order Date",
     "Agent",
     "Customer Name",
@@ -63,6 +65,7 @@ export async function GET(req: NextRequest) {
     "Status",
   ];
   const rows = orders.map((o) => [
+    displayOrderId(o),
     o.order_number,
     o.order_date ? formatDate(o.order_date) : "",
     byId.get(o.agent_id) || "",

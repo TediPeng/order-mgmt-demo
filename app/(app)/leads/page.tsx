@@ -83,7 +83,10 @@ export default async function LeadsPage({
       const phoneTarget = looksLikePhone ? normalizePhone(term) : "";
       orders = orders.filter(
         (o) =>
+          // Either reference matches: agents quote the Pancake ID once an order
+          // is synced, but may still have the internal number written down.
           o.order_number.toLowerCase().includes(lower) ||
+          (o.pancake_order_id || "").toLowerCase().includes(lower) ||
           o.customer_name.toLowerCase().includes(lower) ||
           (o.tracking_number || "").toLowerCase().includes(lower) ||
           (looksLikePhone && phoneTarget !== "" && normalizePhone(o.customer_phone).includes(phoneTarget))
@@ -96,12 +99,18 @@ export default async function LeadsPage({
       orders = orders.filter(
         (o) =>
           o.order_number.toLowerCase().includes(q) ||
+          (o.pancake_order_id || "").toLowerCase().includes(q) ||
           o.customer_name.toLowerCase().includes(q) ||
           o.customer_phone.toLowerCase().includes(q) ||
           (usernameByAgentId.get(o.agent_id) || "").includes(q)
       );
     }
-    if (sp.order_number) orders = orders.filter((o) => o.order_number.toLowerCase().includes(sp.order_number!.toLowerCase()));
+    if (sp.order_number) {
+      const needle = sp.order_number.toLowerCase();
+      orders = orders.filter(
+        (o) => o.order_number.toLowerCase().includes(needle) || (o.pancake_order_id || "").toLowerCase().includes(needle)
+      );
+    }
     if (sp.date_from) orders = orders.filter((o) => (o.order_date || "") >= sp.date_from!);
     if (sp.date_to) orders = orders.filter((o) => (o.order_date || "") <= sp.date_to!);
     if (sp.agent) orders = orders.filter((o) => o.agent_id === sp.agent);
@@ -288,7 +297,7 @@ export default async function LeadsPage({
             ))}
           </Select>
 
-          <Input name="order_number" placeholder="Order Number" defaultValue={sp.order_number} />
+          <Input name="order_number" placeholder="Order ID" defaultValue={sp.order_number} />
           <Input name="customer_name" placeholder="Customer Name" defaultValue={sp.customer_name} />
           <Input name="phone" placeholder="Phone Number" defaultValue={sp.phone} />
           <Select name="product" defaultValue={sp.product || ""}>

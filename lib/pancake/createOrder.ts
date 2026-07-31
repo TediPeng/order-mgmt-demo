@@ -23,8 +23,15 @@ export function buildCreateOrderBody(payload: ForwardPayload): Record<string, un
   const productLabel = [payload.product, payload.variant].filter(Boolean).join(" — ");
 
   return {
-    // Stable external reference — also what incoming updates are matched on.
-    custom_id: payload.system_order_id,
+    // `custom_id` is deliberately NOT sent. Pancake adopts whatever custom_id it
+    // is given AS the order's own id, which is why its screens were showing our
+    // internal ORD-YYYYMMDD-#### instead of a Pancake number. Omitting it lets
+    // Pancake generate the order id itself; we read that back off the response
+    // and store it as the order's primary reference.
+    //
+    // Idempotency no longer rides on custom_id, so it rests on the remaining
+    // guards: the pre-send duplicate check, the atomic claim to `syncing`, and
+    // the successful-forward log check in forward.ts.
     // Every order must land in Pancake as Packaging.
     status: CREATE_STATUS_PACKAGING,
     bill_full_name: payload.customer_name,
@@ -125,6 +132,8 @@ export async function createOrder(account: PancakeAccount, payload: ForwardPaylo
 
   const res = await pancakeFetch(account, resolvePath(CREATE_ORDER_PATH, account), { method: "POST", body });
   const data = unwrapData(res.body);
+  // Pancake's own generated order id, now that we no longer impose a custom_id.
+  // Stored verbatim — never generated or reformatted here.
   const rawId = data[RESPONSE_FIELDS.order_id];
   const pancakeOrderId = rawId != null && rawId !== "" ? String(rawId) : null;
   const returnedStatus = data[RESPONSE_FIELDS.status];
@@ -148,7 +157,10 @@ export async function createOrder(account: PancakeAccount, payload: ForwardPaylo
           id: pancakeOrderId,
           status: returnedStatus ?? null,
           status_name: pancakeStatus,
-          custom_id: data[RESPONSE_FIELDS.external_reference] ?? null,
+          // Pancake's per-shop sequence number, kept for troubleshooting so a
+          // Pancake order can still be located if the id ever looks wrong.
+          system_id: data.system_id ?? null,
+          order_link: data.order_link ?? null,
         }
       : null,
     requestPayload: body,

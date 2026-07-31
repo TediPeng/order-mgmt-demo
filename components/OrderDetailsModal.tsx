@@ -12,7 +12,7 @@ import { cn, formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import { LEAD_STATUS_LABELS, PAYMENT_METHOD_SUGGESTIONS, selectableStatuses } from "@/lib/validation";
 import { isOrderLocked, SYNCED_LOCK_MESSAGE } from "@/lib/lead-workflow";
 import { useCallSession } from "@/components/CallSessionProvider";
-import { PANCAKE_SYNC_SOURCE_LABELS, type PancakeSyncSource } from "@/lib/types";
+import { displayOrderId, isPendingOrderId, PANCAKE_SYNC_SOURCE_LABELS, type PancakeSyncSource } from "@/lib/types";
 import { AddressSelect } from "@/components/AddressSelect";
 import { CallingPanel } from "@/components/CallingPanel";
 import { CallHistory } from "@/components/CallHistory";
@@ -400,7 +400,10 @@ export function OrderDetailsModal({
       >
         <div className={`flex items-center justify-between rounded-t-xl ${style.header} px-5 py-3`}>
           <div className="flex items-center gap-2 text-white">
-            <h2 className="text-base font-semibold">{order.order_number}</h2>
+            <h2 className="text-base font-semibold" title={`Internal reference: ${order.order_number}`}>
+              {displayOrderId(order)}
+              {isPendingOrderId(order) && <span className="ml-1.5 text-xs font-normal opacity-80">(pending sync)</span>}
+            </h2>
             <StatusBadge status={order.status} />
           </div>
           <button type="button" onClick={requestClose} className="rounded p-1 text-white/90 hover:bg-black/10" aria-label="Close">

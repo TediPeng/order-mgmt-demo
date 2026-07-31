@@ -13,7 +13,7 @@ import { LeadEditForm } from "@/components/LeadEditForm";
 import { listSyncLogs, getAccount } from "@/lib/pancake/store";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 import { isOrderLocked, SYNCED_LOCK_MESSAGE } from "@/lib/lead-workflow";
-import { displayUserName } from "@/lib/types";
+import { displayOrderId, displayUserName, isPendingOrderId } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Field";
 
@@ -90,7 +90,10 @@ export default async function LeadDetailPage({
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-page-title text-slate-900">{order.order_number}</h1>
+              <h1 className="text-page-title text-slate-900" title={`Internal reference: ${order.order_number}`}>
+                {displayOrderId(order)}
+              </h1>
+              {isPendingOrderId(order) && <span className="text-xs text-slate-400">(pending sync)</span>}
               <StatusBadge status={order.status} />
             </div>
             <p className="text-sm text-slate-500">
