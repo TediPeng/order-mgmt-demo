@@ -5,6 +5,7 @@ import { Input, Label, Select, Textarea, FieldError } from "@/components/ui/Fiel
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { ProductCombobox } from "@/components/ProductCombobox";
+import { AddressSelect } from "@/components/AddressSelect";
 import { LEAD_STATUS_LABELS, PAYMENT_METHOD_SUGGESTIONS, selectableStatuses } from "@/lib/validation";
 import type { Order, Profile } from "@/lib/types";
 
@@ -15,6 +16,10 @@ interface FormState {
   barangay: string;
   city: string;
   province: string;
+  // Pancake's own address IDs — what the server validates and forwards.
+  pancake_province_id: string;
+  pancake_district_id: string;
+  pancake_commune_id: string;
   landmark: string;
   previous_order_date: string;
   previous_order_product: string;
@@ -40,6 +45,9 @@ function snapshotFrom(order: Order): FormState {
     barangay: order.barangay,
     city: order.city,
     province: order.province,
+    pancake_province_id: order.pancake_province_id || "",
+    pancake_district_id: order.pancake_district_id || "",
+    pancake_commune_id: order.pancake_commune_id || "",
     landmark: order.landmark,
     previous_order_date: order.previous_order_date || "",
     previous_order_product: order.previous_order_product || "",
@@ -182,45 +190,42 @@ export function LeadEditForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="purok">Purok</Label>
-          <Input id="purok" name="purok" value={form.purok} onChange={(e) => update("purok", e.target.value)} disabled={!canEdit} />
-        </div>
-        <div>
-          <Label htmlFor="barangay">Barangay</Label>
-          <Input
-            id="barangay"
-            name="barangay"
-            value={form.barangay}
-            onChange={(e) => update("barangay", e.target.value)}
-            disabled={!canEdit}
-            className={err("barangay")}
-          />
-        </div>
-        <div>
-          <Label htmlFor="city">City</Label>
-          <Input
-            id="city"
-            name="city"
-            value={form.city}
-            onChange={(e) => update("city", e.target.value)}
-            disabled={!canEdit}
-            className={err("city")}
-          />
-        </div>
-        <div>
-          <Label htmlFor="province">Province</Label>
-          <Input
-            id="province"
-            name="province"
-            value={form.province}
-            onChange={(e) => update("province", e.target.value)}
-            disabled={!canEdit}
-            className={err("province")}
-          />
-        </div>
+      <div>
+        <Label htmlFor="purok">Address / Purok</Label>
+        <Input id="purok" name="purok" value={form.purok} onChange={(e) => update("purok", e.target.value)} disabled={!canEdit} />
       </div>
+
+      {/* Province/City/Barangay come from Pancake's own address data, so a
+          selection here is one Pancake recognises. Free-text entry is gone:
+          typed names were never sent as IDs, which is what left the location
+          empty on Pancake's side. */}
+      <AddressSelect
+        value={{
+          province_id: form.pancake_province_id,
+          province: form.province,
+          city_id: form.pancake_district_id,
+          city: form.city,
+          barangay_id: form.pancake_commune_id,
+          barangay: form.barangay,
+        }}
+        onChange={(next) =>
+          setForm((prev) => ({
+            ...prev,
+            pancake_province_id: next.province_id,
+            province: next.province,
+            pancake_district_id: next.city_id,
+            city: next.city,
+            pancake_commune_id: next.barangay_id,
+            barangay: next.barangay,
+          }))
+        }
+        disabled={!canEdit}
+        errors={{
+          province: missing.includes("province") ? "Province is required." : undefined,
+          city: missing.includes("city") ? "City / Municipality is required." : undefined,
+          barangay: missing.includes("barangay") ? "Barangay is required." : undefined,
+        }}
+      />
       <div>
         <Label htmlFor="landmark">Landmark</Label>
         <Input id="landmark" name="landmark" value={form.landmark} onChange={(e) => update("landmark", e.target.value)} disabled={!canEdit} />

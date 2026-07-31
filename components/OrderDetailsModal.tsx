@@ -29,11 +29,12 @@ interface EditForm {
   barangay: string;
   city: string;
   province: string;
-  // PSGC codes travel with the names: the codes are what the server validates,
-  // the names are what gets displayed and sent onward.
-  province_code: string;
-  city_code: string;
-  barangay_code: string;
+  // Pancake's own address IDs travel with the names: the IDs are what the
+  // server validates and what gets sent to Pancake, the names are what the app
+  // displays.
+  pancake_province_id: string;
+  pancake_district_id: string;
+  pancake_commune_id: string;
   landmark: string;
   product_id: string;
   variant: string;
@@ -54,9 +55,9 @@ function snapshotFrom(order: Order): EditForm {
     customer_phone: order.customer_phone,
     purok: order.purok,
     barangay: order.barangay,
-    province_code: order.province_code || "",
-    city_code: order.city_code || "",
-    barangay_code: order.barangay_code || "",
+    pancake_province_id: order.pancake_province_id || "",
+    pancake_district_id: order.pancake_district_id || "",
+    pancake_commune_id: order.pancake_commune_id || "",
     city: order.city,
     province: order.province,
     landmark: order.landmark,
@@ -82,9 +83,9 @@ function buildRawFromOrder(o: Order, overrides: Record<string, unknown> = {}): R
     barangay: o.barangay,
     city: o.city,
     province: o.province,
-    province_code: o.province_code || "",
-    city_code: o.city_code || "",
-    barangay_code: o.barangay_code || "",
+    pancake_province_id: o.pancake_province_id || "",
+    pancake_district_id: o.pancake_district_id || "",
+    pancake_commune_id: o.pancake_commune_id || "",
     landmark: o.landmark,
     previous_order_date: o.previous_order_date || "",
     previous_order_product: o.previous_order_product || "",
@@ -346,9 +347,9 @@ export function OrderDetailsModal({
         barangay: form.barangay,
         city: form.city,
         province: form.province,
-        province_code: form.province_code,
-        city_code: form.city_code,
-        barangay_code: form.barangay_code,
+        pancake_province_id: form.pancake_province_id,
+        pancake_district_id: form.pancake_district_id,
+        pancake_commune_id: form.pancake_commune_id,
         landmark: form.landmark,
         product_id: form.product_id,
         variant: form.variant,
@@ -548,22 +549,21 @@ export function OrderDetailsModal({
                   )}
                   <AddressSelect
                     value={{
-                      province_id: form.province_code,
+                      province_id: form.pancake_province_id,
                       province: form.province,
-                      city_id: form.city_code,
+                      city_id: form.pancake_district_id,
                       city: form.city,
-                      barangay_id: form.barangay_code,
+                      barangay_id: form.pancake_commune_id,
                       barangay: form.barangay,
                     }}
                     onChange={(next) =>
                       setForm((prev) => ({
                         ...prev,
-                        // The form's *_code slots now carry Pancake's own IDs.
-                        province_code: next.province_id,
+                        pancake_province_id: next.province_id,
                         province: next.province,
-                        city_code: next.city_id,
+                        pancake_district_id: next.city_id,
                         city: next.city,
-                        barangay_code: next.barangay_id,
+                        pancake_commune_id: next.barangay_id,
                         barangay: next.barangay,
                       }))
                     }
