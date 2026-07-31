@@ -52,7 +52,18 @@ if (!fullName || !email || !username || !password) {
       "  The password is read from the environment on purpose so it never lands in this file or in git."
   );
 }
-if (password.length < 12) fail("Choose a password of at least 12 characters for an administrator account.");
+// Bootstrap escape hatch: a short password is allowed only when asked for
+// explicitly, and only because must_change_password forces it to be replaced at
+// first login — it is a one-use key to get back in, not a working credential.
+if (password.length < 12 && process.env.ALLOW_WEAK_PASSWORD !== "1") {
+  fail(
+    "Choose a password of at least 12 characters for an administrator account.\n" +
+      "  To bootstrap a locked-out account with a temporary one, re-run with ALLOW_WEAK_PASSWORD=1."
+  );
+}
+if (password.length < 12) {
+  console.warn("\n  WARNING: bootstrapping with a weak temporary password. It must be changed at first login.");
+}
 
 const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
