@@ -42,3 +42,6 @@ next-env.d.ts
 
 # PSGC source datasets (10MB+); the DB is seeded from these via scripts/seed-psgc.mjs
 data/psgc/
+
+# Database exports: real customer PII, must never reach this public repo.
+/backups/
