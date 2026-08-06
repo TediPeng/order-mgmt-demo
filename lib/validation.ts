@@ -154,6 +154,29 @@ export function selectableStatuses(
  * PH-locale spreadsheet writes. */
 const DATE_MESSAGE = "Previous Order Date must be a date (e.g. 2026-07-15)";
 
+/** The calendar day an Excel date cell shows, as YYYY-MM-DD.
+ *
+ * Excel stores a date-only cell as a timezone-naive serial; the reader turns it
+ * into a local Date, and float rounding lands some a few seconds BEFORE local
+ * midnight — a cell Excel displays as 30-Nov arrives as Nov 29 23:59:35. Both
+ * toISOString() and a plain getDate() would then store the 29th. Rounding to
+ * the nearest local midnight recovers the day the user actually sees. UTC is
+ * deliberately not used: every PH date would shift a day back on its own. */
+export function excelDateToYmd(d: Date): string {
+  const rounded = new Date(d.getTime() + 12 * 60 * 60 * 1000);
+  return [
+    rounded.getFullYear(),
+    String(rounded.getMonth() + 1).padStart(2, "0"),
+    String(rounded.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function quoteCellValue(v: unknown): string {
+  const s = String(v ?? "").trim();
+  if (s === "") return "an empty cell";
+  return `"${s.length > 40 ? `${s.slice(0, 40)}…` : s}"`;
+}
+
 function normalizeDateValue(s: string): string | null {
   const iso = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
   const slashed = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
@@ -175,14 +198,19 @@ function normalizeDateValue(s: string): string | null {
 const dateCell = z.preprocess(
   (v) => {
     if (v === null || v === undefined) return "";
-    if (v instanceof Date) return Number.isNaN(v.getTime()) ? "Invalid Date" : v.toISOString().slice(0, 10);
+    if (v instanceof Date) return Number.isNaN(v.getTime()) ? "Invalid Date" : excelDateToYmd(v);
     return String(v).trim();
   },
   z
     .string()
     // The same normaliser decides and converts, so a value can never pass the
     // check in one form and be stored in another.
-    .refine((v) => v === "" || normalizeDateValue(v) !== null, DATE_MESSAGE)
+    .refine((v) => v === "" || normalizeDateValue(v) !== null, {
+      // Quoting the value is what makes a swapped column self-evident: the
+      // report says the Date column holds "1 AVOCADO COFFEE" rather than
+      // leaving the reader to guess which cell the row means.
+      error: (issue) => `${DATE_MESSAGE} — got ${quoteCellValue(issue.input)}`,
+    })
     .transform((v) => (v === "" ? "" : normalizeDateValue(v)!))
 );
 
@@ -256,7 +284,7 @@ export const PACKAGING_REQUIRED_FIELDS: { key: keyof LeadFormInput; label: strin
  * rules below decide what is actually missing. */
 const textCell = z.preprocess((v) => {
   if (v === null || v === undefined) return "";
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  if (v instanceof Date) return excelDateToYmd(v);
   return String(v).trim();
 }, z.string());
 

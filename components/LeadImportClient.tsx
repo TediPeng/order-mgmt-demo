@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
-import { LEAD_IMPORT_HEADERS, LEAD_IMPORT_FORBIDDEN_HEADERS } from "@/lib/validation";
+import { LEAD_IMPORT_HEADERS, LEAD_IMPORT_FORBIDDEN_HEADERS, excelDateToYmd } from "@/lib/validation";
 import { importLeadsAction, type LeadImportSummary } from "@/lib/actions/leads";
 
 interface RawRow {
@@ -92,7 +92,10 @@ export function LeadImportClient() {
           FIELD_KEYS.forEach((key, i) => {
             let val: unknown = rowArr[i] ?? "";
             if (key === "previous_order_date" && val instanceof Date) {
-              val = val.toISOString().slice(0, 10);
+              // Not toISOString(): see excelDateToYmd — a cell Excel shows as
+              // 30-Nov arrives just short of local midnight and UTC would file
+              // it under the 29th.
+              val = excelDateToYmd(val);
             }
             if (key === "previous_order_amount") {
               val = val === "" ? null : Number(val);
