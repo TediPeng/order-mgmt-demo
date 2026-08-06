@@ -137,6 +137,55 @@ export function selectableStatuses(
   return base;
 }
 
+/** A date value, normalised to YYYY-MM-DD, shared by the lead form and the
+ * Excel import.
+ *
+ * Postgres owns the `date` type behind previous_order_date, so a value that is
+ * not a date has to be refused HERE. Treating it as free text let a stray
+ * product description ("1 AVOCADO COFFEE x 1", from a file whose columns were
+ * shifted) travel all the way to the upsert, where Postgres rejected the entire
+ * batch — every other row of that import was lost with it and the page 500'd.
+ * Rejected at the schema it becomes a row-level "invalid" in the import summary
+ * and the error report instead, naming the row that needs fixing; on the modal's
+ * PATCH route it becomes a 400 rather than a crash.
+ *
+ * Accepts what the sources actually hand over: "" for blank, a real Date from
+ * Excel, ISO (2026-07-15) from <input type="date">, and the M/D/YYYY a
+ * PH-locale spreadsheet writes. */
+const DATE_MESSAGE = "Previous Order Date must be a date (e.g. 2026-07-15)";
+
+function normalizeDateValue(s: string): string | null {
+  const iso = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  const slashed = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  let year: number, month: number, day: number;
+  if (iso) {
+    [year, month, day] = [Number(iso[1]), Number(iso[2]), Number(iso[3])];
+  } else if (slashed) {
+    [year, month, day] = [Number(slashed[3]), Number(slashed[1]), Number(slashed[2])];
+  } else {
+    return null;
+  }
+  // new Date() rolls 2026-02-30 over into March rather than failing, so the
+  // parts are compared back against what came out.
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  if (dt.getUTCFullYear() !== year || dt.getUTCMonth() !== month - 1 || dt.getUTCDate() !== day) return null;
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+const dateCell = z.preprocess(
+  (v) => {
+    if (v === null || v === undefined) return "";
+    if (v instanceof Date) return Number.isNaN(v.getTime()) ? "Invalid Date" : v.toISOString().slice(0, 10);
+    return String(v).trim();
+  },
+  z
+    .string()
+    // The same normaliser decides and converts, so a value can never pass the
+    // check in one form and be stored in another.
+    .refine((v) => v === "" || normalizeDateValue(v) !== null, DATE_MESSAGE)
+    .transform((v) => (v === "" ? "" : normalizeDateValue(v)!))
+);
+
 export const leadFormSchema = z.object({
   customer_name: z.string().trim().min(1, "Customer name is required"),
   customer_phone: z.string().trim().optional().default(""),
@@ -145,7 +194,7 @@ export const leadFormSchema = z.object({
   city: z.string().trim().optional().default(""),
   province: z.string().trim().optional().default(""),
   landmark: z.string().trim().optional().default(""),
-  previous_order_date: z.string().trim().optional().default(""),
+  previous_order_date: dateCell,
   previous_order_product: z.string().trim().optional().default(""),
   previous_order_amount: z.coerce.number().nonnegative().optional().nullable(),
   product_id: z.string().trim().optional().default(""),
@@ -227,7 +276,7 @@ export const leadImportRowSchema = z.object({
   city: textCell,
   province: textCell,
   landmark: textCell,
-  previous_order_date: textCell,
+  previous_order_date: dateCell,
   previous_order_product: textCell,
   previous_order_amount: numberCell,
 });
