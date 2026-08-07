@@ -111,6 +111,54 @@ export async function listSessionsForOrder(orderId: string): Promise<CallSession
   return (data || []).map(map);
 }
 
+/** Every agent currently on a call, keyed by agent id — one query for the whole
+ * monitor rather than one per row. */
+export async function getActiveSessions(agentIds: string[]): Promise<Map<string, CallSession>> {
+  const out = new Map<string, CallSession>();
+  if (agentIds.length === 0) return out;
+  const { data, error } = await supabaseAdmin
+    .from("call_sessions")
+    .select("*")
+    .in("agent_id", agentIds)
+    .is("ended_at", null);
+  if (error) throw new Error(`call_sessions read failed: ${error.message}`);
+  for (const row of data || []) out.set(String(row.agent_id), map(row));
+  return out;
+}
+
+export interface CallDayTotals {
+  count: number;
+  seconds: number;
+}
+
+/** Completed call count and talk time for one day, per agent. Unlike
+ * countCompletedSessions this applies no minimum-duration floor: the monitor
+ * reports what actually happened, and the floor is a performance-scoring rule
+ * rather than a reporting one. The call in progress is excluded, so the monitor
+ * can add its live elapsed time and keep ticking. */
+export async function callTotalsForDay(agentIds: string[], workDate: string): Promise<Map<string, CallDayTotals>> {
+  const out = new Map<string, CallDayTotals>();
+  if (agentIds.length === 0) return out;
+
+  const { data, error } = await supabaseAdmin
+    .from("call_sessions")
+    .select("agent_id, duration_seconds")
+    .in("agent_id", agentIds)
+    .not("ended_at", "is", null)
+    .gte("started_at", `${workDate}T00:00:00Z`)
+    .lte("started_at", `${workDate}T23:59:59Z`);
+  if (error) throw new Error(`call_sessions read failed: ${error.message}`);
+
+  for (const row of data || []) {
+    const key = String(row.agent_id);
+    const current = out.get(key) || { count: 0, seconds: 0 };
+    current.count += 1;
+    current.seconds += Number(row.duration_seconds ?? 0);
+    out.set(key, current);
+  }
+  return out;
+}
+
 /** Completed sessions per agent per day — the basis for Calls Made.
  * `minSeconds` comes from Settings and is 0 by default, so nothing is filtered
  * out until there is real session data to justify a floor. */

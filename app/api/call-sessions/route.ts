@@ -5,6 +5,7 @@ import { orderInScope } from "@/lib/order-access";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { startSession, endSession, getActiveSession } from "@/lib/call-sessions";
+import { getActiveBioBreak } from "@/lib/bio-breaks";
 import { timeInBlockReason, TIME_IN_HREF } from "@/lib/time-in-gate";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +40,18 @@ export async function POST(req: NextRequest) {
   const notTimedIn = timeInBlockReason(db, user);
   if (notTimedIn) {
     return NextResponse.json({ ok: false, error: notTimedIn, timeInRequired: true, timeInHref: TIME_IN_HREF }, { status: 403 });
+  }
+
+  // Bio breaks and calls are mutually exclusive, so an agent is never both On
+  // Call and On Break at once and the monitor's standby arithmetic has no
+  // overlapping intervals to reconcile. The reverse guard lives in
+  // startBioBreak().
+  const onBioBreak = await getActiveBioBreak(user.id);
+  if (onBioBreak) {
+    return NextResponse.json(
+      { ok: false, error: "End your bio break before starting a call." },
+      { status: 409 }
+    );
   }
 
   const result = await startSession(user.id, orderId);

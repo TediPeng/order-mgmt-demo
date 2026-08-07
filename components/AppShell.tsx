@@ -8,6 +8,7 @@ import { Topbar } from "./Topbar";
 import { Breadcrumb } from "./Breadcrumb";
 import { UpdateLogsPanel } from "./UpdateLogsPanel";
 import { APP_NAME, APP_VERSION } from "@/lib/version";
+import { isFullAccess } from "@/lib/permissions";
 import type { AppNotification, ModuleKey, Profile, UpdateLog } from "@/lib/types";
 
 import { SIDEBAR_COOKIE, SIDEBAR_COOKIE_MAX_AGE } from "@/lib/ui-prefs";
@@ -34,6 +35,12 @@ export function AppShell({
   const [collapsed, setCollapsed] = useState(initialCollapsed);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const router = useRouter();
+
+  // Agent Monitor is supervisory, so it is gated on the role rather than on the
+  // attendance permission — that permission is what lets an agent see their own
+  // record, and must not also expose everyone else's break timers. The page
+  // enforces the same rule server-side; this only decides whether the link shows.
+  const canMonitor = isFullAccess(user.role) || user.role === "team_lead";
 
   // No websocket backend, so "real-time" dashboard stats, attendance widgets and
   // notifications are refreshed by re-running the server components in place —
@@ -101,7 +108,7 @@ export function AppShell({
   return (
     <div className="flex h-screen" style={{ background: "var(--surface-muted)" }}>
       <div className="hidden lg:block">
-        <Sidebar access={access} collapsed={collapsed} />
+        <Sidebar access={access} canMonitor={canMonitor} collapsed={collapsed} />
       </div>
 
       {drawerOpen && (
@@ -112,7 +119,7 @@ export function AppShell({
             onClick={() => setDrawerOpen(false)}
           />
           <div className="relative z-10">
-            <Sidebar access={access} onNavigate={() => setDrawerOpen(false)} />
+            <Sidebar access={access} canMonitor={canMonitor} onNavigate={() => setDrawerOpen(false)} />
           </div>
           <button
             className="absolute right-4 top-4 z-10 cursor-pointer rounded-md bg-white p-1.5 shadow"

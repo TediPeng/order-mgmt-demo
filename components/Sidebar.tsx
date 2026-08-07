@@ -27,6 +27,7 @@ import {
   KeyRound,
   Plug,
   ScrollText,
+  Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ModuleKey } from "@/lib/types";
@@ -57,10 +58,16 @@ interface NavGroup {
  */
 export function Sidebar({
   access,
+  canMonitor = false,
   collapsed = false,
   onNavigate,
 }: {
   access: Record<ModuleKey, boolean>;
+  /** Agent Monitor is supervisory: Administrators and Team Leads only. Passed
+   * in rather than derived from `access`, because holding attendance.view is
+   * what lets an agent see their OWN record — it should not also hand them a
+   * board of everyone else's break timers. */
+  canMonitor?: boolean;
   collapsed?: boolean;
   /** Lets the mobile drawer close itself when a destination is chosen. */
   onNavigate?: () => void;
@@ -94,6 +101,7 @@ export function Sidebar({
       items: [
         { href: "/attendance", label: "Attendance", icon: Clock, show: true },
         { href: "/attendance/clock", label: "Time In / Out", icon: Timer, show: true },
+        { href: "/attendance/monitor", label: "Agent Monitor", icon: Activity, show: canMonitor },
         { href: "/schedule", label: "Schedule", icon: CalendarDays, show: access.schedules },
         { href: "/leave", label: "Leave Requests", icon: CalendarClock, show: access.leave },
         { href: "/schedule/suspensions", label: "Disciplinary", icon: ShieldAlert, show: access.disciplinary },

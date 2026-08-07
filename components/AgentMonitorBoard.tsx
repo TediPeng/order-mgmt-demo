@@ -1,0 +1,161 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Phone, Coffee, Utensils, Hourglass, LogOut, Minus } from "lucide-react";
+
+/** How often the board pulls fresh server state. Faster than the shell's own
+ * 60s refresh because this is a live board — but still gated on tab visibility,
+ * since a monitor left open on a spare screen would otherwise re-run the whole
+ * server tree all night for nobody. */
+const REFRESH_MS = 20000;
+
+export type MonitorState = "on_call" | "bio_break" | "break" | "standby" | "timed_out" | "not_in";
+
+export interface MonitorRow {
+  agentId: string;
+  name: string;
+  callName: string | null;
+  teamLead: string | null;
+  state: MonitorState;
+  /** When the current state began. Null when there is nothing to count. */
+  sinceIso: string | null;
+  /** Order the agent is on, when state is on_call. */
+  orderNumber: string | null;
+  calls: number;
+  /** Completed talk time today, seconds. The live call is added client-side. */
+  talkSeconds: number;
+  bioCount: number;
+  /** Completed bio break time today, seconds. The live one is added client-side. */
+  bioSeconds: number;
+  /** Seconds already accounted for as standby before the current state began. */
+  standbyBaseSeconds: number;
+}
+
+const STATE_META: Record<MonitorState, { label: string; icon: typeof Phone; cls: string; dot: string }> = {
+  on_call: { label: "On call", icon: Phone, cls: "bg-green-50 text-green-700", dot: "bg-green-500" },
+  bio_break: { label: "Bio break", icon: Coffee, cls: "bg-amber-50 text-amber-700", dot: "bg-amber-500" },
+  break: { label: "On break", icon: Utensils, cls: "bg-orange-50 text-orange-700", dot: "bg-orange-500" },
+  standby: { label: "Standby", icon: Hourglass, cls: "bg-slate-100 text-slate-600", dot: "bg-slate-400" },
+  timed_out: { label: "Timed out", icon: LogOut, cls: "bg-slate-50 text-slate-400", dot: "bg-slate-300" },
+  not_in: { label: "Not timed in", icon: Minus, cls: "bg-slate-50 text-slate-400", dot: "bg-slate-200" },
+};
+
+function hms(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return h > 0
+    ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`
+    : `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
+export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; generatedAt: string }) {
+  const router = useRouter();
+  const [now, setNow] = useState(() => Date.now());
+
+  // One clock for the whole board rather than a timer per row.
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.hidden) return;
+      router.refresh();
+    }, REFRESH_MS);
+    return () => clearInterval(id);
+  }, [router]);
+
+  const elapsedSince = (iso: string | null) => (iso ? Math.max(0, (now - new Date(iso).getTime()) / 1000) : 0);
+
+  const counts = rows.reduce<Record<string, number>>((acc, r) => {
+    acc[r.state] = (acc[r.state] || 0) + 1;
+    return acc;
+  }, {});
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2">
+        {(["on_call", "standby", "bio_break", "break", "timed_out", "not_in"] as MonitorState[]).map((s) => (
+          <span
+            key={s}
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium ${STATE_META[s].cls}`}
+          >
+            <span className={`h-2 w-2 rounded-full ${STATE_META[s].dot}`} aria-hidden />
+            {STATE_META[s].label}
+            <span className="tabular-nums">{counts[s] || 0}</span>
+          </span>
+        ))}
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <table className="w-full min-w-[900px] text-left text-sm">
+          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+            <tr>
+              <th className="px-4 py-3">Agent</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3 text-right">For</th>
+              <th className="px-4 py-3 text-right">Calls</th>
+              <th className="px-4 py-3 text-right">Talk time</th>
+              <th className="px-4 py-3 text-right">Standby</th>
+              <th className="px-4 py-3 text-right">Bio breaks</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {rows.map((r) => {
+              const live = elapsedSince(r.sinceIso);
+              const meta = STATE_META[r.state];
+              const Icon = meta.icon;
+              // Live states keep counting; everything else shows the stored total.
+              const talk = r.talkSeconds + (r.state === "on_call" ? live : 0);
+              const bio = r.bioSeconds + (r.state === "bio_break" ? live : 0);
+              const standby = r.standbyBaseSeconds + (r.state === "standby" ? live : 0);
+
+              return (
+                <tr key={r.agentId} className={r.state === "on_call" ? "bg-green-50/40" : undefined}>
+                  <td className="px-4 py-3">
+                    <span className="font-medium text-slate-800">{r.name}</span>
+                    {r.callName && <span className="ml-2 text-xs text-slate-400">{r.callName}</span>}
+                    {r.teamLead && <span className="block text-xs text-slate-400">{r.teamLead}</span>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${meta.cls}`}>
+                      <Icon className="h-3.5 w-3.5" aria-hidden />
+                      {meta.label}
+                    </span>
+                    {r.orderNumber && <span className="ml-2 font-mono text-xs text-slate-500">{r.orderNumber}</span>}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-600">
+                    {r.sinceIso ? hms(live) : "—"}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums text-slate-700">{r.calls}</td>
+                  <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-700">{hms(talk)}</td>
+                  <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-700">{hms(standby)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-slate-700">
+                    {r.bioCount}
+                    <span className="ml-2 font-mono text-xs text-slate-400">{hms(bio)}</span>
+                  </td>
+                </tr>
+              );
+            })}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
+                  No agents to monitor.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="text-xs text-slate-400">
+        Timers run live in the browser; figures refresh from the server every {REFRESH_MS / 1000}s, and pause while this
+        tab is in the background. Server data as of {new Date(generatedAt).toLocaleTimeString()}.
+      </p>
+    </div>
+  );
+}

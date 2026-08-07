@@ -685,6 +685,21 @@ export interface CallSession {
   created_at: string;
 }
 
+/** A short, repeatable break. Distinct from attendance.break_start/break_end,
+ * which is the single daily break and refuses a second one. Lives in its own
+ * table because there can be many per day; see lib/bio-breaks.ts. */
+export interface BioBreak {
+  id: string;
+  agent_id: string;
+  /** Attendance day in the app timezone, so totals group correctly across a
+   * UTC midnight that lands mid-shift. */
+  work_date: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number | null;
+  created_at: string;
+}
+
 // --- Release notes & account deletion audit --------------------------------
 // Both are append-mostly and read outside the authenticated session (the login
 // page shows published release notes), so they use targeted queries rather

@@ -4,6 +4,9 @@ import { can } from "@/lib/permissions";
 import { formatDate, formatTime, todayInTz } from "@/lib/utils";
 import { AnalogClock } from "@/components/AnalogClock";
 import { BreakTimer } from "@/components/BreakTimer";
+import { BioBreakTimer } from "@/components/BioBreakTimer";
+import { getActiveBioBreak, bioBreakTotalsForDay } from "@/lib/bio-breaks";
+import { getActiveSession } from "@/lib/call-sessions";
 import { AttendanceStatusBadge, LateFlag, OverBreakFlag } from "@/components/ui/AttendanceBadge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -22,6 +25,15 @@ export default async function TimeClockPage({
   const today = todayInTz();
   const record = db.attendance.find((a) => a.user_id === user.id && a.work_date === today);
   const canOverride = can(user.role, "attendance", "approve", db.role_permissions);
+
+  // Bio break state for this agent. The active call is read only to disable the
+  // start button — the server refuses the overlap regardless.
+  const [activeBioBreak, bioTotalsByAgent, activeCall] = await Promise.all([
+    getActiveBioBreak(user.id),
+    bioBreakTotalsForDay([user.id], today),
+    getActiveSession(user.id),
+  ]);
+  const bioTotals = bioTotalsByAgent.get(user.id) || { count: 0, seconds: 0 };
 
   let status: React.ReactNode;
   if (!record) {
@@ -97,13 +109,25 @@ export default async function TimeClockPage({
         </CardContent>
       </Card>
 
-      <BreakTimer
-        breakStart={record?.break_start ?? null}
-        breakEnd={record?.break_end ?? null}
-        allowanceMinutes={db.work_schedule.break_minutes}
-        canBreak={!!record && !record.time_out}
-        redirectTo="/attendance/clock"
-      />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <BreakTimer
+          breakStart={record?.break_start ?? null}
+          breakEnd={record?.break_end ?? null}
+          allowanceMinutes={db.work_schedule.break_minutes}
+          canBreak={!!record && !record.time_out}
+          redirectTo="/attendance/clock"
+        />
+
+        {record && !record.time_out && (
+          <BioBreakTimer
+            startedAt={activeBioBreak?.started_at ?? null}
+            countToday={bioTotals.count}
+            secondsToday={bioTotals.seconds}
+            onCall={!!activeCall}
+            redirectTo="/attendance/clock"
+          />
+        )}
+      </div>
 
       {canOverride && (
         <Card>
