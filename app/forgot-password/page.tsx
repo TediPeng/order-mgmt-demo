@@ -18,10 +18,14 @@ export default async function ForgotPasswordPage({
           <h1 className="mt-3 text-lg font-semibold text-slate-900">Reset your password</h1>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          {/* The confirmation deliberately says nothing about whether the
+              address matched an account — the answer is the same either way,
+              so this screen cannot be used to find out who has a login here. */}
           {sent ? (
             <Alert kind="success">
-              If an account exists for that email, a password reset link has been sent. No email is actually sent in
-              this environment — ask an Administrator to reset your password from User Management.
+              If an account exists for that email, a password reset link has been sent. The link expires in an hour and
+              works once. If it does not arrive, check your spam folder or ask an Administrator to reset your password
+              from User Management.
             </Alert>
           ) : (
             <form action={requestPasswordResetAction} className="space-y-4">

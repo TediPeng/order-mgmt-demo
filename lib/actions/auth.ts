@@ -5,8 +5,18 @@ import { readDb, writeDb } from "@/lib/db";
 import { createSession, destroySession, getCurrentUser, hashPassword, setThemeCookie, verifyPassword } from "@/lib/auth";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
-import { passwordChangeSchema } from "@/lib/validation";
+import { passwordChangeSchema, passwordResetSchema } from "@/lib/validation";
 import { describeParseFailure } from "@/lib/zod-error";
+import {
+  RESET_TOKEN_TTL_MINUTES,
+  checkResetToken,
+  consumeResetToken,
+  invalidateTokensFor,
+  issueResetToken,
+} from "@/lib/password-reset";
+import { sendMail } from "@/lib/mail/transport";
+import { passwordResetEmail } from "@/lib/mail/templates";
+import { appBaseUrl } from "@/lib/app-url";
 
 export async function loginAction(formData: FormData) {
   const username = String(formData.get("username") || "").trim();
@@ -70,11 +80,77 @@ export async function requestPasswordResetAction(formData: FormData) {
   const email = String(formData.get("email") || "").trim();
   const db = await readDb();
   const user = db.profiles.find((p) => p.email.toLowerCase() === email.toLowerCase());
-  if (user) {
-    logActivity(db, user.id, "PASSWORD_RESET_REQUESTED", "auth", user.id, { email });
+
+  // Deactivated and deleted accounts are treated as absent. A reset link is a
+  // way back in, and an account that was switched off must not have one.
+  if (user && user.is_active && !user.is_deleted) {
+    const token = await issueResetToken(user.id);
+    const result = await sendMail(
+      passwordResetEmail({
+        to: user.email,
+        fullName: user.full_name,
+        resetUrl: `${appBaseUrl()}/reset-password?token=${encodeURIComponent(token.raw)}`,
+        expiresInMinutes: RESET_TOKEN_TTL_MINUTES,
+      })
+    );
+    // A token that could not be delivered is retired immediately rather than
+    // left live for its full hour with nobody holding it.
+    if (!result.ok) await invalidateTokensFor(user.id);
+    logActivity(db, user.id, "PASSWORD_RESET_REQUESTED", "auth", user.id, { email, mail_sent: result.ok });
     await writeDb(db);
   }
+
+  // Always the same answer, whether or not the address matched an account --
+  // a differing response is how an attacker enumerates who has a login here.
   redirect(`/forgot-password?sent=1`);
+}
+
+/** Sets a new password from an emailed reset link. The token is the only
+ * credential: whoever holds it proves control of the mailbox on file, which is
+ * the same bar `adminResetPasswordAction` clears by handing over a temporary
+ * password in person. */
+export async function resetPasswordWithTokenAction(formData: FormData) {
+  const token = String(formData.get("token") || "");
+  const back = (msg: string) => `/reset-password?token=${encodeURIComponent(token)}&error=${encodeURIComponent(msg)}`;
+
+  const parsed = passwordResetSchema.safeParse({
+    new_password: formData.get("new_password"),
+    confirm_password: formData.get("confirm_password"),
+  });
+  if (!parsed.success) redirect(back(describeParseFailure(parsed.error)));
+
+  // Re-checked here rather than trusted from the page that rendered the form:
+  // the token may have expired, or been spent in another tab, in between.
+  const check = await checkResetToken(token);
+  if (!check.ok) redirect(`/reset-password?invalid=${check.reason}`);
+
+  const db = await readDb();
+  const profile = db.profiles.find((p) => p.id === check.userId);
+  if (!profile || !profile.is_active || profile.is_deleted) {
+    redirect(`/reset-password?invalid=unknown`);
+  }
+
+  // Spend the token before writing the password. If this loses the race with
+  // another submission it updates no rows, and the loser must not also get to
+  // set a password.
+  if (!(await consumeResetToken(check.tokenId))) {
+    redirect(`/reset-password?invalid=used`);
+  }
+
+  profile!.password_hash = hashPassword(parsed.data.new_password);
+  // The reset satisfies the forced-change requirement, so an account created
+  // minutes ago does not land on the change-password screen holding a password
+  // it just chose.
+  profile!.must_change_password = false;
+  const info = await getRequestInfo();
+  logActivity(db, profile!.id, "PASSWORD_CHANGED", "user", profile!.id, { via: "reset_link" }, {
+    module: "settings",
+    ...info,
+  });
+  await writeDb(db);
+  await invalidateTokensFor(profile!.id);
+
+  redirect(`/login?reset=1`);
 }
 
 export async function changeOwnPasswordAction(formData: FormData) {

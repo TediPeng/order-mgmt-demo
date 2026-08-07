@@ -10,11 +10,11 @@ import { APP_VERSION } from "@/lib/version";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; reset?: string }>;
 }) {
   const user = await getCurrentUser();
   if (user) redirect("/dashboard");
-  const { error } = await searchParams;
+  const { error, reset } = await searchParams;
   const releases = await listUpdateLogs({ publishedOnly: true });
 
   return (
@@ -39,6 +39,11 @@ export default async function LoginPage({
           {error && (
             <Alert kind="error" className="mb-4">
               {error}
+            </Alert>
+          )}
+          {reset && (
+            <Alert kind="success" className="mb-4">
+              Your password has been changed. Sign in with the new one.
             </Alert>
           )}
           <LoginForm />

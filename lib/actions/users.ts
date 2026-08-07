@@ -10,6 +10,9 @@ import { randomTempPassword } from "@/lib/passwords";
 import { userFormSchema } from "@/lib/validation";
 import type { Profile } from "@/lib/types";
 import { describeParseFailure } from "@/lib/zod-error";
+import { isMailConfigured, sendMail } from "@/lib/mail/transport";
+import { accountCreatedEmail } from "@/lib/mail/templates";
+import { appBaseUrl } from "@/lib/app-url";
 
 export async function createUserAction(formData: FormData) {
   const { user, db } = await requireUser();
@@ -81,8 +84,27 @@ export async function createUserAction(formData: FormData) {
     ...info,
   });
   await writeDb(db);
+
+  // The account exists by this point whatever the mail server decides, so a
+  // failed send downgrades the banner rather than unwinding the creation. The
+  // password stays on screen either way: that hand-over is what worked before
+  // this email existed and is the fallback when it does not arrive.
+  let mail: "sent" | "failed" | "off" = "off";
+  if (isMailConfigured()) {
+    const result = await sendMail(
+      accountCreatedEmail({
+        to: newUser.email,
+        fullName: newUser.full_name,
+        username: newUser.username,
+        tempPassword,
+        loginUrl: `${appBaseUrl()}/login`,
+      })
+    );
+    mail = result.ok ? "sent" : "failed";
+  }
+
   redirect(
-    `/users?created=1&temp_pw=${encodeURIComponent(tempPassword)}&temp_for=${encodeURIComponent(newUser.username)}`
+    `/users?created=1&temp_pw=${encodeURIComponent(tempPassword)}&temp_for=${encodeURIComponent(newUser.username)}&mail=${mail}`
   );
 }
 

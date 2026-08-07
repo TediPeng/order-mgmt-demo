@@ -27,6 +27,7 @@ export default async function UsersPage({
     reset_for?: string;
     temp_pw?: string;
     temp_for?: string;
+    mail?: string;
     deleted_account?: string;
     handling?: string;
   }>;
@@ -79,6 +80,16 @@ export default async function UsersPage({
           <span className="mt-1 block text-xs">
             Shown once only — copy it now. They must change it before they can use the system.
           </span>
+          {/* The password stays on screen whatever happened to the email, so
+              the Administrator is never left without a way to hand it over. */}
+          {sp.mail === "sent" && (
+            <span className="mt-1 block text-xs">A copy has been emailed to them.</span>
+          )}
+          {sp.mail === "failed" && (
+            <span className="mt-1 block text-xs font-medium">
+              The welcome email could not be sent — pass this password on yourself.
+            </span>
+          )}
         </Alert>
       )}
       {sp.created && !sp.temp_pw && (

@@ -3,7 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 // /api/webhooks/pancake and /api/cron carry their own auth (HMAC signature
 // verification and the CRON_SECRET bearer token respectively) instead of a
 // browser session cookie.
-const PUBLIC_PATHS = ["/login", "/forgot-password", "/api/webhooks/pancake", "/api/cron"];
+// /reset-password is reached from an emailed link, so by definition without a
+// session -- the token in the URL is what stands in for one.
+const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/api/webhooks/pancake", "/api/cron"];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

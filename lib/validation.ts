@@ -419,6 +419,18 @@ export const passwordChangeSchema = z
     path: ["confirm_password"],
   });
 
+/** Setting a password from a reset link. No current_password: holding the
+ * emailed token is what stands in for knowing the old one. */
+export const passwordResetSchema = z
+  .object({
+    new_password: z.string().min(8, "New password must be at least 8 characters"),
+    confirm_password: z.string().min(1, "Please confirm the new password"),
+  })
+  .refine((data) => data.new_password === data.confirm_password, {
+    message: "Passwords do not match",
+    path: ["confirm_password"],
+  });
+
 export const roleFormSchema = z.object({
   name: z.string().trim().min(2, "Role name is required"),
   description: z.string().trim().optional().default(""),
