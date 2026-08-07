@@ -40,6 +40,18 @@ bare Order object; the parser also tolerates a `data`/`order` wrapper.
   On a paid plan you can tighten `vercel.json` to `*/10 * * * *`.
 - Settings (Management-only): `/settings/integrations` (accounts, encrypted credentials, Test Connection), `/settings/integrations/status-map`, `/settings/integrations/logs`.
 
+## Deployment region
+
+`vercel.json` pins functions to `sin1` (Singapore) because the Supabase project lives in
+`ap-southeast-1`. This is not a preference — it is load-bearing. Every request runs `readDb()`
+(2 sequential round trips) and every save runs `writeDb()`, whose upserts and deletes are
+deliberately sequenced parent-before-child and so cost ~15 more. On the default `iad1`
+(Washington DC) that is ~17 crossings of the Pacific at 200ms+ each, adding seconds to a single
+status change no matter how little data exists.
+
+Keep the functions in whatever region the database is in. If the Supabase project is ever moved,
+move this too.
+
 ## Getting Started
 
 First, run the development server:

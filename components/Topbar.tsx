@@ -50,7 +50,12 @@ export function Topbar({
 
   return (
     <header
-      className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between px-3 sm:px-4"
+      /* z-40 outranks page-level sticky toolbars (the Leads filter bar is z-30):
+         on a tie the later element in the DOM wins, which put that toolbar over
+         the header and clipped the open user menu behind it. The menu's own
+         z-index cannot fix that — it only orders siblings inside the header's
+         own stacking context. Modals stay above at z-50. */
+      className="sticky top-0 z-40 flex h-14 shrink-0 items-center justify-between px-3 sm:px-4"
       style={{ background: "var(--header-bg)", borderBottom: "1px solid var(--header-border)" }}
     >
       <button
