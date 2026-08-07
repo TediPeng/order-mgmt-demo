@@ -32,6 +32,8 @@ export default async function UsersPage({
     handling?: string;
     show_deleted?: string;
     role?: string;
+    sort?: string;
+    dir?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -64,22 +66,26 @@ export default async function UsersPage({
   const countForRole = (key: string) => visible.filter((p) => p.role === key).length;
   const users = roleFilter ? visible.filter((p) => p.role === roleFilter) : visible;
 
-  // Both filters live in the URL, so each control has to carry the other's
-  // state or using one would silently reset the other.
-  const filterHref = (role: string) => {
+  // Role, deleted and sort all live in the URL, so every control builds its
+  // link from the current state of the other two. Written once rather than per
+  // control: three controls each hand-assembling the others' params is three
+  // chances to drop one, and dropping one reads as the page losing your place.
+  const state = {
+    role: roleFilter,
+    show_deleted: showDeleted ? "1" : "",
+    sort: sp.sort || "",
+    dir: sp.dir || "",
+  };
+  const hrefWith = (overrides: Partial<typeof state>) => {
     const params = new URLSearchParams();
-    if (role) params.set("role", role);
-    if (showDeleted) params.set("show_deleted", "1");
+    Object.entries({ ...state, ...overrides }).forEach(([k, v]) => {
+      if (v) params.set(k, v);
+    });
     const q = params.toString();
     return q ? `/users?${q}` : "/users";
   };
-  const deletedToggleHref = () => {
-    const params = new URLSearchParams();
-    if (roleFilter) params.set("role", roleFilter);
-    if (!showDeleted) params.set("show_deleted", "1");
-    const q = params.toString();
-    return q ? `/users?${q}` : "/users";
-  };
+  const filterHref = (role: string) => hrefWith({ role });
+  const deletedToggleHref = () => hrefWith({ show_deleted: showDeleted ? "" : "1" });
   const teamLeads = db.profiles.filter((p) => p.role === "team_lead" && p.is_active && !p.is_deleted);
   const roleNameByKey = new Map(db.roles.map((r) => [r.key, r.name]));
   const nameById = new Map(db.profiles.map((p) => [p.id, displayUserName(p)]));
@@ -99,6 +105,62 @@ export default async function UsersPage({
   const createdByUser = new Map(
     Array.from(creatorIds, ([createdId, creatorId]) => [createdId, nameById.get(creatorId) || "Unknown"] as const)
   );
+
+  // Sorting. Sorted here rather than in the query because several of these
+  // columns are not columns at all -- Team Lead, Created By and Last Time-In
+  // are resolved from other tables above, and sorting by what is displayed is
+  // the only behaviour that would not look broken.
+  const sortKey = sp.sort || "created_at";
+  const dir = sp.dir === "desc" ? -1 : 1;
+
+  const sortValue = (u: (typeof users)[number]): string | number | null => {
+    switch (sortKey) {
+      case "full_name":
+        return displayUserName(u).toLowerCase();
+      case "username":
+        return u.username.toLowerCase();
+      case "email":
+        return u.is_deleted ? null : u.email.toLowerCase();
+      case "call_name":
+        return u.call_name?.toLowerCase() || null;
+      case "role":
+        return (roleNameByKey.get(u.role) || u.role).toLowerCase();
+      case "team_lead":
+        return u.team_lead_id ? nameById.get(u.team_lead_id)?.toLowerCase() || null : null;
+      case "contact":
+        return u.contact_number || null;
+      case "permission_profile":
+        return u.permission_profile?.toLowerCase() || null;
+      case "status":
+        // Ordered by how much attention the account wants, not alphabetically:
+        // "Active" before "Deleted" is a coincidence of spelling, not a rank.
+        return u.is_deleted ? 2 : u.is_active ? 0 : 1;
+      case "created_by":
+        return createdByUser.get(u.id)?.toLowerCase() || null;
+      case "last_login":
+        return u.last_login_at || null;
+      case "last_time_in":
+        return lastTimeInByUser.get(u.id) || null;
+      default:
+        return u.created_at;
+    }
+  };
+
+  const sorted = [...users].sort((a, b) => {
+    const av = sortValue(a);
+    const bv = sortValue(b);
+    // Blanks always sink, whichever way the column is pointing. An agent with
+    // no last login is not "the earliest login" — it is an absence, and
+    // floating those to the top would bury what was actually asked for.
+    if (av === null && bv === null) return 0;
+    if (av === null) return 1;
+    if (bv === null) return -1;
+    if (typeof av === "string" && typeof bv === "string") return dir * av.localeCompare(bv);
+    return dir * ((av as number) - (bv as number));
+  });
+
+  const sortHref = (key: string) => hrefWith({ sort: key, dir: sortKey === key && dir === 1 ? "desc" : "asc" });
+  const caret = (key: string) => (sortKey !== key ? "" : dir === 1 ? " ↑" : " ↓");
 
   return (
     <div>
@@ -219,25 +281,45 @@ export default async function UsersPage({
             {/* Headers stay on one line. Squeezed into an even share of the
                 table they otherwise stack ("Call" / "Name"), which reads as a
                 different set of columns than it is. */}
+            {/* Every column is sortable except Actions, which holds buttons
+                rather than a value. The arrow marks the active column, so the
+                order on screen is never unexplained. */}
             <tr className="whitespace-nowrap">
-              <th className="px-4 py-3">Full Name</th>
-              <th className="px-4 py-3">Username</th>
-              <th className="px-4 py-3">Email</th>
-              <th className="px-4 py-3">Call Name</th>
-              <th className="px-4 py-3">Role</th>
-              <th className="px-4 py-3">Team Lead</th>
-              <th className="px-4 py-3">Contact</th>
-              <th className="px-4 py-3">Permission Profile</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Created</th>
-              <th className="px-4 py-3">Created By</th>
-              <th className="px-4 py-3">Last Login</th>
-              <th className="px-4 py-3">Last Time-In</th>
+              {(
+                [
+                  ["full_name", "Full Name"],
+                  ["username", "Username"],
+                  ["email", "Email"],
+                  ["call_name", "Call Name"],
+                  ["role", "Role"],
+                  ["team_lead", "Team Lead"],
+                  ["contact", "Contact"],
+                  ["permission_profile", "Permission Profile"],
+                  ["status", "Status"],
+                  ["created_at", "Created"],
+                  ["created_by", "Created By"],
+                  ["last_login", "Last Login"],
+                  ["last_time_in", "Last Time-In"],
+                ] as const
+              ).map(([key, label]) => (
+                <th key={key} className="px-4 py-3">
+                  <Link
+                    href={sortHref(key)}
+                    className={cn(
+                      "hover:text-slate-700",
+                      sortKey === key && "font-semibold text-[var(--brand-primary)]"
+                    )}
+                  >
+                    {label}
+                    {caret(key)}
+                  </Link>
+                </th>
+              ))}
               <th className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {users.map((u) => {
+            {sorted.map((u) => {
               const boundToggle = async () => {
                 "use server";
                 await toggleActiveAction(u.id);
