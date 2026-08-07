@@ -91,6 +91,39 @@ export function unwrapData(body: unknown): Record<string, unknown> {
   return b;
 }
 
+/** Turns a Pancake rejection into something an Administrator here can act on.
+ *
+ * Pancake answers in Vietnamese — a 404 arrives as "Cửa hàng không tồn tại",
+ * which is accurate, unreadable on this floor, and does not say which of the
+ * two fields is wrong. The guidance is prepended rather than substituted:
+ * Pancake's own words stay attached, because they are what matches their
+ * documentation and what their support will ask for.
+ *
+ * Keyed on status rather than on the Vietnamese text, which is theirs to
+ * change without warning.
+ */
+function explainConnectionFailure(httpStatus: number | null, raw: string): string {
+  const advice: Record<number, string> = {
+    // The shop endpoint resolved but Pancake has no such shop for this key.
+    // Almost always the wrong kind of id: Pancake Pages is keyed by Facebook
+    // page id (a long number beginning 10…), Pancake POS by a short shop id,
+    // and the field here has historically been filled with the former.
+    404: "Shop ID not found. Check that it is the Pancake POS shop ID — the number in the POS URL — and not a Facebook page ID. If the ID is right, the API key may belong to a different shop.",
+    401: "API key rejected. Regenerate it in Pancake under Setting → Advance → Third-party connection, from inside the shop you are connecting.",
+    403: "API key accepted but not permitted for this shop. It was most likely created in a different shop.",
+    429: "Pancake is rate-limiting this account. Wait a moment and try again.",
+  };
+
+  // `raw` already reads "Pancake API responded 404: …", so it is appended
+  // plainly rather than introduced again.
+  const hint = httpStatus !== null ? advice[httpStatus] : null;
+  if (hint) return `${hint} — ${raw}`;
+  if (httpStatus !== null && httpStatus >= 500) {
+    return `Pancake's server is failing, so this is unlikely to be a configuration problem here — ${raw}`;
+  }
+  return raw;
+}
+
 /** Test Connection button: verifies credentials decrypt and the shop endpoint
  * responds. In MOCK_MODE it only checks decryptability. */
 export async function testConnection(account: PancakeAccount): Promise<{ ok: boolean; message: string }> {
@@ -104,9 +137,16 @@ export async function testConnection(account: PancakeAccount): Promise<{ ok: boo
       return { ok: false, message: (e as Error).message };
     }
   }
+  // A shop id has to be there before there is any point asking Pancake about
+  // it — an empty one makes the path `/shops/`, which comes back as the same
+  // 404 as a wrong id and sends you looking in the wrong place.
+  if (!account.shop_or_page_id?.trim()) {
+    return { ok: false, message: "No Shop ID is set for this account. Add the Pancake POS shop ID and try again." };
+  }
+
   // GET /shops/{SHOP_ID} — cheap authenticated call that also validates the shop id.
   const res = await pancakeFetch(account, resolvePath("/shops/{shopId}", account), { method: "GET" });
   return res.ok
     ? { ok: true, message: `Connected (HTTP ${res.httpStatus}).` }
-    : { ok: false, message: res.error || "Connection failed." };
+    : { ok: false, message: explainConnectionFailure(res.httpStatus, res.error || "Connection failed.") };
 }
