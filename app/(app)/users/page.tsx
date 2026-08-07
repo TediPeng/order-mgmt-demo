@@ -30,6 +30,7 @@ export default async function UsersPage({
     mail?: string;
     deleted_account?: string;
     handling?: string;
+    show_deleted?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -43,7 +44,17 @@ export default async function UsersPage({
   const canAssign = can(user.role, "users", "assign", db.role_permissions);
   const canPermanentlyDelete = isFullAccess(user.role);
 
-  const users = [...db.profiles].sort((a, b) => a.created_at.localeCompare(b.created_at));
+  // Deleted accounts are tombstones, not people: anonymized rows kept only so
+  // the foreign keys pointing at them still resolve and history can render
+  // "Deleted User". They accumulate forever and never need acting on, so they
+  // are out of the list by default rather than padding it above the live
+  // accounts. Hidden, not gone -- one click still shows them, because an
+  // account that silently vanishes from User Management is worse than a
+  // cluttered table.
+  const showDeleted = sp.show_deleted === "1";
+  const allProfiles = [...db.profiles].sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const deletedCount = allProfiles.filter((p) => p.is_deleted).length;
+  const users = showDeleted ? allProfiles : allProfiles.filter((p) => !p.is_deleted);
   const teamLeads = db.profiles.filter((p) => p.role === "team_lead" && p.is_active && !p.is_deleted);
   const roleNameByKey = new Map(db.roles.map((r) => [r.key, r.name]));
   const nameById = new Map(db.profiles.map((p) => [p.id, displayUserName(p)]));
@@ -66,7 +77,19 @@ export default async function UsersPage({
 
   return (
     <div>
-      <h1 className="mb-4 text-page-title text-slate-900">User Management</h1>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-page-title text-slate-900">User Management</h1>
+        {deletedCount > 0 && (
+          <Link
+            href={showDeleted ? "/users" : "/users?show_deleted=1"}
+            className="text-xs font-medium text-[var(--brand-primary)] hover:underline"
+          >
+            {showDeleted
+              ? `Hide ${deletedCount} deleted account${deletedCount === 1 ? "" : "s"}`
+              : `Show ${deletedCount} deleted account${deletedCount === 1 ? "" : "s"}`}
+          </Link>
+        )}
+      </div>
 
       {sp.error && (
         <Alert kind="error" className="mb-4">
