@@ -10,24 +10,34 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 | `CRON_SECRET` | for Pancake POS | Bearer token protecting `/api/cron/pancake-sync`. On Vercel, setting this env var makes Vercel Cron send it automatically. |
 | `PANCAKE_MOCK_MODE` | optional | `success` / `fail` simulates the Pancake POS API locally (no real credentials needed); unset for real HTTP calls. |
 | `APP_TIMEZONE` | optional | Defaults to `Asia/Manila`. |
-| `SMTP_USER` | for email | The sending mailbox, e.g. `you@yourdomain.com`. |
-| `SMTP_PASS` | for email | Gmail/Workspace **App Password**, not the account password — Google has refused plain passwords for SMTP since 2022, and an account without 2-Step Verification cannot create one. |
-| `SMTP_HOST` | optional | Defaults to `smtp.gmail.com`. |
+| `SMTP_USER` | for email | SMTP username. On Resend this is the literal string `resend`, **not** an address. |
+| `SMTP_PASS` | for email | SMTP password — on Resend, an API key. |
+| `SMTP_HOST` | **for email** | `smtp.resend.com` in production. Only optional in the sense that it defaults to `smtp.gmail.com`; leaving it unset with a non-Gmail account sends the credentials to Google, which rejects them and reads like a bad key. |
 | `SMTP_PORT` | optional | Defaults to `465` (implicit TLS). `587` is used with STARTTLS instead. |
-| `MAIL_FROM` | optional | From header; defaults to `4S ROMA <SMTP_USER>`. |
+| `MAIL_FROM` | **for email** | From header, e.g. `noreply@4sdigitalmarketing-crm.com`. Only optional while `SMTP_USER` is itself an address, which it is not on Resend — the send is refused outright rather than building `4S ROMA <resend>`. |
 | `MAIL_MOCK_MODE` | optional | `success` / `fail` short-circuits SMTP locally, the same switch `PANCAKE_MOCK_MODE` gives the Pancake client. Unset for real delivery. |
 | `NEXT_PUBLIC_APP_URL` | for email | Public base URL used to build links in emails. Falls back to `VERCEL_URL`, then `http://localhost:3000`. Set it in production so recipients get the custom domain rather than the per-deployment hostname. |
 
 ## Transactional email
 
-Two emails, both sent over SMTP through `lib/mail/` (Gmail/Workspace by default):
+Two emails, both sent over SMTP through `lib/mail/`. Production sends through
+**Resend** as `noreply@4sdigitalmarketing-crm.com`, from the `ap-northeast-1`
+region — the closest to the `sin1` functions, which matters because SMTP is
+several round trips and the send is awaited before the page redirects. The
+domain is verified with SPF, DKIM and a bounce MX on `send.` at Porkbun. The
+transport is provider-agnostic, so moving again is five environment variables
+and no code.
 
 - **Account created** — `createUserAction` emails the new user their username and temporary password. Mail is treated as optional infrastructure: if it is unconfigured or the send fails, the account is still created and the Administrator still sees the password on screen, which is the hand-over that worked before this email existed. The banner says which happened.
 - **Password reset** — `/forgot-password` issues a single-use token that expires in an hour and emails the link. Only the SHA-256 hash is stored (`password_reset_tokens`), so a database dump yields no working links. The confirmation screen says the same thing whether or not the address matched an account, so it cannot be used to enumerate who has a login. A token that could not be delivered is retired immediately rather than left live.
 
-`password_reset_tokens` has been applied to the **dev** project only. Production
-(`4S RETENTION`) needs the same migration before the reset flow works there —
-until it does, requesting a reset errors on the insert.
+`password_reset_tokens` exists on both projects.
+
+When a send fails, the reason is written into the audit trail beside it
+(`PASSWORD_RESET_REQUESTED` carries `mail_error`), so mail can be diagnosed
+from the database rather than from the hosting platform's runtime logs — which
+are a separate system with separate access, and were unavailable during exactly
+the outage that motivated this.
 
 ## Development and production databases
 
