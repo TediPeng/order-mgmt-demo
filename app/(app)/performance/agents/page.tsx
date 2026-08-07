@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Download } from "lucide-react";
+import { Download, PhoneCall, ShoppingCart, Wallet, Calculator, Percent } from "lucide-react";
 import { readDb } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
@@ -9,6 +9,7 @@ import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
+import { StatWidget } from "@/components/StatCard";
 
 type SP = Record<string, string | undefined>;
 
@@ -63,6 +64,18 @@ export default async function AgentPerformancePage({ searchParams }: { searchPar
 
   const sortLink = (key: string) => qs(sp, { sort: key, dir: sp.sort === key && sp.dir !== "asc" ? "asc" : "desc" });
 
+  // Totals for the rows actually on screen, so the widgets agree with the
+  // table beneath them -- including when the name search has narrowed it. A
+  // summary that ignored the filter would quietly contradict what it sits on.
+  // Rates are recomputed from the totals rather than averaged from the rows:
+  // the mean of per-row conversion rates is not the conversion rate.
+  const sum = (pick: (r: (typeof table)[number]) => number) => table.reduce((acc, r) => acc + pick(r), 0);
+  const totalCalls = sum((r) => r.calls);
+  const totalOrders = sum((r) => r.orders);
+  const totalAmount = sum((r) => r.amount);
+  const conversion = totalCalls > 0 ? Math.round((totalOrders / totalCalls) * 10000) / 100 : null;
+  const aov = totalOrders > 0 ? totalAmount / totalOrders : null;
+
   return (
     <div>
       <h1 className="mb-4 text-page-title text-slate-900">Agent Performance</h1>
@@ -115,6 +128,22 @@ export default async function AgentPerformancePage({ searchParams }: { searchPar
           )}
         </div>
       </form>
+
+      {/* Below the filters, above the table it summarises — the totals move
+          when the search does, so they read as belonging to the rows rather
+          than to the page. */}
+      <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-5">
+        <StatWidget label="Calls Made" value={totalCalls} tone="brand" icon={PhoneCall} />
+        <StatWidget label="Orders" value={totalOrders} tone="blue" icon={ShoppingCart} />
+        <StatWidget label="Sales" value={formatCurrency(totalAmount)} tone="green" icon={Wallet} />
+        <StatWidget
+          label="Conversion Rate"
+          value={conversion === null ? "—" : `${conversion}%`}
+          tone="amber"
+          icon={Percent}
+        />
+        <StatWidget label="AOV" value={aov === null ? "—" : formatCurrency(aov)} tone="slate" icon={Calculator} />
+      </div>
 
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full min-w-[1000px] text-left text-sm">

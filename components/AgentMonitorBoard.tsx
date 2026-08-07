@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Phone, Coffee, Utensils, Hourglass, LogOut, Minus } from "lucide-react";
+import { StatWidget, type StatTone } from "@/components/StatCard";
 
 /** How often the board pulls fresh server state. Faster than the shell's own
  * 60s refresh because this is a live board — but still gated on tab visibility,
@@ -32,13 +33,19 @@ export interface MonitorRow {
   standbyBaseSeconds: number;
 }
 
-const STATE_META: Record<MonitorState, { label: string; icon: typeof Phone; cls: string; dot: string }> = {
-  on_call: { label: "On call", icon: Phone, cls: "bg-green-50 text-green-700", dot: "bg-green-500" },
-  bio_break: { label: "Bio break", icon: Coffee, cls: "bg-amber-50 text-amber-700", dot: "bg-amber-500" },
-  break: { label: "On break", icon: Utensils, cls: "bg-orange-50 text-orange-700", dot: "bg-orange-500" },
-  standby: { label: "Standby", icon: Hourglass, cls: "bg-slate-100 text-slate-600", dot: "bg-slate-400" },
-  timed_out: { label: "Timed out", icon: LogOut, cls: "bg-slate-50 text-slate-400", dot: "bg-slate-300" },
-  not_in: { label: "Not timed in", icon: Minus, cls: "bg-slate-50 text-slate-400", dot: "bg-slate-200" },
+/** `cls`/`dot` still dress the per-row badge in the table; `tone` is the same
+ * state expressed in the dashboards' widget palette, so a state carries one
+ * colour whether you meet it as a tile up top or a badge in the row. */
+const STATE_META: Record<
+  MonitorState,
+  { label: string; icon: typeof Phone; cls: string; dot: string; tone: StatTone }
+> = {
+  on_call: { label: "On call", icon: Phone, cls: "bg-green-50 text-green-700", dot: "bg-green-500", tone: "green" },
+  bio_break: { label: "Bio break", icon: Coffee, cls: "bg-amber-50 text-amber-700", dot: "bg-amber-500", tone: "amber" },
+  break: { label: "On break", icon: Utensils, cls: "bg-orange-50 text-orange-700", dot: "bg-orange-500", tone: "brand" },
+  standby: { label: "Standby", icon: Hourglass, cls: "bg-slate-100 text-slate-600", dot: "bg-slate-400", tone: "blue" },
+  timed_out: { label: "Timed out", icon: LogOut, cls: "bg-slate-50 text-slate-400", dot: "bg-slate-300", tone: "slate" },
+  not_in: { label: "Not timed in", icon: Minus, cls: "bg-slate-50 text-slate-400", dot: "bg-slate-200", tone: "slate" },
 };
 
 function hms(totalSeconds: number): string {
@@ -78,16 +85,20 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
+      {/* Same counts these were always showing, as the dashboards' widget
+          tiles rather than chips, so the reporting surface reads as one thing.
+          Derived from `rows` here in the client rather than passed down from
+          the server, so they move with the 20s refresh and the live clock
+          instead of going stale between polls. */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
         {(["on_call", "standby", "bio_break", "break", "timed_out", "not_in"] as MonitorState[]).map((s) => (
-          <span
+          <StatWidget
             key={s}
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium ${STATE_META[s].cls}`}
-          >
-            <span className={`h-2 w-2 rounded-full ${STATE_META[s].dot}`} aria-hidden />
-            {STATE_META[s].label}
-            <span className="tabular-nums">{counts[s] || 0}</span>
-          </span>
+            label={STATE_META[s].label}
+            value={counts[s] || 0}
+            tone={STATE_META[s].tone}
+            icon={STATE_META[s].icon}
+          />
         ))}
       </div>
 
