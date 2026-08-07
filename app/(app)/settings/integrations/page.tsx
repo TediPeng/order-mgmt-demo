@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/Badge";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { listAccounts } from "@/lib/pancake/store";
 import { listVariations } from "@/lib/pancake/listVariations";
+import { listShops } from "@/lib/pancake/listShops";
 import { maskStoredSecret } from "@/lib/pancake/crypto";
 import { mockMode } from "@/lib/pancake/config";
 import {
@@ -29,7 +30,15 @@ export const maxDuration = 60;
 export default async function IntegrationsSettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; error?: string; tested?: string; note?: string; catalog?: string; q?: string }>;
+  searchParams: Promise<{
+    saved?: string;
+    error?: string;
+    tested?: string;
+    note?: string;
+    catalog?: string;
+    q?: string;
+    shops?: string;
+  }>;
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
@@ -50,6 +59,12 @@ export default async function IntegrationsSettingsPage({
   // whose items reference an unknown variation).
   const catalogAccount = sp.catalog ? accounts.find((a) => a.id === sp.catalog) : undefined;
   const catalog = catalogAccount ? await listVariations(catalogAccount, sp.q || "") : null;
+
+  // Shop lookup: `?shops=<account id>` asks Pancake which shops the key can
+  // see. Unlike every other call it sends no shop id, so it still answers when
+  // the configured one is wrong — which is the only moment anyone needs it.
+  const shopsAccount = sp.shops ? accounts.find((a) => a.id === sp.shops) : undefined;
+  const shopList = shopsAccount ? await listShops(shopsAccount) : null;
 
   const agents = db.profiles.filter((p) => p.is_active);
   const teamLeads = db.profiles.filter((p) => p.is_active && p.role === "team_lead");
@@ -248,6 +263,70 @@ export default async function IntegrationsSettingsPage({
           </CardContent>
         </Card>
       ))}
+
+      {canManage && accounts.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Find your Shop ID</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-slate-500">
+              If Test Connection reports <strong>Shop ID not found</strong>, the saved ID is not one this API key can
+              see. This asks Pancake directly — it is the only call that does not need a shop ID, so it still works when
+              the saved one is wrong. Paste the <strong>Shop ID</strong> below into the account&apos;s Shop ID field.
+            </p>
+            <form className="flex flex-wrap items-center gap-2">
+              <Select name="shops" defaultValue={sp.shops || accounts[0].id} className="w-56">
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.account_name}
+                  </option>
+                ))}
+              </Select>
+              <Button type="submit" variant="secondary">
+                List shops
+              </Button>
+            </form>
+
+            {shopList && !shopList.ok && <Alert kind="error">{shopList.error}</Alert>}
+            {shopList && shopList.ok && (
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2">Shop</th>
+                      <th className="px-3 py-2">Shop ID (paste this)</th>
+                      <th className="px-3 py-2">Page IDs (not this)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {shopList.shops.map((s) => (
+                      <tr key={s.id}>
+                        <td className="px-3 py-2 text-slate-700">{s.name}</td>
+                        <td className="px-3 py-2">
+                          <code className="rounded bg-green-100 px-1.5 py-0.5 text-xs text-green-800">{s.id}</code>
+                        </td>
+                        {/* Shown precisely because these are the numbers that
+                            get pasted into the Shop ID field by mistake. */}
+                        <td className="px-3 py-2 text-xs text-slate-400">
+                          {s.pageIds.length > 0 ? s.pageIds.join(", ") : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                    {shopList.shops.length === 0 && (
+                      <tr>
+                        <td colSpan={3} className="px-3 py-6 text-center text-slate-400">
+                          This API key can see no shops at all, so the key itself is the problem rather than the ID.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {canManage && accounts.length > 0 && (
         <Card>
