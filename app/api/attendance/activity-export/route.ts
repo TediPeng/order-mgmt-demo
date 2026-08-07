@@ -69,6 +69,10 @@ export async function GET(req: NextRequest) {
     "Break Hours",
     "Bio Breaks",
     "Minutes Late",
+    "Over Break Minutes",
+    // Overtime is off the screen but stays in the file: an export is what gets
+    // filed and reconciled later, and dropping a column from it loses data
+    // that removing a column from a table does not.
     "Overtime Hours",
     "Utilisation %",
   ];
@@ -83,6 +87,7 @@ export async function GET(req: NextRequest) {
     hours(r.breakSeconds + r.bioSeconds),
     r.bioCount,
     r.lateMinutes,
+    r.overBreakMinutes,
     r.overtimeHours,
     // Blank rather than 0 when nothing was worked, matching the page's dash:
     // a spreadsheet averaging this column must not be handed a false zero.

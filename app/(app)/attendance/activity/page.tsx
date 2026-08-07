@@ -128,7 +128,7 @@ export default async function AgentActivityReportPage({
               <th className="px-3 py-2 text-right">Standby</th>
               <th className="px-3 py-2 text-right">Breaks</th>
               <th className="px-3 py-2 text-right">Late</th>
-              <th className="px-3 py-2 text-right">OT</th>
+              <th className="px-3 py-2 text-right">Over Break</th>
               <th className="px-3 py-2 text-right">Utilisation</th>
             </tr>
           </thead>
@@ -148,8 +148,15 @@ export default async function AgentActivityReportPage({
                 <td className="px-3 py-2 text-right tabular-nums text-slate-600">
                   {r.lateMinutes > 0 ? `${r.lateMinutes}m` : "—"}
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums text-slate-600">
-                  {r.overtimeHours > 0 ? `${r.overtimeHours}h` : "—"}
+                {/* Over-break is a discipline figure, not a volume one — any
+                    minutes at all are the point, so it is coloured rather than
+                    left to be spotted in a column of numbers. */}
+                <td
+                  className={`px-3 py-2 text-right tabular-nums ${
+                    r.overBreakMinutes > 0 ? "font-medium text-red-700" : "text-slate-600"
+                  }`}
+                >
+                  {r.overBreakMinutes > 0 ? `${r.overBreakMinutes}m` : "—"}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums font-medium text-slate-800">
                   {r.utilisation === null ? "—" : `${r.utilisation}%`}

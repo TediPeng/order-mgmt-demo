@@ -39,6 +39,10 @@ export interface ActivityRow {
    * than 0% — no shift is not the same as an idle one. */
   utilisation: number | null;
   lateMinutes: number;
+  /** Minutes taken beyond the allowed break, already computed per day by the
+   * attendance rules — summed here rather than re-derived, so the report and
+   * the attendance record can never disagree about it. */
+  overBreakMinutes: number;
   overtimeHours: number;
 }
 
@@ -52,12 +56,15 @@ export function computeActivityReport(
 ): ActivityRow[] {
   const agentIds = new Set(agents.map((a) => a.id));
 
-  const shift = new Map<string, { days: number; open: number; seconds: number; late: number; ot: number; breakSec: number }>();
+  const shift = new Map<
+    string,
+    { days: number; open: number; seconds: number; late: number; overBreak: number; ot: number; breakSec: number }
+  >();
   for (const a of db.attendance) {
     if (!agentIds.has(a.user_id)) continue;
     if (a.work_date < from || a.work_date > to) continue;
 
-    const acc = shift.get(a.user_id) || { days: 0, open: 0, seconds: 0, late: 0, ot: 0, breakSec: 0 };
+    const acc = shift.get(a.user_id) || { days: 0, open: 0, seconds: 0, late: 0, overBreak: 0, ot: 0, breakSec: 0 };
     if (a.time_in && !a.time_out) {
       acc.open += 1;
     } else if (a.total_hours !== null) {
@@ -65,15 +72,16 @@ export function computeActivityReport(
       acc.seconds += a.total_hours * 3600;
       acc.breakSec += (a.break_minutes ?? 0) * 60;
     }
-    // Late and overtime are recorded per row regardless of whether the shift
-    // has closed, so they are not gated on total_hours.
+    // Late, over-break and overtime are recorded per row regardless of whether
+    // the shift has closed, so they are not gated on total_hours.
     acc.late += a.minutes_late || 0;
+    acc.overBreak += a.over_break_minutes || 0;
     acc.ot += a.overtime_hours || 0;
     shift.set(a.user_id, acc);
   }
 
   return agents.map((agent) => {
-    const s = shift.get(agent.id) || { days: 0, open: 0, seconds: 0, late: 0, ot: 0, breakSec: 0 };
+    const s = shift.get(agent.id) || { days: 0, open: 0, seconds: 0, late: 0, overBreak: 0, ot: 0, breakSec: 0 };
     const call = callTotals.get(agent.id) || { count: 0, seconds: 0 };
     const bio = bioTotals.get(agent.id) || { count: 0, seconds: 0 };
 
@@ -93,6 +101,7 @@ export function computeActivityReport(
       standbySeconds: Math.round(standby),
       utilisation: s.seconds > 0 ? Math.round((call.seconds / s.seconds) * 10000) / 100 : null,
       lateMinutes: s.late,
+      overBreakMinutes: s.overBreak,
       overtimeHours: Math.round(s.ot * 100) / 100,
     };
   });
