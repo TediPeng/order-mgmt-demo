@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Phone, Hourglass, Clock, Coffee, PhoneCall, Percent } from "lucide-react";
+import { Phone, Hourglass, Clock, Coffee, PhoneCall, Percent, Download } from "lucide-react";
 import { readDb } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
@@ -11,6 +11,7 @@ import { bioBreakTotalsForRange } from "@/lib/bio-breaks";
 import { computeActivityReport, totalActivity, formatDuration } from "@/lib/activity-report";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { StatWidget } from "@/components/StatCard";
+import { Button } from "@/components/ui/Button";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,12 @@ export default async function AgentActivityReportPage({
   if (!isFullAccess(user.role) && !isTeamLead) redirect("/attendance");
 
   const range = resolveDateRange(sp.range || "this_month", sp.from, sp.to);
+  const canExport = can(user.role, "attendance", "export", db.role_permissions);
+
+  // The export carries the resolved range rather than the raw params, so the
+  // file matches exactly what is on screen — including when the preset was
+  // left at its default and never appeared in the URL at all.
+  const exportHref = `/api/attendance/activity-export?from=${range.from}&to=${range.to}`;
 
   const agents = db.profiles
     .filter((p) => !p.is_deleted && p.role === "agent")
@@ -66,9 +73,18 @@ export default async function AgentActivityReportPage({
             not a call and not a break.
           </p>
         </div>
-        <Link href="/attendance/monitor" className="text-xs font-medium text-[var(--brand-primary)] hover:underline">
-          Live monitor
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link href="/attendance/monitor" className="text-xs font-medium text-[var(--brand-primary)] hover:underline">
+            Live monitor
+          </Link>
+          {canExport && (
+            <a href={exportHref}>
+              <Button variant="outline" size="sm">
+                <Download className="h-4 w-4" /> Export CSV
+              </Button>
+            </a>
+          )}
+        </div>
       </div>
 
       <DateRangeFilter defaultPreset="this_month" />

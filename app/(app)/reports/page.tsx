@@ -28,6 +28,13 @@ export default async function ReportsPage() {
       module: "attendance" as const,
     },
     {
+      title: "Agent Activity",
+      description:
+        "Shift, talk, standby and break hours per agent for this month, with utilisation. Pick another range on the Activity Report.",
+      href: "/api/attendance/activity-export?range=this_month",
+      module: "attendance" as const,
+    },
+    {
       title: "Audit Log",
       description: "Full accountability trail: who did what, when, from where.",
       href: "/api/audit-logs/export",
