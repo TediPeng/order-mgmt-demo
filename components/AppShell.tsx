@@ -12,7 +12,7 @@ import type { AppNotification, ModuleKey, Profile, UpdateLog } from "@/lib/types
 
 import { SIDEBAR_COOKIE, SIDEBAR_COOKIE_MAX_AGE } from "@/lib/ui-prefs";
 
-const REFRESH_INTERVAL_MS = 30000;
+const REFRESH_INTERVAL_MS = 60000;
 
 export function AppShell({
   user,
@@ -39,9 +39,36 @@ export function AppShell({
   // notifications are refreshed by re-running the server components in place —
   // no full reload, and client state (an open modal, a running call timer) is
   // left undisturbed.
+  //
+  // Gated on tab visibility: a hidden tab keeps running its timers, and every
+  // tick re-runs the whole server tree — one full readDb() each. Staff leave
+  // this open all day behind other windows, so the old unconditional interval
+  // spent most of its life refreshing pages nobody was looking at. A tick
+  // skipped while hidden is remembered and fired the moment the tab comes
+  // back, so returning to it still shows current data rather than waiting out
+  // the rest of the interval.
   useEffect(() => {
-    const id = setInterval(() => router.refresh(), REFRESH_INTERVAL_MS);
-    return () => clearInterval(id);
+    let missedWhileHidden = false;
+
+    const id = setInterval(() => {
+      if (document.hidden) {
+        missedWhileHidden = true;
+        return;
+      }
+      router.refresh();
+    }, REFRESH_INTERVAL_MS);
+
+    function onVisibilityChange() {
+      if (document.hidden || !missedWhileHidden) return;
+      missedWhileHidden = false;
+      router.refresh();
+    }
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [router]);
 
   // Persisted in a cookie rather than localStorage so the server renders the
