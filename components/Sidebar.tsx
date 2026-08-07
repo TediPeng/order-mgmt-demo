@@ -28,6 +28,7 @@ import {
   Plug,
   ScrollText,
   Activity,
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ModuleKey } from "@/lib/types";
@@ -102,6 +103,9 @@ export function Sidebar({
         { href: "/attendance", label: "Attendance", icon: Clock, show: true },
         { href: "/attendance/clock", label: "Time In / Out", icon: Timer, show: true },
         { href: "/attendance/monitor", label: "Agent Monitor", icon: Activity, show: canMonitor },
+        // Same audience and same gate as the monitor — the live board and its
+        // historical counterpart belong next to each other.
+        { href: "/attendance/activity", label: "Activity Report", icon: BarChart3, show: canMonitor },
         { href: "/schedule", label: "Schedule", icon: CalendarDays, show: access.schedules },
         { href: "/leave", label: "Leave Requests", icon: CalendarClock, show: access.leave },
         { href: "/schedule/suspensions", label: "Disciplinary", icon: ShieldAlert, show: access.disciplinary },

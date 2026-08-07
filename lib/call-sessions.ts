@@ -159,6 +159,40 @@ export async function callTotalsForDay(agentIds: string[], workDate: string): Pr
   return out;
 }
 
+/** The same totals across a date range, for the activity report.
+ *
+ * A separate query rather than looping callTotalsForDay over the range: a
+ * month would be thirty round trips to a database two Pacific crossings away,
+ * and the report only ever wants the sum. Like the day version it applies no
+ * minimum-duration floor -- that floor is a performance-scoring rule, and this
+ * reports what actually happened. */
+export async function callTotalsForRange(
+  agentIds: string[],
+  from: string,
+  to: string
+): Promise<Map<string, CallDayTotals>> {
+  const out = new Map<string, CallDayTotals>();
+  if (agentIds.length === 0) return out;
+
+  const { data, error } = await supabaseAdmin
+    .from("call_sessions")
+    .select("agent_id, duration_seconds")
+    .in("agent_id", agentIds)
+    .not("ended_at", "is", null)
+    .gte("started_at", `${from}T00:00:00Z`)
+    .lte("started_at", `${to}T23:59:59Z`);
+  if (error) throw new Error(`call_sessions read failed: ${error.message}`);
+
+  for (const row of data || []) {
+    const key = String(row.agent_id);
+    const current = out.get(key) || { count: 0, seconds: 0 };
+    current.count += 1;
+    current.seconds += Number(row.duration_seconds ?? 0);
+    out.set(key, current);
+  }
+  return out;
+}
+
 /** Completed sessions per agent per day — the basis for Calls Made.
  * `minSeconds` comes from Settings and is 0 by default, so nothing is filtered
  * out until there is real session data to justify a floor. */

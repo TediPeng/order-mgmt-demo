@@ -133,6 +133,35 @@ export async function bioBreakTotalsForDay(agentIds: string[], workDate: string)
   return out;
 }
 
+/** The same totals across a date range, for the activity report. One query
+ * rather than a loop over the days -- see callTotalsForRange for why. */
+export async function bioBreakTotalsForRange(
+  agentIds: string[],
+  from: string,
+  to: string
+): Promise<Map<string, BioBreakDayTotals>> {
+  const out = new Map<string, BioBreakDayTotals>();
+  if (agentIds.length === 0) return out;
+
+  const { data, error } = await supabaseAdmin
+    .from("bio_breaks")
+    .select("agent_id, duration_seconds")
+    .in("agent_id", agentIds)
+    .gte("work_date", from)
+    .lte("work_date", to)
+    .not("ended_at", "is", null);
+  if (error) throw new Error(`bio_breaks read failed: ${error.message}`);
+
+  for (const row of data || []) {
+    const key = String(row.agent_id);
+    const current = out.get(key) || { count: 0, seconds: 0 };
+    current.count += 1;
+    current.seconds += Number(row.duration_seconds ?? 0);
+    out.set(key, current);
+  }
+  return out;
+}
+
 /** One agent's bio breaks for a day, newest first — the personal history shown
  * under their own timer. */
 export async function listBioBreaksForDay(agentId: string, workDate: string): Promise<BioBreak[]> {
