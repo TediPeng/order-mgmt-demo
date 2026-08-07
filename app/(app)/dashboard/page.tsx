@@ -98,6 +98,49 @@ export default async function DashboardPage({
     };
   }
 
+  // The agent's own version of the card above, off the same helpers with the
+  // agent set narrowed to themselves. Not gated on performance:view -- these
+  // are the agent's own numbers, like every other card on their dashboard;
+  // that permission decides whether the /performance pages open, so it gates
+  // the "View details" link instead.
+  let myToday: { calls: number; orders: number; amount: number } | null = null;
+  if (isAgent) {
+    const today = todayInTz();
+    const totals = totalsByAgent(
+      computeDailyAgentStats(db, [user.id], today, today, await countCompletedSessions([user.id], today, today, db.operations.min_call_seconds))
+    );
+    myToday = {
+      calls: totals.reduce((s, t) => s + t.calls, 0),
+      orders: totals.reduce((s, t) => s + t.orders, 0),
+      amount: totals.reduce((s, t) => s + t.amount, 0),
+    };
+  }
+
+  // One card, two audiences. Active Agents only means something across a team,
+  // so the agent's card carries three measures and sizes its grid to match.
+  const todayCard: { title: string; href: string | null; stats: { label: string; value: string | number }[] } | null = teamToday
+    ? {
+        title: "Team Performance Today",
+        href: "/performance/team",
+        stats: [
+          { label: "Calls Made", value: teamToday.calls },
+          { label: "Orders", value: teamToday.orders },
+          { label: "Sales", value: formatCurrency(teamToday.amount) },
+          { label: "Active Agents", value: teamToday.activeAgents },
+        ],
+      }
+    : myToday
+      ? {
+          title: "My Performance Today",
+          href: canViewPerformance ? "/performance/agents" : null,
+          stats: [
+            { label: "Calls Made", value: myToday.calls },
+            { label: "Orders", value: myToday.orders },
+            { label: "Sales", value: formatCurrency(myToday.amount) },
+          ],
+        }
+      : null;
+
   const recentCallLogs = [...db.call_logs].sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at)).slice(0, 5);
   const byId = new Map(db.profiles.map((p) => [p.id, p.full_name]));
 
@@ -221,31 +264,25 @@ export default async function DashboardPage({
         )
       )}
 
-      {teamToday && (
+      {todayCard && (
         <Card>
           <CardHeader className="flex items-center justify-between">
-            <CardTitle>Team Performance Today</CardTitle>
-            <Link href="/performance/team" className="text-xs font-medium text-[var(--brand-primary)] hover:underline">
-              View details
-            </Link>
+            <CardTitle>{todayCard.title}</CardTitle>
+            {todayCard.href && (
+              <Link href={todayCard.href} className="text-xs font-medium text-[var(--brand-primary)] hover:underline">
+                View details
+              </Link>
+            )}
           </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <div>
-              <p className="text-xs uppercase text-slate-400">Calls Made</p>
-              <p className="text-page-title text-slate-900">{teamToday.calls}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase text-slate-400">Orders</p>
-              <p className="text-page-title text-slate-900">{teamToday.orders}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase text-slate-400">Sales</p>
-              <p className="text-page-title text-slate-900">{formatCurrency(teamToday.amount)}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase text-slate-400">Active Agents</p>
-              <p className="text-page-title text-slate-900">{teamToday.activeAgents}</p>
-            </div>
+          <CardContent
+            className={`grid grid-cols-2 gap-4 ${todayCard.stats.length === 4 ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}
+          >
+            {todayCard.stats.map((s) => (
+              <div key={s.label}>
+                <p className="text-xs uppercase text-slate-400">{s.label}</p>
+                <p className="text-page-title text-slate-900">{s.value}</p>
+              </div>
+            ))}
           </CardContent>
         </Card>
       )}
