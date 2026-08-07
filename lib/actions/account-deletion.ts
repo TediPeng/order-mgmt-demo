@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { writeDb, uuid, nowIso } from "@/lib/db";
+import { writeDb, uuid, nowIso, queueDelete } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { verifyPassword } from "@/lib/auth";
@@ -101,6 +101,7 @@ export async function permanentlyDeleteAccountAction(userId: string, formData: F
   } else {
     const idx = db.profiles.findIndex((p) => p.id === userId);
     db.profiles.splice(idx, 1);
+    queueDelete(db, "profiles", userId);
   }
 
   const record: AccountDeletion = {

@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { writeDb, uuid, nowIso } from "@/lib/db";
+import { writeDb, uuid, nowIso, queueDelete } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { requireUser, requirePermission } from "./guards";
@@ -159,6 +159,7 @@ export async function deleteProductAction(productId: string) {
 
   const idx = db.products.findIndex((p) => p.id === productId);
   const [removed] = db.products.splice(idx, 1);
+  queueDelete(db, "products", productId);
   const info = await getRequestInfo();
   logActivity(db, user.id, "PRODUCT_DELETED", "product", productId, { snapshot: removed }, {
     module: "products",

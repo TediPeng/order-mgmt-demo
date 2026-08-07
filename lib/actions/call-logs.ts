@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { writeDb, uuid, nowIso } from "@/lib/db";
+import { writeDb, uuid, nowIso, queueDelete } from "@/lib/db";
 import { uploadFile, deleteFile } from "@/lib/storage";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
@@ -145,6 +145,12 @@ export async function deleteCallLogAction(callLogId: string) {
   const idx = db.call_logs.findIndex((c) => c.id === callLogId);
   if (idx === -1) redirect("/call-logs");
   const [removed] = db.call_logs.splice(idx, 1);
+  queueDelete(db, "call_logs", callLogId);
+  // The records go too, and each is named individually — writeDb drains them
+  // before the log itself, so the foreign key is never left dangling.
+  for (const r of db.call_log_records.filter((r) => r.call_log_id === callLogId)) {
+    queueDelete(db, "call_log_records", r.id);
+  }
   db.call_log_records = db.call_log_records.filter((r) => r.call_log_id !== callLogId);
 
   await deleteFile(`call-logs/${removed.storage_path}`);

@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { writeDb, uuid, nowIso } from "@/lib/db";
+import { writeDb, uuid, nowIso, queueDelete } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { requireUser, requireAdministrator } from "./guards";
@@ -69,6 +69,12 @@ export async function deleteRoleAction(roleKey: string) {
     redirect(`/settings/roles?error=${encodeURIComponent("Reassign users away from this role before deleting it.")}`);
   }
 
+  // Named by id rather than by role key: these tables are keyed on `id`, and
+  // the filter below is what keeps the rest of this request consistent.
+  for (const r of db.roles.filter((r) => r.key === roleKey)) queueDelete(db, "roles", r.id);
+  for (const rp of db.role_permissions.filter((rp) => rp.role === roleKey)) {
+    queueDelete(db, "role_permissions", rp.id);
+  }
   db.roles = db.roles.filter((r) => r.key !== roleKey);
   db.role_permissions = db.role_permissions.filter((rp) => rp.role !== roleKey);
   const info = await getRequestInfo();
@@ -121,6 +127,11 @@ export async function resetRolePermissionsAction(role: "team_lead" | "agent") {
   const { user, db } = await requireUser();
   requireAdministrator(user, "/settings/roles");
 
+  // Reset replaces the rows rather than editing them, so the old ones are
+  // deleted by name and fresh ids pushed in their place.
+  for (const r of db.role_permissions.filter((r) => r.role === role)) {
+    queueDelete(db, "role_permissions", r.id);
+  }
   db.role_permissions = db.role_permissions.filter((r) => r.role !== role);
   db.role_permissions.push(...buildDefaultRows(role, uuid, nowIso));
 

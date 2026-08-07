@@ -1,4 +1,4 @@
-import { uuid, nowIso } from "@/lib/db";
+import { uuid, nowIso, queueDelete } from "@/lib/db";
 import { notify } from "@/lib/notifications";
 import { activeSuspensionOn, dateOnlyUTC } from "@/lib/schedule-access";
 import { todayInTz } from "@/lib/utils";
@@ -72,7 +72,10 @@ export function upsertSchedule(
   // have two schedule rows on the same date.
   if (conflict && opts.confirmReplace) {
     const idx = db.schedules.indexOf(conflict);
-    if (idx !== -1) db.schedules.splice(idx, 1);
+    if (idx !== -1) {
+      db.schedules.splice(idx, 1);
+      queueDelete(db, "schedules", conflict.id);
+    }
   }
 
   if (opts.targetSchedule) {
@@ -98,6 +101,7 @@ export function deleteSchedule(db: DbShape, id: string): Schedule | null {
   const idx = db.schedules.findIndex((s) => s.id === id);
   if (idx === -1) return null;
   const [removed] = db.schedules.splice(idx, 1);
+  queueDelete(db, "schedules", id);
   return removed;
 }
 

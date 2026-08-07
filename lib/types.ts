@@ -627,6 +627,25 @@ export interface DbShape {
   performance_thresholds: PerformanceThresholds;
   work_schedule: WorkSchedule;
   operations: OperationsSettings;
+  /** OUTBOX, like activity_log above: the rows this request wants deleted.
+   *
+   * Deletion used to be inferred — writeDb() removed anything present in the
+   * database but missing from these arrays. That reads "absent" as "deleted",
+   * which is true of one request at a time and false the moment two overlap:
+   * a row another request created after this one loaded is also absent, and
+   * was being destroyed on that basis. Deletion is now stated rather than
+   * inferred, so writeDb() can only remove what an action actually asked it
+   * to. */
+  pending_deletes: PendingDelete[];
+}
+
+/** One row an action has asked to be deleted. Table names are the literal
+ * Postgres ones; `key` is the primary key column, which is not `id` on
+ * order_sequences. */
+export interface PendingDelete {
+  table: string;
+  id: string;
+  key?: string;
 }
 
 

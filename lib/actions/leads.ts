@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { writeDb, uuid, nowIso, nextOrderNumber } from "@/lib/db";
+import { writeDb, uuid, nowIso, nextOrderNumber, queueDelete } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { orderInScope, allowedAssigneeIds } from "@/lib/order-access";
@@ -570,6 +570,7 @@ export async function deleteLeadAction(orderId: string) {
 
   const idx = db.orders.findIndex((o) => o.id === orderId);
   const [removed] = db.orders.splice(idx, 1);
+  queueDelete(db, "orders", orderId);
   const info = await getRequestInfo();
   logActivity(db, user.id, "LEAD_DELETED", "order", orderId, { snapshot: removed }, {
     module: "orders",

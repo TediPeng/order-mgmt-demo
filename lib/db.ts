@@ -375,6 +375,7 @@ function seedDb(): DbShape {
     suspensions: [],
     order_seq: { [ymd(today)]: 4 },
     performance_thresholds: { top_performer_min_ratio: 1.2, needs_improvement_max_ratio: 0.8, rts_warning_threshold_pct: 15 },
+    pending_deletes: [],
     operations: { allow_status_import: false, min_call_seconds: 0 },
     work_schedule: DEFAULT_WORK_SCHEDULE,
   };
@@ -404,14 +405,10 @@ async function upsertTable(table: string, rows: Row[], idKey = "id"): Promise<vo
   if (error) throw new Error(`Supabase upsert failed for ${table}: ${error.message}`);
 }
 
-async function deleteRemoved(table: string, rows: Row[], idKey = "id"): Promise<void> {
-  const query = supabaseAdmin.from(table).delete();
-  const { error } =
-    rows.length > 0
-      ? await query.not(idKey, "in", `(${rows.map((r) => `"${r[idKey]}"`).join(",")})`)
-      : await query.not(idKey, "is", null);
-  if (error) throw new Error(`Supabase delete failed for ${table}: ${error.message}`);
-}
+// deleteRemoved() used to live here: a delete-by-exclusion that removed every
+// row absent from the in-memory copy. It is gone rather than left unused,
+// because its second branch — no rows in the array, therefore delete the
+// entire table — is one stale read away from emptying production.
 
 export async function readDb(): Promise<DbShape> {
   const { data: existingProfiles, error: checkError } = await supabaseAdmin.from("profiles").select("id").limit(1);
@@ -531,9 +528,21 @@ export async function readDb(): Promise<DbShape> {
       auto_mark_absent: settings.auto_mark_absent,
       require_attachment_for_sick_leave: settings.require_attachment_for_sick_leave,
     },
+    // Empty on read, like activity_log: it carries only what this request asks
+    // to delete.
+    pending_deletes: [],
   };
 
   return shape;
+}
+
+/** Marks a row for deletion. Call it wherever a row is spliced out of one of
+ * the DbShape arrays — removing it from the array keeps the rest of this
+ * request consistent, and this is what makes the removal reach the database.
+ *
+ * Both steps are needed. Neither is inferred from the other any more. */
+export function queueDelete(db: DbShape, table: string, id: string, key = "id"): void {
+  db.pending_deletes.push({ table, id, key });
 }
 
 export async function writeDb(db: DbShape): Promise<void> {
@@ -586,31 +595,56 @@ export async function writeDb(db: DbShape): Promise<void> {
     .eq("id", 1);
   if (settingsError) throw new Error(`Supabase app_settings update failed: ${settingsError.message}`);
 
-  // Phase 2: delete child-before-parent so nothing still references a
-  // soon-to-be-deleted row.
-  await Promise.all([
-    deleteRemoved("call_log_records", db.call_log_records as unknown as Row[]),
-    deleteRemoved("schedules", db.schedules as unknown as Row[]),
-  ]);
-  await Promise.all([
-    deleteRemoved("attendance", db.attendance as unknown as Row[]),
-    deleteRemoved("call_logs", db.call_logs as unknown as Row[]),
-    deleteRemoved("leave_requests", db.leave_requests as unknown as Row[]),
-    deleteRemoved("suspensions", db.suspensions as unknown as Row[]),
-    deleteRemoved("notifications", db.notifications as unknown as Row[]),
-    // No deleteRemoved for activity_log. The audit trail is append-only, so
-    // delete-by-exclusion could only ever destroy history — and it is precisely
-    // what would make a bounded read (loading just the recent window instead of
-    // every row) delete everything outside that window.
-  ]);
-  await deleteRemoved("orders", db.orders as unknown as Row[]);
-  await Promise.all([
-    deleteRemoved("products", db.products as unknown as Row[]),
-    deleteRemoved("role_permissions", db.role_permissions as unknown as Row[]),
-  ]);
-  await deleteRemoved("profiles", db.profiles as unknown as Row[]);
-  await deleteRemoved("roles", db.roles as unknown as Row[]);
-  await deleteRemoved("order_sequences", orderSeqRows, "seq_date");
+  // Phase 2: the deletions this request actually asked for.
+  //
+  // This used to be delete-by-exclusion — every row in the database absent
+  // from the in-memory array was removed. That is correct for one request at
+  // a time and destructive for two: a row created by a concurrent request
+  // after this one read is also absent, and was being deleted on that basis,
+  // silently and with nothing in the audit trail. Under twenty agents that is
+  // not a rare race, it is a Tuesday.
+  //
+  // Only queueDelete() puts anything here, so a stale snapshot can no longer
+  // remove a row it never knew about. Drained child-before-parent, in the same
+  // order the exclusion sweep used, so a delete never strands a foreign key.
+  await drainDeletes(db, ["call_log_records", "schedules"]);
+  await drainDeletes(db, ["attendance", "call_logs", "leave_requests", "suspensions", "notifications"]);
+  await drainDeletes(db, ["orders"]);
+  await drainDeletes(db, ["products", "role_permissions"]);
+  await drainDeletes(db, ["profiles"]);
+  await drainDeletes(db, ["roles", "order_sequences"]);
+
+  // Anything queued against a table not listed above would otherwise be
+  // dropped without a word. Better to fail loudly than to acknowledge a
+  // deletion that never happened.
+  if (db.pending_deletes.length > 0) {
+    const tables = Array.from(new Set(db.pending_deletes.map((d) => d.table))).join(", ");
+    throw new Error(`writeDb: queued deletes for unhandled table(s): ${tables}`);
+  }
+}
+
+/** Deletes the queued rows for the given tables and removes them from the
+ * outbox, so a second writeDb() in the same request does not repeat them. */
+async function drainDeletes(db: DbShape, tables: string[]): Promise<void> {
+  const taken = db.pending_deletes.filter((d) => tables.includes(d.table));
+  if (taken.length === 0) return;
+  db.pending_deletes = db.pending_deletes.filter((d) => !tables.includes(d.table));
+
+  const byTable = new Map<string, { key: string; ids: string[] }>();
+  for (const d of taken) {
+    const key = d.key || "id";
+    const entry = byTable.get(`${d.table}|${key}`) || { key, ids: [] };
+    entry.ids.push(d.id);
+    byTable.set(`${d.table}|${key}`, entry);
+  }
+
+  await Promise.all(
+    Array.from(byTable, async ([tableKey, { key, ids }]) => {
+      const table = tableKey.split("|")[0];
+      const { error } = await supabaseAdmin.from(table).delete().in(key, ids);
+      if (error) throw new Error(`Supabase delete failed for ${table}: ${error.message}`);
+    })
+  );
 }
 
 export function nextOrderNumber(db: DbShape, date: Date = new Date()): string {

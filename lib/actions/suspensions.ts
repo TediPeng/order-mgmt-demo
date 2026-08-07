@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { writeDb, uuid, nowIso } from "@/lib/db";
+import { writeDb, uuid, nowIso, queueDelete } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { notify } from "@/lib/notifications";
@@ -59,6 +59,7 @@ export async function issueSuspensionAction(formData: FormData) {
     const existingIdx = db.schedules.findIndex((s) => s.agent_id === employeeId && s.schedule_date === date);
     if (existingIdx !== -1) {
       replaced.push({ ...db.schedules[existingIdx] });
+      queueDelete(db, "schedules", db.schedules[existingIdx].id);
       db.schedules.splice(existingIdx, 1);
     }
     db.schedules.push({
@@ -179,6 +180,13 @@ export async function liftSuspensionAction(formData: FormData) {
 
   // Section 6.9: "removes remaining future suspension days, restores nothing
   // retroactively" -- past suspension days stay as historical fact.
+  const droppedSchedules = db.schedules.filter((s) => s.suspension_id === id && s.schedule_date >= today);
+  const droppedAttendance = db.attendance.filter(
+    (a) => a.user_id === suspension!.employee_id && a.status === "suspended" && a.work_date >= today && a.work_date <= suspension!.end_date
+  );
+  for (const s of droppedSchedules) queueDelete(db, "schedules", s.id);
+  for (const a of droppedAttendance) queueDelete(db, "attendance", a.id);
+
   db.schedules = db.schedules.filter((s) => !(s.suspension_id === id && s.schedule_date >= today));
   db.attendance = db.attendance.filter(
     (a) => !(a.user_id === suspension!.employee_id && a.status === "suspended" && a.work_date >= today && a.work_date <= suspension!.end_date)
