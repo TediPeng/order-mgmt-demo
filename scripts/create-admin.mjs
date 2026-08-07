@@ -21,16 +21,9 @@
 import { createClient } from "@supabase/supabase-js";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { loadEnvLocal } from "./load-env.mjs";
 
-try {
-  for (const line of readFileSync(new URL("../.env.local", import.meta.url), "utf8").split("\n")) {
-    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
-    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
-  }
-} catch {
-  /* env may come from the shell instead */
-}
+loadEnvLocal(new URL("../.env.local", import.meta.url));
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;

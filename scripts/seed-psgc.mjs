@@ -13,14 +13,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
+import { loadEnvLocal } from "./load-env.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 
 // Load SUPABASE_* from .env.local without pulling in a dependency.
-for (const line of fs.readFileSync(path.join(root, ".env.local"), "utf8").split(/\r?\n/)) {
-  const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);
-  if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
-}
+loadEnvLocal(path.join(root, ".env.local"));
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
