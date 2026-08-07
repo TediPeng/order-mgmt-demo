@@ -7,6 +7,7 @@ import { getRequestInfo } from "@/lib/request-info";
 import { requireUser, requirePermission } from "./guards";
 import { productFormSchema } from "@/lib/validation";
 import type { Product, ProductStatus } from "@/lib/types";
+import { describeParseFailure } from "@/lib/zod-error";
 
 function productFormFields(formData: FormData) {
   return {
@@ -27,7 +28,7 @@ export async function createProductAction(formData: FormData) {
 
   const parsed = productFormSchema.safeParse(productFormFields(formData));
   if (!parsed.success) {
-    const msg = parsed.error.issues[0]?.message || "Invalid input.";
+    const msg = describeParseFailure(parsed.error);
     redirect(`/products/new?error=${encodeURIComponent(msg)}`);
   }
   const data = parsed.data;
@@ -80,7 +81,7 @@ export async function updateProductAction(productId: string, formData: FormData)
     status: formData.get("status") || product!.status,
   });
   if (!parsed.success) {
-    const msg = parsed.error.issues[0]?.message || "Invalid input.";
+    const msg = describeParseFailure(parsed.error);
     redirect(`/products/${productId}?error=${encodeURIComponent(msg)}`);
   }
   const data = parsed.data;

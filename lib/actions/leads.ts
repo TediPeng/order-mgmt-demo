@@ -1,7 +1,6 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { z } from "zod";
 import { writeDb, uuid, nowIso, nextOrderNumber } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
@@ -9,6 +8,7 @@ import { orderInScope, allowedAssigneeIds } from "@/lib/order-access";
 import { getActiveSessionForOrder, endSession } from "@/lib/call-sessions";
 import { isFullAccess } from "@/lib/permissions";
 import { requireUser, requirePermission, requireAdministrator } from "./guards";
+import { describeParseFailure } from "@/lib/zod-error";
 import { leadFormSchema, leadImportRowSchema, PACKAGING_STATUS, PRE_SALE_STATUSES } from "@/lib/validation";
 import { matchAgentByCallName } from "@/lib/agent-match";
 import { todayInTz, restoreTrunkZero } from "@/lib/utils";
@@ -72,16 +72,6 @@ function buildLeadFieldErrors(formData: FormData): Record<string, unknown> {
     discount: numeric("discount"),
     variant: field("variant"),
   };
-}
-
-/** Names the offending field. A bare "Invalid input" says nothing about which
- * of two dozen fields was rejected, which made a schema mismatch effectively
- * undebuggable from the screen. */
-function describeParseFailure(error: z.ZodError): string {
-  const issue = error.issues[0];
-  if (!issue) return "Invalid input.";
-  const field = issue.path.join(".");
-  return field ? `${field}: ${issue.message}` : issue.message;
 }
 
 export async function createLeadAction(formData: FormData) {

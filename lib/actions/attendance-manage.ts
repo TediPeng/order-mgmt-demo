@@ -11,6 +11,7 @@ import { attendanceManageSchema } from "@/lib/validation";
 import { computeMinutesBetween, computeMinutesLate, computeOvertimeHours } from "@/lib/attendance-logic";
 import { isFullAccess } from "@/lib/permissions";
 import type { Attendance, AttendanceStatus } from "@/lib/types";
+import { describeParseFailure } from "@/lib/zod-error";
 
 const MAX_SIZE = 5 * 1024 * 1024;
 const ALLOWED_EXT = [".pdf", ".jpg", ".jpeg", ".png"];
@@ -39,7 +40,7 @@ export async function createOrUpdateAttendanceAction(formData: FormData) {
   });
 
   if (!parsed.success) {
-    redirect(`/attendance/manage?error=${encodeURIComponent(parsed.error.issues[0]?.message || "Invalid input.")}`);
+    redirect(`/attendance/manage?error=${encodeURIComponent(describeParseFailure(parsed.error))}`);
   }
   const data = parsed.data;
 

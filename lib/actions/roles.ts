@@ -8,6 +8,7 @@ import { requireUser, requireAdministrator } from "./guards";
 import { buildDefaultRows, defaultAllowed, isFullAccess } from "@/lib/permissions";
 import { roleFormSchema } from "@/lib/validation";
 import type { ActionKey, ModuleKey } from "@/lib/types";
+import { describeParseFailure } from "@/lib/zod-error";
 
 function slugify(name: string): string {
   return name
@@ -26,7 +27,7 @@ export async function createRoleAction(formData: FormData) {
     description: formData.get("description"),
   });
   if (!parsed.success) {
-    redirect(`/settings/roles?error=${encodeURIComponent(parsed.error.issues[0]?.message || "Invalid input.")}`);
+    redirect(`/settings/roles?error=${encodeURIComponent(describeParseFailure(parsed.error))}`);
   }
 
   const data = parsed.data;

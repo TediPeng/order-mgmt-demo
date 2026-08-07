@@ -11,6 +11,7 @@ import { requireUser, requirePermission } from "./guards";
 import { leaveRequestSchema, leaveReviewSchema } from "@/lib/validation";
 import { todayInTz } from "@/lib/utils";
 import type { LeaveRequest, LeaveStatus } from "@/lib/types";
+import { describeParseFailure } from "@/lib/zod-error";
 
 const MAX_SIZE = 5 * 1024 * 1024;
 const ALLOWED_EXT = [".pdf", ".jpg", ".jpeg", ".png"];
@@ -45,7 +46,7 @@ export async function fileLeaveAction(formData: FormData) {
     reason: formData.get("reason"),
   });
   if (!parsed.success) {
-    redirect(`/leave?error=${encodeURIComponent(parsed.error.issues[0]?.message || "Invalid input.")}`);
+    redirect(`/leave?error=${encodeURIComponent(describeParseFailure(parsed.error))}`);
   }
   const data = parsed.data;
 
@@ -166,7 +167,7 @@ export async function resubmitLeaveAction(formData: FormData) {
     reason: formData.get("reason"),
   });
   if (!parsed.success) {
-    redirect(`/leave?error=${encodeURIComponent(parsed.error.issues[0]?.message || "Invalid input.")}`);
+    redirect(`/leave?error=${encodeURIComponent(describeParseFailure(parsed.error))}`);
   }
   const data = parsed.data;
   const before = { ...request! };

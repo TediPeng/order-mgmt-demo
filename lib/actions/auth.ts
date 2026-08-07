@@ -6,6 +6,7 @@ import { createSession, destroySession, getCurrentUser, hashPassword, setThemeCo
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { passwordChangeSchema } from "@/lib/validation";
+import { describeParseFailure } from "@/lib/zod-error";
 
 export async function loginAction(formData: FormData) {
   const username = String(formData.get("username") || "").trim();
@@ -87,7 +88,7 @@ export async function changeOwnPasswordAction(formData: FormData) {
   });
 
   if (!parsed.success) {
-    const msg = parsed.error.issues[0]?.message || "Invalid input.";
+    const msg = describeParseFailure(parsed.error);
     redirect(`/settings/password?error=${encodeURIComponent(msg)}`);
   }
 

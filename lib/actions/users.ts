@@ -9,6 +9,7 @@ import { hashPassword } from "@/lib/auth";
 import { randomTempPassword } from "@/lib/passwords";
 import { userFormSchema } from "@/lib/validation";
 import type { Profile } from "@/lib/types";
+import { describeParseFailure } from "@/lib/zod-error";
 
 export async function createUserAction(formData: FormData) {
   const { user, db } = await requireUser();
@@ -26,7 +27,7 @@ export async function createUserAction(formData: FormData) {
   });
 
   if (!parsed.success) {
-    redirect(`/users?error=${encodeURIComponent(parsed.error.issues[0]?.message || "Invalid input.")}`);
+    redirect(`/users?error=${encodeURIComponent(describeParseFailure(parsed.error))}`);
   }
 
   const data = parsed.data;
