@@ -4,7 +4,7 @@ import { readDb } from "@/lib/db";
 import { accountCreatorIds } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import { cn, formatDate, formatDateTime } from "@/lib/utils";
 import { displayUserName } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
@@ -31,6 +31,7 @@ export default async function UsersPage({
     deleted_account?: string;
     handling?: string;
     show_deleted?: string;
+    role?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -54,7 +55,31 @@ export default async function UsersPage({
   const showDeleted = sp.show_deleted === "1";
   const allProfiles = [...db.profiles].sort((a, b) => a.created_at.localeCompare(b.created_at));
   const deletedCount = allProfiles.filter((p) => p.is_deleted).length;
-  const users = showDeleted ? allProfiles : allProfiles.filter((p) => !p.is_deleted);
+  const visible = showDeleted ? allProfiles : allProfiles.filter((p) => !p.is_deleted);
+
+  // Role filter. Counts come from `visible` rather than every profile, so a
+  // tab's number always matches how many rows clicking it produces -- a count
+  // that included hidden tombstones would be a promise the table breaks.
+  const roleFilter = sp.role || "";
+  const countForRole = (key: string) => visible.filter((p) => p.role === key).length;
+  const users = roleFilter ? visible.filter((p) => p.role === roleFilter) : visible;
+
+  // Both filters live in the URL, so each control has to carry the other's
+  // state or using one would silently reset the other.
+  const filterHref = (role: string) => {
+    const params = new URLSearchParams();
+    if (role) params.set("role", role);
+    if (showDeleted) params.set("show_deleted", "1");
+    const q = params.toString();
+    return q ? `/users?${q}` : "/users";
+  };
+  const deletedToggleHref = () => {
+    const params = new URLSearchParams();
+    if (roleFilter) params.set("role", roleFilter);
+    if (!showDeleted) params.set("show_deleted", "1");
+    const q = params.toString();
+    return q ? `/users?${q}` : "/users";
+  };
   const teamLeads = db.profiles.filter((p) => p.role === "team_lead" && p.is_active && !p.is_deleted);
   const roleNameByKey = new Map(db.roles.map((r) => [r.key, r.name]));
   const nameById = new Map(db.profiles.map((p) => [p.id, displayUserName(p)]));
@@ -80,10 +105,7 @@ export default async function UsersPage({
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-page-title text-slate-900">User Management</h1>
         {deletedCount > 0 && (
-          <Link
-            href={showDeleted ? "/users" : "/users?show_deleted=1"}
-            className="text-xs font-medium text-[var(--brand-primary)] hover:underline"
-          >
+          <Link href={deletedToggleHref()} className="text-xs font-medium text-[var(--brand-primary)] hover:underline">
             {showDeleted
               ? `Hide ${deletedCount} deleted account${deletedCount === 1 ? "" : "s"}`
               : `Show ${deletedCount} deleted account${deletedCount === 1 ? "" : "s"}`}
@@ -155,6 +177,41 @@ export default async function UsersPage({
           </CardContent>
         </Card>
       )}
+
+      {/* Role filter, directly above the rows it governs. Every role in the
+          database gets a tab rather than a hard-coded three, so a custom role
+          created in Settings is filterable the day it exists. Roles with
+          nobody in them are dropped — a tab that always yields an empty table
+          is noise. */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <Link
+          href={filterHref("")}
+          className={cn(
+            "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+            roleFilter === ""
+              ? "border-[var(--brand-primary)] bg-[var(--brand-primary)] text-white"
+              : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+          )}
+        >
+          All <span className="tabular-nums">{visible.length}</span>
+        </Link>
+        {db.roles
+          .filter((r) => countForRole(r.key) > 0)
+          .map((r) => (
+            <Link
+              key={r.key}
+              href={filterHref(r.key)}
+              className={cn(
+                "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                roleFilter === r.key
+                  ? "border-[var(--brand-primary)] bg-[var(--brand-primary)] text-white"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+              )}
+            >
+              {r.name} <span className="tabular-nums">{countForRole(r.key)}</span>
+            </Link>
+          ))}
+      </div>
 
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full min-w-[1500px] text-left text-sm">
