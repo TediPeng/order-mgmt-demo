@@ -32,8 +32,19 @@ export function isMailConfigured(): boolean {
   return Boolean(mockMode() || (process.env.SMTP_USER && process.env.SMTP_PASS));
 }
 
-export function mailFrom(): string {
-  return process.env.MAIL_FROM || `4S ROMA <${process.env.SMTP_USER || "no-reply@localhost"}>`;
+/** The From header, or null when one cannot be built honestly.
+ *
+ * MAIL_FROM wins. Falling back to SMTP_USER only works while the username is
+ * itself an address, which is true of Gmail and false of most transactional
+ * providers -- Resend authenticates as the literal string `resend`, and
+ * "4S ROMA <resend>" is not an address. Rather than hand that to the server
+ * and let it fail somewhere less legible, this returns null and the send is
+ * refused with a message naming the variable to set. */
+export function mailFrom(): string | null {
+  const explicit = process.env.MAIL_FROM?.trim();
+  if (explicit) return explicit;
+  const user = process.env.SMTP_USER?.trim();
+  return user && user.includes("@") ? `4S ROMA <${user}>` : null;
 }
 
 let cached: Transporter | null = null;
@@ -71,8 +82,16 @@ export async function sendMail(message: MailMessage): Promise<MailResult> {
     return { ok: false, error: "SMTP_USER / SMTP_PASS are not configured" };
   }
 
+  const from = mailFrom();
+  if (!from) {
+    return {
+      ok: false,
+      error: "MAIL_FROM is not set, and SMTP_USER is not an email address to fall back to.",
+    };
+  }
+
   try {
-    await transporter().sendMail({ from: mailFrom(), ...message });
+    await transporter().sendMail({ from, ...message });
     return { ok: true, mocked: false };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
