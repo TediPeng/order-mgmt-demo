@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Download } from "lucide-react";
 import { readDb } from "@/lib/db";
+import { auditByAction } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/utils";
@@ -35,7 +36,7 @@ export default async function ReportsPage() {
   ];
 
   const byId = new Map(db.profiles.map((p) => [p.id, p.full_name]));
-  const recentExports = db.activity_log.filter((e) => e.action === "REPORT_EXPORTED").slice(0, 8);
+  const recentExports = await auditByAction("REPORT_EXPORTED", 8);
 
   return (
     <div className="space-y-6">

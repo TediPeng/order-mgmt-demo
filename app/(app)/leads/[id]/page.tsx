@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { readDb } from "@/lib/db";
+import { auditForEntity } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { orderInScope } from "@/lib/order-access";
@@ -61,9 +62,7 @@ export default async function LeadDetailPage({
   const currentProductName = order.product_id ? db.products.find((p) => p.id === order.product_id)?.name || order.product_name : order.product_name;
 
   const byId = new Map(db.profiles.map((p) => [p.id, displayUserName(p)]));
-  const history = db.activity_log
-    .filter((e) => e.entity_id === order.id && e.module === "orders")
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const history = await auditForEntity(order.id, "orders");
 
   const canSeeFulfillment = isFullAccess(user.role) || user.role === "team_lead";
   const wasForwarded =

@@ -1,5 +1,6 @@
 ﻿import { Download } from "lucide-react";
 import { readDb } from "@/lib/db";
+import { latestStatusChangeByOrder } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { scopeOrders, allowedAssigneeIds } from "@/lib/order-access";
@@ -164,16 +165,12 @@ export default async function LeadsPage({
     pageOrders.map((o) => [o.id, o.product_id ? db.products.find((p) => p.id === o.product_id)?.name || o.product_name : o.product_name])
   );
 
-  const pageOrderIds = new Set(pageOrders.map((o) => o.id));
-  const latestStatusUpdateByOrderId: Record<string, { status: OrderStatus; at: string }> = {};
-  for (const e of db.activity_log) {
-    if (e.action !== "LEAD_STATUS_CHANGED" || e.module !== "orders" || !e.entity_id || !pageOrderIds.has(e.entity_id)) continue;
-    const existing = latestStatusUpdateByOrderId[e.entity_id];
-    if (!existing || e.created_at > existing.at) {
-      const updatedStatus = (e.updated_value as { status?: OrderStatus } | null)?.status;
-      if (updatedStatus) latestStatusUpdateByOrderId[e.entity_id] = { status: updatedStatus, at: e.created_at };
-    }
-  }
+  // Scoped to the orders actually on this page, so the query stays small no
+  // matter how long the trail gets.
+  const latestStatusUpdateByOrderId = (await latestStatusChangeByOrder(pageOrders.map((o) => o.id))) as Record<
+    string,
+    { status: OrderStatus; at: string }
+  >;
 
   // The agent's open call (if any) and the call history for the rows on this
   // page. Loaded here so a reopened popup restores its timer from the server

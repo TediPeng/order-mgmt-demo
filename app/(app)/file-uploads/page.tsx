@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { readDb } from "@/lib/db";
+import { auditByAction } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/utils";
@@ -25,8 +26,7 @@ export default async function FileUploadsPage() {
     href: `/call-logs/${c.id}`,
   }));
 
-  const importEvents = db.activity_log
-    .filter((e) => e.action === "LEADS_IMPORTED")
+  const importEvents = (await auditByAction("LEADS_IMPORTED"))
     .map((e) => ({
       id: e.id,
       type: "Lead Import" as const,

@@ -13,6 +13,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { readDb } from "@/lib/db";
+import { recentActivity as fetchRecentActivity } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { formatDate, formatDateTime } from "@/lib/utils";
@@ -100,8 +101,9 @@ export default async function DashboardPage({
   const recentCallLogs = [...db.call_logs].sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at)).slice(0, 5);
   const byId = new Map(db.profiles.map((p) => [p.id, p.full_name]));
 
-  const activity = isAgent ? db.activity_log.filter((e) => e.user_id === user.id) : db.activity_log;
-  const recentActivity = [...activity].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 10);
+  // Agents only ever see their own entries, so the scoping is pushed into the
+  // query rather than filtering a full copy of the trail.
+  const recentActivity = await fetchRecentActivity(10, isAgent ? user.id : null);
 
   const today = new Intl.DateTimeFormat("en-PH", {
     weekday: "long",

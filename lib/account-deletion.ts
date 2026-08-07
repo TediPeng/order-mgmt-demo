@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "./supabaseAdmin";
+import { countAuditForUser } from "./audit-log";
 import type { DbShape } from "./types";
 
 // Plain module, deliberately NOT "use server": these are read helpers called
@@ -52,7 +53,7 @@ export async function countLinkedRecords(db: DbShape, userId: string): Promise<L
     schedules: db.schedules.filter((s) => s.agent_id === userId).length,
     leave_requests: db.leave_requests.filter((l) => l.agent_id === userId).length,
     suspensions: db.suspensions.filter((s) => s.employee_id === userId).length,
-    audit_logs: db.activity_log.filter((e) => e.user_id === userId).length,
+    audit_logs: await countAuditForUser(userId),
     pancake_transactions: pancakeCount ?? 0,
   };
 }

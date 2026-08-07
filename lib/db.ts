@@ -391,16 +391,12 @@ function seedDb(): DbShape {
 
 type Row = Record<string, unknown>;
 
-/** Which activity_log rows this DbShape was loaded with, so writeDb() can tell
- * an existing entry from a newly logged one.
- *
- * activity_log is append-only: logActivity() only ever unshifts, and nothing in
- * the app edits or removes an entry. Re-upserting every row to persist one new
- * line meant rewriting the whole audit trail on every save — and these rows are
- * the fattest in the database, since previous_value/updated_value hold entire
- * order snapshots. Keyed weakly by the DbShape so a request's own object
- * carries the knowledge and nothing leaks between requests. */
-const loadedActivityIds = new WeakMap<DbShape, Set<string>>();
+// activity_log is append-only — logActivity() only ever unshifts, and nothing
+// edits or removes an entry — and it is both the fastest-growing and the widest
+// table here, since previous_value/updated_value hold whole order snapshots.
+// So it is not loaded at all: DbShape.activity_log is an OUTBOX carrying only
+// what this request logged, which writeDb() inserts and empties. Reads of the
+// trail go through lib/audit-log.ts, which queries the slice a page needs.
 
 async function upsertTable(table: string, rows: Row[], idKey = "id"): Promise<void> {
   if (rows.length === 0) return;
@@ -435,7 +431,6 @@ export async function readDb(): Promise<DbShape> {
     attendanceRes,
     callLogsRes,
     callLogRecordsRes,
-    activityLogRes,
     rolePermsRes,
     leaveRequestsRes,
     notificationsRes,
@@ -451,7 +446,6 @@ export async function readDb(): Promise<DbShape> {
     supabaseAdmin.from("attendance").select("*"),
     supabaseAdmin.from("call_logs").select("*"),
     supabaseAdmin.from("call_log_records").select("*"),
-    supabaseAdmin.from("activity_log").select("*").order("created_at", { ascending: false }),
     supabaseAdmin.from("role_permissions").select("*"),
     supabaseAdmin.from("leave_requests").select("*"),
     supabaseAdmin.from("notifications").select("*"),
@@ -469,7 +463,6 @@ export async function readDb(): Promise<DbShape> {
     attendanceRes,
     callLogsRes,
     callLogRecordsRes,
-    activityLogRes,
     rolePermsRes,
     leaveRequestsRes,
     notificationsRes,
@@ -509,7 +502,8 @@ export async function readDb(): Promise<DbShape> {
     })) as DbShape["attendance"],
     call_logs: (callLogsRes.data || []) as DbShape["call_logs"],
     call_log_records: (callLogRecordsRes.data || []) as DbShape["call_log_records"],
-    activity_log: (activityLogRes.data || []) as DbShape["activity_log"],
+    // Outbox, not history: only what this request logs. See the note above.
+    activity_log: [],
     role_permissions: (rolePermsRes.data || []) as DbShape["role_permissions"],
     leave_requests: (leaveRequestsRes.data || []) as DbShape["leave_requests"],
     notifications: (notificationsRes.data || []) as DbShape["notifications"],
@@ -539,20 +533,16 @@ export async function readDb(): Promise<DbShape> {
     },
   };
 
-  loadedActivityIds.set(shape, new Set(shape.activity_log.map((e) => e.id)));
   return shape;
 }
 
 export async function writeDb(db: DbShape): Promise<void> {
   const orderSeqRows: Row[] = Object.entries(db.order_seq).map(([seq_date, last_seq]) => ({ seq_date, last_seq }));
 
-  // Only the entries logged during this request. A DbShape that never came from
-  // readDb() (the seed path) has no record of what was already stored, so it
-  // writes everything.
-  const knownActivityIds = loadedActivityIds.get(db);
-  const newActivity = knownActivityIds
-    ? db.activity_log.filter((e) => !knownActivityIds.has(e.id))
-    : db.activity_log;
+  // The outbox: everything in here was logged during this request, so all of it
+  // is new. Drained below once written, so a second writeDb() in the same
+  // request does not re-send it.
+  const newActivity = [...db.activity_log];
 
   // Phase 1: upsert parent-before-child so every FK target already exists.
   await upsertTable("roles", db.roles as unknown as Row[]);
@@ -570,9 +560,7 @@ export async function writeDb(db: DbShape): Promise<void> {
     upsertTable("notifications", db.notifications as unknown as Row[]),
     upsertTable("activity_log", newActivity as unknown as Row[]),
   ]);
-  // Written now, so a second writeDb() in the same request does not re-send
-  // entries this one already persisted.
-  if (knownActivityIds) for (const e of newActivity) knownActivityIds.add(e.id);
+  db.activity_log.length = 0;
   await Promise.all([
     upsertTable("call_log_records", db.call_log_records as unknown as Row[]),
     upsertTable("schedules", db.schedules as unknown as Row[]),

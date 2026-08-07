@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { readDb } from "@/lib/db";
+import { accountCreatorIds } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { formatDate, formatDateTime } from "@/lib/utils";
@@ -57,11 +58,10 @@ export default async function UsersPage({
 
   // Who created each account, read from the audit trail (there is no
   // created_by column on profiles).
-  const createdByUser = new Map<string, string>();
-  for (const e of db.activity_log) {
-    if (e.action !== "USER_CREATED" || !e.entity_id || !e.user_id) continue;
-    if (!createdByUser.has(e.entity_id)) createdByUser.set(e.entity_id, nameById.get(e.user_id) || "Unknown");
-  }
+  const creatorIds = await accountCreatorIds();
+  const createdByUser = new Map(
+    Array.from(creatorIds, ([createdId, creatorId]) => [createdId, nameById.get(creatorId) || "Unknown"] as const)
+  );
 
   return (
     <div>

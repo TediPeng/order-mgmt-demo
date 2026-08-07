@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Download } from "lucide-react";
 import { readDb } from "@/lib/db";
+import { queryAuditLog, auditFacets } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/utils";
@@ -32,22 +33,17 @@ export default async function AuditLogsPage({
   }
   const canExport = can(user.role, "audit_logs", "export", db.role_permissions);
 
-  let entries = [...db.activity_log];
-  if (sp.user) entries = entries.filter((e) => e.user_id === sp.user);
-  if (sp.module) entries = entries.filter((e) => e.module === sp.module);
-  if (sp.action) entries = entries.filter((e) => e.action === sp.action);
-  if (sp.entity_id) entries = entries.filter((e) => e.entity_id === sp.entity_id);
-  if (sp.from) entries = entries.filter((e) => e.created_at.slice(0, 10) >= sp.from!);
-  if (sp.to) entries = entries.filter((e) => e.created_at.slice(0, 10) <= sp.to!);
-  entries.sort((a, b) => b.created_at.localeCompare(a.created_at));
-
+  // Filtered, sorted and paged by Postgres — only this page's 30 rows are
+  // fetched, rather than the whole trail being pulled in and sliced.
   const page = Math.max(1, parseInt(sp.page || "1", 10) || 1);
-  const totalPages = Math.max(1, Math.ceil(entries.length / PAGE_SIZE));
-  const pageEntries = entries.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const filters = { user: sp.user, module: sp.module, action: sp.action, entity_id: sp.entity_id, from: sp.from, to: sp.to };
+  const [{ entries: pageEntries, total }, { actions, modules }] = await Promise.all([
+    queryAuditLog(filters, page, PAGE_SIZE),
+    auditFacets(),
+  ]);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const byId = new Map(db.profiles.map((p) => [p.id, p.full_name]));
-  const actions = Array.from(new Set(db.activity_log.map((e) => e.action))).sort();
-  const modules = Array.from(new Set(db.activity_log.map((e) => e.module).filter(Boolean))) as string[];
 
   const qs = (overrides: Record<string, string | undefined>) => {
     const params = new URLSearchParams();
@@ -170,7 +166,7 @@ export default async function AuditLogsPage({
       {totalPages > 1 && (
         <div className="mt-4 flex items-center justify-between text-sm text-slate-500">
           <span>
-            Page {page} of {totalPages} ({entries.length} entries)
+            Page {page} of {totalPages} ({total} entries)
           </span>
           <div className="flex gap-2">
             <LinkButton href={qs({ page: String(Math.max(1, page - 1)) })} variant="outline" size="sm">

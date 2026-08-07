@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { readDb, writeDb } from "@/lib/db";
+import { queryAuditLogForExport } from "@/lib/audit-log";
 import { can } from "@/lib/permissions";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
@@ -23,13 +24,13 @@ export async function GET(req: NextRequest) {
   const from = searchParams.get("from") || "";
   const to = searchParams.get("to") || "";
 
-  let entries = [...db.activity_log];
-  if (userFilter) entries = entries.filter((e) => e.user_id === userFilter);
-  if (moduleFilter) entries = entries.filter((e) => e.module === moduleFilter);
-  if (actionFilter) entries = entries.filter((e) => e.action === actionFilter);
-  if (from) entries = entries.filter((e) => e.created_at.slice(0, 10) >= from);
-  if (to) entries = entries.filter((e) => e.created_at.slice(0, 10) <= to);
-  entries.sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const entries = await queryAuditLogForExport({
+    user: userFilter,
+    module: moduleFilter,
+    action: actionFilter,
+    from,
+    to,
+  });
 
   const byId = new Map(db.profiles.map((p) => [p.id, p.full_name]));
   const header = ["When", "User", "Email", "Action", "Module", "Previous", "Updated", "IP", "Device"];

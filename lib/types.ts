@@ -613,6 +613,10 @@ export interface DbShape {
   attendance: Attendance[];
   call_logs: CallLog[];
   call_log_records: CallLogRecord[];
+  /** OUTBOX, not history. readDb() leaves this empty; it collects only what the
+   * current request logs, and writeDb() inserts and drains it. Reading the
+   * audit trail goes through lib/audit-log.ts — this array will never contain
+   * an entry from an earlier request. */
   activity_log: ActivityLogEntry[];
   role_permissions: RolePermission[];
   leave_requests: LeaveRequest[];

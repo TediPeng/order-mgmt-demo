@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { readDb } from "@/lib/db";
+import { auditForEntity } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -39,9 +40,7 @@ export default async function ProductDetailPage({
 
   const creator = db.profiles.find((p) => p.id === product.created_by);
   const byId = new Map(db.profiles.map((p) => [p.id, displayUserName(p)]));
-  const history = db.activity_log
-    .filter((e) => e.entity_id === product.id && e.module === "products")
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const history = await auditForEntity(product.id, "products");
 
   const boundUpdate = updateProductAction.bind(null, product.id);
 
