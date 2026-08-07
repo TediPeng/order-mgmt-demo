@@ -94,6 +94,14 @@ password reset link is built from it. It is inlined at build time, so changing
 it needs a redeploy **without** the build cache, not just a new environment
 variable.
 
+This is the only public entry point. Vercel Authentication is set to Standard
+Protection, so preview deployments, the git branch alias and the per-deployment
+URLs all require a Vercel login; production custom domains are exempt, which is
+what keeps this one open. The old `order-mgmt-demo.vercel.app` alias was
+removed from the project and now returns `DEPLOYMENT_NOT_FOUND` — note that
+Vercel exempted it too while it existed, because it counted as an assigned
+production domain rather than a deployment URL.
+
 ## Deployment region
 
 `vercel.json` pins functions to `sin1` (Singapore) because the Supabase project lives in
