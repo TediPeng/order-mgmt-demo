@@ -85,3 +85,74 @@ export function StatCard({
 export function StatGrid({ children, className }: { children: React.ReactNode; className?: string }) {
   return <div className={cn("grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4", className)}>{children}</div>;
 }
+
+/** CoreUI's flooded widget: the whole tile takes the metric's colour and the
+ * value sits on it in white.
+ *
+ * StatCard above deliberately did not do this — a thin accent bar keeps the
+ * number at full contrast, which a saturated fill can easily lose. This is the
+ * same idea built to survive that objection: every fill below is dark enough
+ * to clear 4.5:1 against white, so the numbers stay legible, and because the
+ * fill is opaque the tile reads identically in the light and dark themes
+ * rather than needing a second palette.
+ *
+ * Kept alongside StatCard rather than replacing it — /schedule still uses the
+ * quieter card, where a wall of saturated colour would compete with the
+ * calendar next to it.
+ */
+const WIDGET_TONE: Record<StatTone, string> = {
+  brand: "bg-[var(--brand-primary)]",
+  green: "bg-green-700",
+  amber: "bg-amber-700",
+  maroon: "bg-red-900",
+  slate: "bg-slate-600",
+  blue: "bg-blue-600",
+};
+
+export function StatWidget({
+  label,
+  value,
+  href,
+  sub,
+  tone = "brand",
+  icon: Icon,
+}: {
+  label: string;
+  value: number | string;
+  href?: string;
+  /** Small print under the value — quantities, secondary amounts. */
+  sub?: React.ReactNode;
+  tone?: StatTone;
+  icon?: React.ElementType;
+}) {
+  const content = (
+    <div
+      className={cn(
+        "relative h-full overflow-hidden rounded-lg p-4 text-white transition-opacity duration-150",
+        WIDGET_TONE[tone],
+        href && "hover:opacity-90"
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-card-value leading-tight">{value}</p>
+          <p className="mt-1 truncate text-xs font-medium uppercase tracking-wide text-white/80">{label}</p>
+          {sub && <div className="mt-1 space-y-0.5 text-xs text-white/70">{sub}</div>}
+        </div>
+        {Icon && <Icon className="h-5 w-5 shrink-0 text-white/70" aria-hidden />}
+      </div>
+    </div>
+  );
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className="block cursor-pointer rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2"
+      >
+        {content}
+      </Link>
+    );
+  }
+  return content;
+}

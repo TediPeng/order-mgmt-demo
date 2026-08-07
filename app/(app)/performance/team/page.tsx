@@ -5,8 +5,10 @@ import { can } from "@/lib/permissions";
 import { scopeAgentsForUser, computeDailyAgentStats, totalsByAgent, resolveDateRange } from "@/lib/performance";
 import { countCompletedSessions } from "@/lib/call-sessions";
 import { formatCurrency } from "@/lib/utils";
+import { PhoneCall, ShoppingCart, Wallet, Percent, Calculator, Users2 } from "lucide-react";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { Card, CardContent } from "@/components/ui/Card";
+import { StatWidget, type StatTone } from "@/components/StatCard";
 
 export default async function TeamPerformancePage({
   searchParams,
@@ -39,13 +41,26 @@ export default async function TeamPerformancePage({
   const highest = ranked[0];
   const lowest = ranked[ranked.length - 1];
 
-  const cards = [
-    { label: "Total Calls Made", value: totalCalls },
-    { label: "Total Order Qty", value: totalOrders },
-    { label: "Total Order Amount", value: formatCurrency(totalAmount) },
-    { label: "Overall Conversion Rate", value: overallConversion === null ? "—" : `${overallConversion}%` },
-    { label: "Overall AOV", value: overallAov === null ? "—" : formatCurrency(overallAov) },
-    { label: "Active Agents", value: activeAgents },
+  // Tones match the dashboard's vocabulary rather than being chosen per page:
+  // volume is brand, counts blue, money green, rates amber, derived figures
+  // slate. A number means the same colour wherever it appears.
+  const cards: { label: string; value: string | number; tone: StatTone; icon: React.ElementType }[] = [
+    { label: "Total Calls Made", value: totalCalls, tone: "brand", icon: PhoneCall },
+    { label: "Total Order Qty", value: totalOrders, tone: "blue", icon: ShoppingCart },
+    { label: "Total Order Amount", value: formatCurrency(totalAmount), tone: "green", icon: Wallet },
+    {
+      label: "Overall Conversion Rate",
+      value: overallConversion === null ? "—" : `${overallConversion}%`,
+      tone: "amber",
+      icon: Percent,
+    },
+    {
+      label: "Overall AOV",
+      value: overallAov === null ? "—" : formatCurrency(overallAov),
+      tone: "slate",
+      icon: Calculator,
+    },
+    { label: "Active Agents", value: activeAgents, tone: "slate", icon: Users2 },
   ];
 
   return (
@@ -55,12 +70,7 @@ export default async function TeamPerformancePage({
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
         {cards.map((c) => (
-          <Card key={c.label}>
-            <CardContent>
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-400">{c.label}</p>
-              <p className="mt-2 text-2xl font-semibold text-slate-900">{c.value}</p>
-            </CardContent>
-          </Card>
+          <StatWidget key={c.label} label={c.label} value={c.value} tone={c.tone} icon={c.icon} />
         ))}
       </div>
 

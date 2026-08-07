@@ -17,7 +17,7 @@ import { recentActivity as fetchRecentActivity } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { formatDate, formatDateTime } from "@/lib/utils";
-import { StatCard, StatGrid } from "@/components/StatCard";
+import { StatGrid, StatWidget } from "@/components/StatCard";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { AttendanceWidget } from "@/components/AttendanceWidget";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
@@ -166,22 +166,22 @@ export default async function DashboardPage({
           {/* Row 1: volume and value. Row 2: outcomes. Every card links to the
               matching filtered leads view. */}
           <StatGrid>
-            <StatCard label="Total Leads" value={agentStats.totalLeads} href="/leads" tone="brand" icon={ShoppingCart} />
-            <StatCard
+            <StatWidget label="Total Leads" value={agentStats.totalLeads} href="/leads" tone="brand" icon={ShoppingCart} />
+            <StatWidget
               label="Total Orders"
               value={agentStats.totalOrders}
               href="/leads?status=packaging"
               tone="blue"
               icon={PackageCheck}
             />
-            <StatCard
+            <StatWidget
               label="Overall Sales"
               value={formatCurrency(agentStats.salesAmount)}
               href="/leads?status=packaging"
               tone="green"
               icon={Wallet}
             />
-            <StatCard
+            <StatWidget
               label="AOV"
               value={agentStats.aov === null ? formatCurrency(0) : formatCurrency(agentStats.aov)}
               tone="slate"
@@ -189,30 +189,36 @@ export default async function DashboardPage({
             />
           </StatGrid>
           <StatGrid>
-            <StatCard
+            <StatWidget
               label="Delivered"
               value={agentStats.delivered.count}
               href="/leads?status=delivered"
               tone="green"
               icon={PackageCheck}
-              extra={<p>{formatCurrency(agentStats.delivered.amount)}</p>}
+              sub={<p>{formatCurrency(agentStats.delivered.amount)}</p>}
             />
-            <StatCard
+            <StatWidget
               label="Returned"
               value={agentStats.returned.count}
               href="/leads?status=returned"
               tone="maroon"
               icon={Undo2}
-              extra={<p>{formatCurrency(agentStats.returned.amount)}</p>}
+              sub={<p>{formatCurrency(agentStats.returned.amount)}</p>}
             />
-            <StatCard
+            <StatWidget
               label="RTS %"
               value={`${agentStats.rtsPercentage}%`}
               href="/leads?status=returned"
               tone="amber"
               icon={Percent}
             />
-            <StatCard label="New Leads" value={agentStats.newLeads} href="/leads?status=new" tone="blue" icon={Sparkles} />
+            <StatWidget
+              label="New Leads"
+              value={agentStats.newLeads}
+              href="/leads?status=new"
+              tone="blue"
+              icon={Sparkles}
+            />
           </StatGrid>
         </>
       ) : (
@@ -220,44 +226,66 @@ export default async function DashboardPage({
           <>
             <DateRangeFilter />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <StatCard label="Total Leads" value={kpiStats.totalLeads} href="/leads" />
-              <StatCard label="Total New Orders" value={kpiStats.newOrders} href="/leads?status=new" />
-              <StatCard
+              {/* The accent colours these carried as text now become the tile
+                  itself, so the palette says the same thing it did before:
+                  returned reads red, delivered teal-green, fulfilment indigo. */}
+              <StatWidget label="Total Leads" value={kpiStats.totalLeads} href="/leads" tone="brand" icon={ShoppingCart} />
+              <StatWidget
+                label="Total New Orders"
+                value={kpiStats.newOrders}
+                href="/leads?status=new"
+                tone="blue"
+                icon={Sparkles}
+              />
+              <StatWidget
                 label="Overall Sales"
                 value={formatCurrency(kpiStats.sales.amount)}
                 href="/leads?status=packaging"
-                extra={<p>Qty: {kpiStats.sales.quantity}</p>}
+                tone="green"
+                icon={Wallet}
+                sub={<p>Qty: {kpiStats.sales.quantity}</p>}
               />
-              <StatCard
+              <StatWidget
                 label="Overall Returned Orders"
                 value={formatCurrency(kpiStats.returned.amount)}
                 href="/leads?status=returned"
-                accent="text-red-900"
-                extra={<p>Qty: {kpiStats.returned.quantity}</p>}
+                tone="maroon"
+                icon={Undo2}
+                sub={<p>Qty: {kpiStats.returned.quantity}</p>}
               />
-              <StatCard
+              <StatWidget
                 label="Overall Delivered Orders"
                 value={formatCurrency(kpiStats.delivered.amount)}
                 href="/leads?status=delivered"
-                accent="text-teal-700"
-                extra={<p>Qty: {kpiStats.delivered.quantity}</p>}
+                tone="green"
+                icon={PackageCheck}
+                sub={<p>Qty: {kpiStats.delivered.quantity}</p>}
               />
-              <StatCard
+              <StatWidget
                 label="In Fulfillment"
                 value={fulfillmentTotal}
                 href="/leads"
-                accent="text-indigo-700"
-                extra={fulfillmentBreakdown.map((r) => (
+                tone="blue"
+                icon={ShoppingCart}
+                sub={fulfillmentBreakdown.map((r) => (
                   <p key={r.status}>
                     {LEAD_STATUS_LABELS[r.status]}: {r.count}
                   </p>
                 ))}
               />
-              <StatCard label="Overall AOV" value={kpiStats.aov === null ? "—" : formatCurrency(kpiStats.aov)} />
-              <StatCard
+              <StatWidget
+                label="Overall AOV"
+                value={kpiStats.aov === null ? "—" : formatCurrency(kpiStats.aov)}
+                tone="slate"
+                icon={Calculator}
+              />
+              {/* RTS keeps its warning behaviour: over the configured threshold
+                  the whole tile goes red rather than just the number. */}
+              <StatWidget
                 label="Overall RTS Percentage"
                 value={kpiStats.rtsPercentage === null ? "—" : `${kpiStats.rtsPercentage}%`}
-                accent={rtsWarn(kpiStats.rtsPercentage) ? "text-red-600" : undefined}
+                tone={rtsWarn(kpiStats.rtsPercentage) ? "maroon" : "amber"}
+                icon={Percent}
               />
             </div>
           </>
