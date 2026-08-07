@@ -96,7 +96,17 @@ export async function requestPasswordResetAction(formData: FormData) {
     // A token that could not be delivered is retired immediately rather than
     // left live for its full hour with nobody holding it.
     if (!result.ok) await invalidateTokensFor(user.id);
-    logActivity(db, user.id, "PASSWORD_RESET_REQUESTED", "auth", user.id, { email, mail_sent: result.ok });
+    // The reason a send failed is recorded alongside the fact of it. Knowing
+    // only that mail_sent was false means reaching for the platform's runtime
+    // logs, which is a different system with different access -- and the
+    // person who needs the answer is usually looking at the audit trail
+    // already. The message is the SMTP server's own; it names hosts and
+    // status codes, never the credentials, which are not in scope here.
+    logActivity(db, user.id, "PASSWORD_RESET_REQUESTED", "auth", user.id, {
+      email,
+      mail_sent: result.ok,
+      ...(result.ok ? {} : { mail_error: result.error }),
+    });
     await writeDb(db);
   }
 
