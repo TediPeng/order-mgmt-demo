@@ -45,8 +45,11 @@ export default async function RolesPage({
       {sp.deleted && <Alert kind="success">Role deleted.</Alert>}
       {sp.error && <Alert kind="error">{sp.error}</Alert>}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
-        <Card className="lg:col-span-1">
+      {/* The roles list needs a fixed, modest width; the matrix needs every
+          pixel that is left. At a quarter each the matrix could not fit its
+          own columns and had to scroll. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
+        <Card>
           <CardHeader>
             <CardTitle>Roles</CardTitle>
           </CardHeader>
@@ -77,7 +80,7 @@ export default async function RolesPage({
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-3">
+        <Card className="min-w-0">
           <CardHeader className="flex items-center justify-between">
             <div>
               <CardTitle>{activeRole.name}</CardTitle>
@@ -116,12 +119,22 @@ export default async function RolesPage({
               </div>
             ) : (
               <div className="overflow-x-auto">
+                {/* Sized to fit rather than to scroll. The toggles are only
+                    36px wide -- what made the matrix overflow was the header
+                    labels, "Download" at text-xs setting a ~90px column ten
+                    times over. Smaller headers and tighter padding bring the
+                    whole grid inside the card at laptop widths.
+
+                    The scroller stays as the fallback for genuinely narrow
+                    screens, and the module column is pinned so that when it
+                    does scroll the row you are looking at still says what it
+                    is -- scrolled away, the matrix is unreadable. */}
                 <table className="w-full text-left text-sm">
                   <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                    <tr>
-                      <th className="px-4 py-2">Module</th>
+                    <tr className="whitespace-nowrap">
+                      <th className="sticky left-0 z-10 bg-slate-50 px-3 py-2 text-[11px]">Module</th>
                       {ACTIONS.map((a) => (
-                        <th key={a} className="px-2 py-2 text-center">
+                        <th key={a} className="px-1 py-2 text-center text-[10px]">
                           {ACTION_LABELS[a]}
                         </th>
                       ))}
@@ -130,18 +143,20 @@ export default async function RolesPage({
                   <tbody className="divide-y divide-slate-100">
                     {MODULES.map((m) => (
                       <tr key={m}>
-                        <td className="px-4 py-2 font-medium text-slate-700">{MODULE_LABELS[m]}</td>
+                        <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-3 py-2 text-xs font-medium text-slate-700">
+                          {MODULE_LABELS[m]}
+                        </td>
                         {ACTIONS.map((a) => {
                           const applicable = (MODULE_ACTIONS[m as ModuleKey] as ActionKey[]).includes(a);
                           if (!applicable) {
                             return (
-                              <td key={a} className="px-2 py-2 text-center text-slate-200">
+                              <td key={a} className="px-1 py-2 text-center text-slate-200">
                                 ·
                               </td>
                             );
                           }
                           return (
-                            <td key={a} className="px-2 py-2 text-center">
+                            <td key={a} className="px-1 py-2 text-center">
                               <PermissionToggle role={activeRole.key} moduleKey={m} action={a} checked={grid[m][a]} />
                             </td>
                           );
