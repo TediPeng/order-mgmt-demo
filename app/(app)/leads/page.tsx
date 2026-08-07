@@ -4,7 +4,9 @@ import { latestStatusChangeByOrder } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { scopeOrders, allowedAssigneeIds } from "@/lib/order-access";
-import { normalizePhone, isValidPhoneQuery, canonicalPhone } from "@/lib/utils";
+import { normalizePhone, isValidPhoneQuery, canonicalPhone, todayInTz } from "@/lib/utils";
+import { BreakControls } from "@/components/BreakControls";
+import { getActiveBioBreak } from "@/lib/bio-breaks";
 import { findDuplicates } from "@/lib/customers";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Field";
@@ -218,6 +220,11 @@ export default async function LeadsPage({
     }
   }
 
+  // Break controls in the header: agents work out of this page all day, so
+  // sending them to the clock page to start a break meant losing their place.
+  const ownAttendance = db.attendance.find((a) => a.user_id === user.id && a.work_date === todayInTz());
+  const ownBioBreak = ownAttendance?.time_in && !ownAttendance.time_out ? await getActiveBioBreak(user.id) : null;
+
   const qs = (overrides: Record<string, string | undefined>) => {
     const params = new URLSearchParams();
     const merged = { ...sp, ...overrides };
@@ -244,6 +251,14 @@ export default async function LeadsPage({
               Import Excel
             </LinkButton>
           )}
+          <BreakControls
+            breakStart={ownAttendance?.break_start ?? null}
+            breakEnd={ownAttendance?.break_end ?? null}
+            allowanceMinutes={db.work_schedule.break_minutes}
+            bioStartedAt={ownBioBreak?.started_at ?? null}
+            canBreak={!!ownAttendance?.time_in && !ownAttendance.time_out}
+            redirectTo="/leads"
+          />
           <LinkButton href="/leads/new">Regular Customer</LinkButton>
         </div>
       </div>
