@@ -11,6 +11,29 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 | `PANCAKE_MOCK_MODE` | optional | `success` / `fail` simulates the Pancake POS API locally (no real credentials needed); unset for real HTTP calls. |
 | `APP_TIMEZONE` | optional | Defaults to `Asia/Manila`. |
 
+## Development and production databases
+
+There are two Supabase projects, and `.env.local` decides which one the machine
+you are sitting at talks to:
+
+| | Project | Ref | Configured in |
+| --- | --- | --- | --- |
+| Production | `4S RETENTION` | `lvqpvcpcbjujcqlntjjn` | Vercel environment variables |
+| Development | `4S ROMA DEV` | `dpyzykpiplupzcxcpiev` | `.env.local` |
+
+**`.env.local` must point at the DEV project.** It did not always: both once
+shared one project, and on 2026-08-07 a Clear Company Data click against
+`localhost` deleted the live orders, attendance, notifications and the entire
+audit trail. There is no backup on the free plan. Local development is not a
+rehearsal unless the database is a different database.
+
+The dev project carries the same schema — 30 tables, 92 indexes, 55 foreign
+keys, RLS enabled with no policies, and the private `uploads` bucket — but no
+data. On first run against an empty database the app seeds itself (see
+`seedDb()` in `lib/db.ts`), so accounts appear on their own. Address reference
+data does not: run `node scripts/seed-psgc.mjs` once to load the 84 provinces,
+1,634 cities and 42,046 barangays the address picker needs.
+
 ## Pancake POS integration
 
 Order lines: Pancake normally requires `items[].variation_id` pointing at a variation in the
