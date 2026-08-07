@@ -15,15 +15,24 @@ export async function createUserAction(formData: FormData) {
   const { user, db } = await requireUser();
   requirePermission(user, "users", "create", db, "/users");
 
+  // A disabled control is not submitted at all, so FormData.get() answers null
+  // rather than "" — and Zod's .optional()/.default() only substitute for
+  // undefined, so a null fails z.string() outright. The Team Lead select is
+  // disabled unless the role is Agent, which made every attempt to create a
+  // Team Lead or an Administrator fail on a field the form had deliberately
+  // switched off. Mapping absent fields to undefined lets the schema's own
+  // defaults apply, as buildLeadFieldErrors() does for the lead form.
+  const field = (name: string): unknown => formData.get(name) ?? undefined;
+
   const parsed = userFormSchema.safeParse({
-    username: formData.get("username"),
-    full_name: formData.get("full_name"),
-    email: formData.get("email"),
-    role: formData.get("role"),
-    team_lead_id: formData.get("team_lead_id"),
-    call_name: formData.get("call_name"),
-    contact_number: formData.get("contact_number"),
-    permission_profile: formData.get("permission_profile"),
+    username: field("username"),
+    full_name: field("full_name"),
+    email: field("email"),
+    role: field("role"),
+    team_lead_id: field("team_lead_id"),
+    call_name: field("call_name"),
+    contact_number: field("contact_number"),
+    permission_profile: field("permission_profile"),
   });
 
   if (!parsed.success) {
