@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { readDb } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { can } from "@/lib/permissions";
+import { can, isFullAccess } from "@/lib/permissions";
+import { ClearDataButton } from "@/components/ClearDataButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Input, Label } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
@@ -11,7 +12,7 @@ import { updateThresholdsAction, updateWorkScheduleAction, updateOperationsActio
 export default async function SystemSettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string; error?: string }>;
+  searchParams: Promise<{ saved?: string; error?: string; cleared?: string; kept?: string }>;
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
@@ -19,6 +20,8 @@ export default async function SystemSettingsPage({
 
   if (!can(user.role, "settings", "view", db.role_permissions)) redirect("/dashboard");
   const canManage = can(user.role, "settings", "manage", db.role_permissions);
+  // Counted from the orders already in memory rather than a second query.
+  const syncedOrderCount = db.orders.filter((o) => o.pancake_order_id || o.forwarded_to_pancake_at).length;
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -26,6 +29,12 @@ export default async function SystemSettingsPage({
 
       {sp.saved && <Alert kind="success">Settings updated.</Alert>}
       {sp.error && <Alert kind="error">{sp.error}</Alert>}
+      {sp.cleared && (
+        <Alert kind="success">
+          Company data cleared — {sp.cleared} record{sp.cleared === "1" ? "" : "s"} deleted
+          {sp.kept && sp.kept !== "0" && `, ${sp.kept} Pancake-synced order${sp.kept === "1" ? "" : "s"} preserved`}.
+        </Alert>
+      )}
 
       <Card>
         <CardHeader>
@@ -210,6 +219,28 @@ export default async function SystemSettingsPage({
           </p>
         </CardContent>
       </Card>
+
+      {/* Administrator only, and gated on the role itself rather than on a
+          settings permission — a custom role holding settings.manage should be
+          able to edit thresholds without also being able to erase the company. */}
+      {isFullAccess(user.role) && (
+        <Card className="border-red-200">
+          <CardHeader>
+            <CardTitle className="text-red-700">Danger Zone</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <p className="text-sm font-medium text-slate-800">Clear company data</p>
+              <p className="text-sm text-slate-500">
+                Deletes every order, customer, call log, attendance record and audit entry, and restarts the order
+                numbering. Accounts, products, permissions, Pancake configuration and settings are kept. There is no
+                undo and no backup to restore from.
+              </p>
+            </div>
+            <ClearDataButton syncedOrderCount={syncedOrderCount} />
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
