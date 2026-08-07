@@ -81,6 +81,19 @@ bare Order object; the parser also tolerates a `data`/`order` wrapper.
   On a paid plan you can tighten `vercel.json` to `*/10 * * * *`.
 - Settings (Management-only): `/settings/integrations` (accounts, encrypted credentials, Test Connection), `/settings/integrations/status-map`, `/settings/integrations/logs`.
 
+## Production domain
+
+The app is served at **https://www.4sdigitalmarketing-crm.com**. `www` is the
+production alias; the bare domain 308-redirects to it. The domain is registered
+at Porkbun, where DNS is also hosted — the apex is an `A` record to Vercel and
+`www` a `CNAME` to a project-specific `*.vercel-dns-###.com` hostname, so do not
+copy the shared IPs from older Vercel documentation.
+
+`NEXT_PUBLIC_APP_URL` must match whatever is primary here, because every
+password reset link is built from it. It is inlined at build time, so changing
+it needs a redeploy **without** the build cache, not just a new environment
+variable.
+
 ## Deployment region
 
 `vercel.json` pins functions to `sin1` (Singapore) because the Supabase project lives in
