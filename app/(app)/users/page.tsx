@@ -136,7 +136,10 @@ export default async function UsersPage({
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full min-w-[1500px] text-left text-sm">
           <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-            <tr>
+            {/* Headers stay on one line. Squeezed into an even share of the
+                table they otherwise stack ("Call" / "Name"), which reads as a
+                different set of columns than it is. */}
+            <tr className="whitespace-nowrap">
               <th className="px-4 py-3">Full Name</th>
               <th className="px-4 py-3">Username</th>
               <th className="px-4 py-3">Email</th>
@@ -208,13 +211,18 @@ export default async function UsersPage({
                       <Badge className="bg-slate-200 text-slate-600">Deactivated</Badge>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-slate-500">{formatDate(u.created_at)}</td>
+                  {/* Dates never wrap. "Aug 7, 2026, 3:15 PM" broken over four
+                      lines set the height of every row in the table, including
+                      the dozen cells that had one short word in them. */}
+                  <td className="whitespace-nowrap px-4 py-3 text-slate-500">{formatDate(u.created_at)}</td>
                   <td className="px-4 py-3 text-slate-500">{createdByUser.get(u.id) || "—"}</td>
-                  <td className="px-4 py-3 text-slate-500">
+                  <td className="whitespace-nowrap px-4 py-3 text-slate-500">
                     {u.last_login_at ? formatDateTime(u.last_login_at) : "Never"}
                   </td>
-                  <td className="px-4 py-3 text-slate-500">{lastTimeIn ? formatDateTime(lastTimeIn) : "—"}</td>
-                  <td className="px-4 py-3">
+                  <td className="whitespace-nowrap px-4 py-3 text-slate-500">
+                    {lastTimeIn ? formatDateTime(lastTimeIn) : "—"}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3">
                     <div className="flex justify-end gap-2">
                       {canEdit && !u.is_deleted && (
                         <ConfirmButton
