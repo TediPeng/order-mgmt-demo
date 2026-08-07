@@ -45,3 +45,7 @@ data/psgc/
 
 # Database exports: real customer PII, must never reach this public repo.
 /backups/
+
+# Python bytecode from the .claude/skills scripts
+__pycache__/
+*.pyc
