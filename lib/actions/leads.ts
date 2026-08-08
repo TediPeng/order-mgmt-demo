@@ -9,8 +9,8 @@ import { getActiveSessionForOrder, endSession } from "@/lib/call-sessions";
 import { isFullAccess } from "@/lib/permissions";
 import { requireUser, requirePermission, requireAdministrator } from "./guards";
 import { describeParseFailure } from "@/lib/zod-error";
-import { leadFormSchema, leadImportRowSchema, parseOrderItemFields, PACKAGING_STATUS, PRE_SALE_STATUSES } from "@/lib/validation";
-import { replaceItems, summarizeItems, totalsFor } from "@/lib/order-items";
+import { leadFormSchema, leadImportRowSchema, parseOrderItemFields, type OrderItemFields, PACKAGING_STATUS, PRE_SALE_STATUSES } from "@/lib/validation";
+import { listItems, replaceItems, summarizeItems, totalsFor } from "@/lib/order-items";
 import type { OrderItemInput } from "@/lib/types";
 import { matchAgentByCallName } from "@/lib/agent-match";
 import { todayInTz, restoreTrunkZero } from "@/lib/utils";
@@ -256,6 +256,10 @@ export type ApplyLeadUpdateResult =
       /** Management manually changed the status of an already-forwarded order —
        * callers add a pancake_sync_logs entry with source internal_user. */
       manualFulfillmentOverride: { oldStatus: string; newStatus: string } | null;
+      /** Lines to persist after writeDb() — they carry a foreign key to the
+       * order, so they cannot be written before it exists. Null means this
+       * save was not about the products and the existing lines stand. */
+      items: OrderItemInput[] | null;
     }
   | { ok: false; code: "not_found" | "forbidden" | "validation"; error: string };
 
@@ -267,7 +271,12 @@ export async function applyLeadUpdate(
   user: Profile,
   db: DbShape,
   orderId: string,
-  raw: Record<string, unknown>
+  raw: Record<string, unknown>,
+  /** Lines from a multi-line form, or null when the caller posted no line
+   * fields at all. Null is not "no lines" — it means this save is not about
+   * the products, and the order's existing lines must survive it untouched.
+   * Callers that never post lines (the JSON API) pass nothing. */
+  postedItems: OrderItemFields[] | null = null
 ): Promise<ApplyLeadUpdateResult> {
   const order = db.orders.find((o) => o.id === orderId);
   if (!order) return { ok: false, code: "not_found", error: "Lead not found." };
@@ -449,6 +458,57 @@ export async function applyLeadUpdate(
     discount: order.discount,
     shipping_fee: order.shipping_fee,
   });
+
+  // Lines, and the summary columns that have to agree with them.
+  //
+  // When the form posted lines they are authoritative and the summary is
+  // recomputed from them, overwriting what the single-product fields above
+  // just wrote.
+  //
+  // When it posted none, the lines are left exactly as they are. That is what
+  // stops a status change -- which carries no product fields -- from emptying
+  // an order. The single exception is an order of at most one line, which is
+  // mirrored from the fields above so the two do not drift apart while the
+  // single-product form is still in use. An order with two or more lines is
+  // never rebuilt from a single product, because that would silently collapse
+  // it.
+  let pendingItems: OrderItemInput[] | null = null;
+  if (postedItems) {
+    pendingItems = postedItems.map((line) => {
+      const lineProduct = line.product_id ? db.products.find((p) => p.id === line.product_id) : undefined;
+      return {
+        product_id: line.product_id || null,
+        product_name: lineProduct?.name || "",
+        variant: line.variant || null,
+        quantity: line.quantity,
+        unit_price: line.unit_price,
+        discount: line.discount,
+      };
+    });
+    const totals = totalsFor(pendingItems, order.shipping_fee);
+    const first = pendingItems[0];
+    order.quantity = totals.quantity;
+    order.discount = totals.discount;
+    order.total_amount = totals.total;
+    order.product_id = first?.product_id ?? null;
+    order.product_name = pendingItems.length > 0 ? summarizeItems(pendingItems) : "";
+    order.unit_price = first ? first.unit_price : null;
+    order.variant = first ? first.variant : null;
+  } else if ((await listItems(order.id)).length <= 1) {
+    pendingItems = order.product_id
+      ? [
+          {
+            product_id: order.product_id,
+            product_name: order.product_name,
+            variant: order.variant,
+            quantity: order.quantity,
+            unit_price: order.unit_price ?? 0,
+            discount: order.discount,
+          },
+        ]
+      : [];
+  }
+
   order.status = data.status;
   order.order_date = newOrderDate;
   order.courier = data.courier || null;
@@ -537,7 +597,36 @@ export async function applyLeadUpdate(
     enteredPackaging: before.status !== PACKAGING_STATUS && order.status === PACKAGING_STATUS,
     manualFulfillmentOverride:
       forwarded && before.status !== order.status ? { oldStatus: before.status, newStatus: order.status } : null,
+    items: pendingItems,
   };
+}
+
+/** Writes an order's lines after the order itself is committed.
+ *
+ * Null means the save was not about the products and the existing lines stand
+ * — doing nothing is the correct behaviour, not an oversight.
+ *
+ * A failure is recorded and swallowed for the same reason it is on create: the
+ * order is already saved, and showing the agent an error for a save that
+ * succeeded invites them to do it again. */
+async function persistOrderItems(
+  user: Profile,
+  db: DbShape,
+  order: Order,
+  items: OrderItemInput[] | null
+): Promise<void> {
+  if (!items) return;
+  try {
+    await replaceItems(order.id, items);
+  } catch (e) {
+    const info = await getRequestInfo();
+    logActivity(db, user.id, "ORDER_ITEMS_WRITE_FAILED", "order", order.id, {
+      order_number: order.order_number,
+      lines: items.length,
+      error: (e as Error).message,
+    }, { module: "orders", ...info });
+    await writeDb(db);
+  }
 }
 
 /** Post-persist hook shared by the form action and the modal PATCH route:
@@ -573,12 +662,13 @@ export async function updateLeadAction(orderId: string, formData: FormData) {
   requirePermission(user, "orders", "edit", db, `/leads/${orderId}`);
 
   const raw = buildLeadFieldErrors(formData);
-  const result = await applyLeadUpdate(user, db, orderId, raw);
+  const result = await applyLeadUpdate(user, db, orderId, raw, parseOrderItemFields(formData));
   if (!result.ok) {
     const target = result.code === "not_found" ? "/leads" : `/leads/${orderId}`;
     redirect(`${target}?error=${encodeURIComponent(result.error)}`);
   }
   await writeDb(db);
+  await persistOrderItems(user, db, result.order, result.items);
   await afterLeadUpdatePersisted(user, result);
   redirect(`/leads/${orderId}?updated=1`);
 }
