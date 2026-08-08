@@ -103,13 +103,6 @@ export async function createLeadAction(formData: FormData) {
   const blocked = pipelineBlockReason({ order_date: null }, data.status);
   if (blocked) redirect(`/leads/new?error=${encodeURIComponent(blocked)}`);
 
-  if (data.status === PACKAGING_STATUS) {
-    const missing = validatePackaging({ ...data, product_id: data.product_id || null, quantity: data.quantity });
-    if (missing.length > 0) {
-      redirect(`/leads/new?error=${encodeURIComponent(`Missing required fields for Packaging: ${missing.join(", ")}`)}`);
-    }
-  }
-
   const now = nowIso();
   const today = todayInTz();
   const assignedAgent = db.profiles.find((p) => p.id === data.agent_id);
@@ -151,6 +144,21 @@ export async function createLeadAction(formData: FormData) {
 
   const totals = totalsFor(items, data.shipping_fee ?? null);
   const firstLine = items[0];
+
+  // Checked here rather than earlier, because "does this order have a product"
+  // is now a question about its lines. The multi-line editor does not post a
+  // single product_id, so validating against that field would refuse every
+  // multi-line order moving into Packaging.
+  if (data.status === PACKAGING_STATUS) {
+    const missing = validatePackaging({
+      ...data,
+      product_id: firstLine?.product_id ?? (data.product_id || null),
+      quantity: items.length > 0 ? totals.quantity : data.quantity,
+    });
+    if (missing.length > 0) {
+      redirect(`/leads/new?error=${encodeURIComponent(`Missing required fields for Packaging: ${missing.join(", ")}`)}`);
+    }
+  }
 
   const hasProvidedPreviousInfo = data.previous_order_date || data.previous_order_product || data.previous_order_amount != null;
   const previousInfo = hasProvidedPreviousInfo ? null : findPreviousOrderInfo(db, data.customer_phone || "");
@@ -359,7 +367,17 @@ export async function applyLeadUpdate(
   if (fulfillmentBlocked) return { ok: false, code: "forbidden", error: fulfillmentBlocked };
 
   if (data.status === PACKAGING_STATUS) {
-    const missing = validatePackaging({ ...data, product_id: data.product_id || null, quantity });
+    // "Has a product" is a question about the lines once the editor is in use:
+    // it posts no single product_id, and a save that posts no lines at all
+    // must fall back to what the order already carries rather than reading an
+    // absent field as absent product.
+    const packagingProductId = postedItems
+      ? postedItems.find((line) => line.product_id)?.product_id || null
+      : data.product_id || order.product_id || null;
+    const packagingQuantity = postedItems
+      ? postedItems.reduce((sum, line) => sum + line.quantity, 0)
+      : quantity;
+    const missing = validatePackaging({ ...data, product_id: packagingProductId, quantity: packagingQuantity });
     if (missing.length > 0) {
       return {
         ok: false,
