@@ -63,6 +63,15 @@ function transporter(): Transporter {
     secure: port === 465,
     requireTLS: port !== 465,
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    // Fail fast. Nodemailer's defaults wait two minutes to connect and ten on
+    // a quiet socket, and a send happens inside a request the user is watching
+    // -- so a wrong port does not report a wrong port, it hangs the page until
+    // the platform kills the function. Ten seconds is far more than a healthy
+    // SMTP server in the same region needs, and short enough that a
+    // misconfiguration comes back as an error someone can read.
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
   });
   return cached;
 }
