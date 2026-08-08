@@ -512,19 +512,40 @@ export async function applyLeadUpdate(
     order.product_name = pendingItems.length > 0 ? summarizeItems(pendingItems) : "";
     order.unit_price = first ? first.unit_price : null;
     order.variant = first ? first.variant : null;
-  } else if ((await listItems(order.id)).length <= 1) {
-    pendingItems = order.product_id
-      ? [
-          {
-            product_id: order.product_id,
-            product_name: order.product_name,
-            variant: order.variant,
-            quantity: order.quantity,
-            unit_price: order.unit_price ?? 0,
-            discount: order.discount,
-          },
-        ]
-      : [];
+  } else {
+    const existing = await listItems(order.id);
+    if (existing.length <= 1) {
+      pendingItems = order.product_id
+        ? [
+            {
+              product_id: order.product_id,
+              product_name: order.product_name,
+              variant: order.variant,
+              quantity: order.quantity,
+              unit_price: order.unit_price ?? 0,
+              discount: order.discount,
+            },
+          ]
+        : [];
+    } else {
+      // A multi-line order saved by a form that carries only one product —
+      // the Order Details modal, which has not been converted yet. Its single
+      // product field cannot describe this order, so the summary is rebuilt
+      // from the lines instead of from what was posted. The lines themselves
+      // are left alone.
+      //
+      // Without this the summary would quietly come to disagree with the
+      // lines: the order would claim one product and a total to match, while
+      // the lines it forwards and reports on say something else.
+      const totals = totalsFor(existing, order.shipping_fee);
+      order.quantity = totals.quantity;
+      order.discount = totals.discount;
+      order.total_amount = totals.total;
+      order.product_id = existing[0].product_id;
+      order.product_name = summarizeItems(existing);
+      order.unit_price = existing[0].unit_price;
+      order.variant = existing[0].variant;
+    }
   }
 
   order.status = data.status;
