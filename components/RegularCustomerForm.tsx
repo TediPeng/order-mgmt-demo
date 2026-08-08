@@ -5,7 +5,7 @@ import { Input, Label, Select, Textarea } from "@/components/ui/Field";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { AddressSelect, EMPTY_ADDRESS, type AddressValue } from "@/components/AddressSelect";
-import { ProductCombobox } from "@/components/ProductCombobox";
+import { OrderItemsEditor, type EditorLine } from "@/components/OrderItemsEditor";
 import { AGENT_EDITABLE_STATUSES, LEAD_STATUS_LABELS, PACKAGING_STATUS } from "@/lib/validation";
 import { packagingProblems } from "@/lib/lead-workflow";
 
@@ -13,6 +13,9 @@ interface ProductOption {
   id: string;
   name: string;
   code: string | null;
+  selling_price: number | null;
+  variants: string[] | null;
+  pancake_variation_id: string | null;
 }
 
 /**
@@ -57,8 +60,21 @@ export function RegularCustomerForm({
     status: "ringing",
   });
   const [showProblems, setShowProblems] = useState(false);
+  // Mirrors the line editor, purely so the Packaging pre-check below can still
+  // ask "is there a product, a quantity and a price" now that those live in
+  // lines rather than in three fields on this form.
+  const [lines, setLines] = useState<EditorLine[]>([]);
 
   const set = (key: keyof typeof values, value: string) => setValues((v) => ({ ...v, [key]: value }));
+
+  const filled = lines.filter((line) => line.product_id);
+  const lineSummary = {
+    product_id: filled[0]?.product_id || null,
+    quantity: filled.reduce((sum, line) => sum + (Number(line.quantity) || 0), 0),
+    // The first priced line stands for the order: Packaging requires a price,
+    // and one line without one is what the server will object to as well.
+    unit_price: filled.length === 0 ? null : Number(filled.find((line) => line.unit_price !== "")?.unit_price ?? NaN),
+  };
 
   // Only Packaging demands the full field set; every other status may be saved
   // with an incomplete lead, which is the whole point of the call pipeline.
@@ -71,9 +87,9 @@ export function RegularCustomerForm({
           barangay: address.barangay,
           city: address.city,
           province: address.province,
-          product_id: values.product_id || null,
-          quantity: Number(values.quantity) || 0,
-          unit_price: values.unit_price === "" ? null : Number(values.unit_price),
+          product_id: lineSummary.product_id,
+          quantity: lineSummary.quantity,
+          unit_price: Number.isNaN(lineSummary.unit_price as number) ? null : lineSummary.unit_price,
         })
       : [];
   const problemFor = (field: string) => (showProblems ? problems.find((p) => p.field === field)?.message : undefined);
@@ -152,43 +168,13 @@ export function RegularCustomerForm({
       </div>
 
       <div>
-        <Label htmlFor="product_id">Product</Label>
-        <ProductCombobox
-          name="product_id"
-          products={activeProducts}
-          onChange={(id) => set("product_id", id)}
-        />
+        <Label htmlFor="items">Products</Label>
+        {/* No shipping fee on this form by design (Section 5) — it comes from
+            the Pancake account's defaults at forward time. */}
+        <OrderItemsEditor products={activeProducts} onLinesChange={setLines} />
         <FieldError field="product_id" />
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <Label htmlFor="quantity">Quantity</Label>
-          <Input
-            id="quantity"
-            name="quantity"
-            type="number"
-            min={1}
-            step={1}
-            value={values.quantity}
-            onChange={(e) => set("quantity", e.target.value)}
-          />
-          <FieldError field="quantity" />
-        </div>
-        <div>
-          <Label htmlFor="unit_price">Unit Price</Label>
-          <Input
-            id="unit_price"
-            name="unit_price"
-            type="number"
-            min={0}
-            step={0.01}
-            inputMode="decimal"
-            value={values.unit_price}
-            onChange={(e) => set("unit_price", e.target.value)}
-          />
-          <FieldError field="unit_price" />
-        </div>
+        <FieldError field="quantity" />
+        <FieldError field="unit_price" />
       </div>
 
       <div>

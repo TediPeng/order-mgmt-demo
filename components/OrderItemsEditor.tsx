@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { ProductCombobox } from "@/components/ProductCombobox";
 import { Input } from "@/components/ui/Field";
@@ -70,6 +70,7 @@ export function OrderItemsEditor({
   initialLines,
   shippingFee = 0,
   disabled,
+  onLinesChange,
 }: {
   products: EditorProduct[];
   initialLines?: EditorLine[];
@@ -77,10 +78,32 @@ export function OrderItemsEditor({
    * field itself lives elsewhere on the order form. */
   shippingFee?: number;
   disabled?: boolean;
+  /** Reports the current lines upward. The forms run their own Packaging check
+   * for immediate feedback, and that check asks whether a product is present —
+   * a question only this component can now answer. */
+  onLinesChange?: (lines: EditorLine[]) => void;
 }) {
   const [rows, setRows] = useState<Row[]>(() =>
     initialLines && initialLines.length > 0 ? initialLines.map((line) => ({ ...line, key: newKey() })) : [blank()]
   );
+
+  useEffect(() => {
+    if (!onLinesChange) return;
+    onLinesChange(
+      rows.map((row) => ({
+        product_id: row.product_id,
+        product_name: row.product_name,
+        variant: row.variant,
+        quantity: row.quantity,
+        unit_price: row.unit_price,
+        discount: row.discount,
+      }))
+    );
+    // onLinesChange deliberately omitted: every caller passes an inline arrow,
+    // so depending on it would re-fire this on each parent render and loop
+    // against the parent's own setState.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows]);
 
   const byId = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
 

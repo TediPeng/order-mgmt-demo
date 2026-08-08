@@ -29,9 +29,18 @@ export default async function NewLeadPage({
     .filter((p) => p.is_active && !p.is_deleted && allowedIds.has(p.id))
     .map((p) => ({ id: p.id, full_name: displayUserName(p), username: p.username }));
   const canReassign = isFullAccess(user.role);
+  // selling_price pre-fills a line's price, variants drive its variant select,
+  // and pancake_variation_id decides whether it shows as a Quick add line.
   const activeProducts = db.products
     .filter((p) => p.status === "active")
-    .map((p) => ({ id: p.id, name: p.name, code: p.code }));
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      code: p.code,
+      selling_price: p.selling_price,
+      variants: p.variants,
+      pancake_variation_id: p.pancake_variation_id,
+    }));
 
   // Section 2: an agent who has not timed in cannot create an order. Shown up
   // front rather than only on submit, so the block is obvious before they type.
