@@ -649,6 +649,46 @@ export interface PendingDelete {
 }
 
 
+/** One product line on an order.
+ *
+ * Deliberately absent from DbShape. readDb() loads whole tables, so putting
+ * line items there would pull every line of every order into every page —
+ * the payload problem the orders refactor exists to undo. These are read and
+ * written through lib/order-items.ts instead, the same way call_sessions and
+ * the Pancake tables are.
+ *
+ * The order keeps carrying `total_amount`, `quantity` and `product_name` as
+ * its summary, so lists, dashboards, exports and the Pancake payload continue
+ * to work without knowing lines exist.
+ */
+export interface OrderItem {
+  id: string;
+  order_id: string;
+  /** Display order, so the sequence an agent entered survives a reload. */
+  position: number;
+  product_id: string | null;
+  /** Denormalized: a deleted product nulls product_id but must not erase the
+   * record of what was sold. */
+  product_name: string;
+  variant: string | null;
+  quantity: number;
+  unit_price: number;
+  discount: number;
+  /** quantity * unit_price - discount, as charged. Stored rather than derived
+   * so a later price change cannot rewrite what the customer paid. */
+  line_total: number;
+}
+
+/** A line as submitted by the form, before it has an id. */
+export interface OrderItemInput {
+  product_id: string | null;
+  product_name: string;
+  variant: string | null;
+  quantity: number;
+  unit_price: number;
+  discount: number;
+}
+
 // --- Regular Customers, calling sessions, agent call logs -------------------
 // Accessed through targeted supabaseAdmin queries (lib/customers.ts,
 // lib/call-sessions.ts, lib/agent-call-logs.ts), not through DbShape.
