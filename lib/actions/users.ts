@@ -101,6 +101,22 @@ export async function createUserAction(formData: FormData) {
       })
     );
     mail = result.ok ? "sent" : "failed";
+
+    // A second write, only when the send failed. The account is already
+    // committed above -- deliberately, since an email must never be the reason
+    // an account does not exist -- so the outcome cannot ride along with
+    // USER_CREATED. Without this the only trace of a failure is a banner the
+    // Administrator has already navigated away from, and diagnosing it means
+    // the hosting platform's runtime logs, which are a different system with
+    // different access.
+    if (!result.ok) {
+      logActivity(db, user.id, "ACCOUNT_EMAIL_FAILED", "user", newUser.id, {
+        username: newUser.username,
+        to: newUser.email,
+        mail_error: result.error,
+      }, { module: "users", ...info });
+      await writeDb(db);
+    }
   }
 
   redirect(
