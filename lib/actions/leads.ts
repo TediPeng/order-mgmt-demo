@@ -9,7 +9,9 @@ import { getActiveSessionForOrder, endSession } from "@/lib/call-sessions";
 import { isFullAccess } from "@/lib/permissions";
 import { requireUser, requirePermission, requireAdministrator } from "./guards";
 import { describeParseFailure } from "@/lib/zod-error";
-import { leadFormSchema, leadImportRowSchema, PACKAGING_STATUS, PRE_SALE_STATUSES } from "@/lib/validation";
+import { leadFormSchema, leadImportRowSchema, parseOrderItemFields, PACKAGING_STATUS, PRE_SALE_STATUSES } from "@/lib/validation";
+import { replaceItems, summarizeItems, totalsFor } from "@/lib/order-items";
+import type { OrderItemInput } from "@/lib/types";
 import { matchAgentByCallName } from "@/lib/agent-match";
 import { todayInTz, restoreTrunkZero } from "@/lib/utils";
 import {
@@ -113,6 +115,43 @@ export async function createLeadAction(formData: FormData) {
   const assignedAgent = db.profiles.find((p) => p.id === data.agent_id);
   const product = data.product_id ? db.products.find((p) => p.id === data.product_id) : undefined;
 
+  // Line items. The form may post repeated line fields, or — while the
+  // single-product form is still in use — none at all, in which case the one
+  // product it does carry becomes the single line. Either way order_items ends
+  // up authoritative, so nothing downstream needs to know which form it came
+  // from.
+  const postedItems = parseOrderItemFields(formData);
+  const items: OrderItemInput[] = (
+    postedItems ??
+    // A lead with no product selected is a legitimate state — it has not been
+    // quoted yet — and produces no lines rather than a nameless one.
+    (data.product_id
+      ? [
+          {
+            product_id: data.product_id,
+            variant: data.variant || "",
+            quantity: data.quantity,
+            unit_price: data.unit_price ?? 0,
+            discount: data.discount ?? 0,
+          },
+        ]
+      : [])
+  ).map((line) => {
+    const lineProduct = line.product_id ? db.products.find((p) => p.id === line.product_id) : undefined;
+    return {
+      product_id: line.product_id || null,
+      // Resolved from the catalogue, never taken from the request.
+      product_name: lineProduct?.name || "",
+      variant: line.variant || null,
+      quantity: line.quantity,
+      unit_price: line.unit_price,
+      discount: line.discount,
+    };
+  });
+
+  const totals = totalsFor(items, data.shipping_fee ?? null);
+  const firstLine = items[0];
+
   const hasProvidedPreviousInfo = data.previous_order_date || data.previous_order_product || data.previous_order_amount != null;
   const previousInfo = hasProvidedPreviousInfo ? null : findPreviousOrderInfo(db, data.customer_phone || "");
 
@@ -129,18 +168,25 @@ export async function createLeadAction(formData: FormData) {
     previous_order_date: data.previous_order_date || previousInfo?.date || null,
     previous_order_product: data.previous_order_product || previousInfo?.product || null,
     previous_order_amount: data.previous_order_amount ?? previousInfo?.amount ?? null,
-    product_id: data.product_id || null,
-    product_name: product?.name || "",
+    // These stay on the order as its summary, so lists, dashboards, exports
+    // and the Pancake payload keep reading one row per order. With lines they
+    // are derived; with none they fall back to what the form posted, which is
+    // the same values the single-product form always produced.
+    product_id: firstLine?.product_id ?? (data.product_id || null),
+    product_name: items.length > 0 ? summarizeItems(items) : product?.name || "",
     // Section 0.6: Quantity is back on the agent form and feeds the line total
-    // and the Pancake payload.
-    quantity: data.quantity,
-    unit_price: data.unit_price ?? null,
-    total_amount: computeOrderTotal({
-      unit_price: data.unit_price ?? null,
-      quantity: data.quantity,
-      discount: data.discount ?? 0,
-      shipping_fee: data.shipping_fee ?? null,
-    }),
+    // and the Pancake payload. Across lines it is the total units.
+    quantity: items.length > 0 ? totals.quantity : data.quantity,
+    unit_price: firstLine ? firstLine.unit_price : data.unit_price ?? null,
+    total_amount:
+      items.length > 0
+        ? totals.total
+        : computeOrderTotal({
+            unit_price: data.unit_price ?? null,
+            quantity: data.quantity,
+            discount: data.discount ?? 0,
+            shipping_fee: data.shipping_fee ?? null,
+          }),
     status: data.status,
     order_date: data.status === PACKAGING_STATUS ? today : null,
     source: "manual",
@@ -154,8 +200,10 @@ export async function createLeadAction(formData: FormData) {
     courier: data.courier || null,
     payment_method: data.payment_method || null,
     order_source: assignedAgent?.call_name || null,
-    discount: data.discount ?? 0,
-    variant: data.variant || null,
+    // The sum of the line discounts, not a separate figure — one order cannot
+    // have two discounts that disagree.
+    discount: items.length > 0 ? totals.discount : data.discount ?? 0,
+    variant: firstLine ? firstLine.variant : data.variant || null,
     notes: data.notes || "",
     created_by: user.id,
     updated_by: null,
@@ -173,6 +221,25 @@ export async function createLeadAction(formData: FormData) {
     ...info,
   });
   await writeDb(db);
+
+  // After writeDb, because the lines carry a foreign key to an order that has
+  // to exist first. Its own query, outside the whole-database write.
+  //
+  // A failure here must not take the order down with it. The order is the
+  // record of the sale and it is already committed; throwing now would show
+  // the agent an error for an order that exists, and the likely response --
+  // entering it again -- is worse than a missing line. Recorded instead, so
+  // the gap is visible and repairable rather than silent.
+  try {
+    await replaceItems(order.id, items);
+  } catch (e) {
+    logActivity(db, user.id, "ORDER_ITEMS_WRITE_FAILED", "order", order.id, {
+      order_number: order.order_number,
+      lines: items.length,
+      error: (e as Error).message,
+    }, { module: "orders", ...info });
+    await writeDb(db);
+  }
   if (order.status === PACKAGING_STATUS) {
     // Forward AFTER persisting; the handler has its own duplicate/idempotency guards.
     await forwardOrderToPancake(order.id, { source: "packaging_event", triggeredBy: user.id });

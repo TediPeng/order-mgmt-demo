@@ -419,6 +419,74 @@ export const passwordChangeSchema = z
     path: ["confirm_password"],
   });
 
+/** One product line submitted with an order.
+ *
+ * `product_name` is absent on purpose: it is resolved server-side from
+ * `product_id` against the catalogue, so a crafted request cannot post a
+ * product label that disagrees with the product it claims to be.
+ */
+export const orderItemSchema = z.object({
+  product_id: z.string().trim().optional().default(""),
+  variant: z.string().trim().optional().default(""),
+  quantity: z.coerce.number().int().min(1, "Quantity must be at least 1"),
+  unit_price: z.coerce.number().nonnegative("Unit price must be zero or more"),
+  discount: z.coerce.number().nonnegative("Discount must be zero or more"),
+});
+
+export type OrderItemFields = z.infer<typeof orderItemSchema>;
+
+/** Reads the repeated line fields a multi-line order form posts and zips them
+ * into rows.
+ *
+ * Returns null when the form posted no line fields at all, which is different
+ * from posting zero lines: the edit form submits subsets — a status change
+ * carries no product fields — and an absent section must leave the existing
+ * lines alone rather than delete them. An empty array means "this order has no
+ * products", which is a legitimate state for a lead that has not been quoted
+ * yet.
+ *
+ * Entirely blank rows are dropped rather than rejected. The editor leaves one
+ * behind whenever someone adds a line and changes their mind, and refusing to
+ * save over it would be a puzzle rather than a safeguard.
+ */
+export function parseOrderItemFields(formData: FormData): OrderItemFields[] | null {
+  const ids = formData.getAll("item_product_id");
+  const variants = formData.getAll("item_variant");
+  const quantities = formData.getAll("item_quantity");
+  const prices = formData.getAll("item_unit_price");
+  const discounts = formData.getAll("item_discount");
+
+  const count = Math.max(ids.length, variants.length, quantities.length, prices.length, discounts.length);
+  if (count === 0) return null;
+
+  const at = (list: FormDataEntryValue[], i: number) => (list[i] === undefined ? "" : String(list[i]).trim());
+
+  const rows: OrderItemFields[] = [];
+  for (let i = 0; i < count; i++) {
+    const raw = {
+      product_id: at(ids, i),
+      variant: at(variants, i),
+      quantity: at(quantities, i),
+      unit_price: at(prices, i),
+      discount: at(discounts, i),
+    };
+    if (!raw.product_id && !raw.variant && !raw.quantity && !raw.unit_price && !raw.discount) continue;
+
+    rows.push(
+      orderItemSchema.parse({
+        product_id: raw.product_id,
+        variant: raw.variant,
+        // A line left blank in these three means the obvious thing rather than
+        // a validation error: one unit, no price yet, no discount.
+        quantity: raw.quantity === "" ? 1 : raw.quantity,
+        unit_price: raw.unit_price === "" ? 0 : raw.unit_price,
+        discount: raw.discount === "" ? 0 : raw.discount,
+      })
+    );
+  }
+  return rows;
+}
+
 /** Setting a password from a reset link. No current_password: holding the
  * emailed token is what stands in for knowing the old one. */
 export const passwordResetSchema = z
