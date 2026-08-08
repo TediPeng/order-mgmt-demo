@@ -11,6 +11,7 @@ import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui
 import { formatDateTime } from "@/lib/utils";
 import { deleteLeadAction, updateLeadAction, unlockOrderForEditingAction } from "@/lib/actions/leads";
 import { LeadEditForm } from "@/components/LeadEditForm";
+import { listItems } from "@/lib/order-items";
 import { listSyncLogs, getAccount } from "@/lib/pancake/store";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 import { isOrderLocked, SYNCED_LOCK_MESSAGE } from "@/lib/lead-workflow";
@@ -58,8 +59,27 @@ export default async function LeadDetailPage({
     .map((p) => ({ id: p.id, full_name: displayUserName(p), username: p.username }));
   const activeProducts = db.products
     .filter((p) => p.status === "active")
-    .map((p) => ({ id: p.id, name: p.name, code: p.code, variants: p.variants }));
-  const currentProductName = order.product_id ? db.products.find((p) => p.id === order.product_id)?.name || order.product_name : order.product_name;
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      code: p.code,
+      variants: p.variants,
+      selling_price: p.selling_price,
+      pancake_variation_id: p.pancake_variation_id,
+    }));
+
+  // The order's existing lines, so editing starts from what is there. Numbers
+  // become strings because the editor's inputs are text — an empty price has
+  // to stay empty rather than becoming a zero somebody has to clear.
+  const existingItems = await listItems(order.id);
+  const initialLines = existingItems.map((item) => ({
+    product_id: item.product_id || "",
+    product_name: item.product_name,
+    variant: item.variant || "",
+    quantity: String(item.quantity),
+    unit_price: item.unit_price ? String(item.unit_price) : "",
+    discount: item.discount ? String(item.discount) : "",
+  }));
 
   const byId = new Map(db.profiles.map((p) => [p.id, displayUserName(p)]));
   const history = await auditForEntity(order.id, "orders");
@@ -185,9 +205,9 @@ export default async function LeadDetailPage({
             canReassign={canReassign}
             canSeePreviousOrderFields={isFullAccess(user.role) && !locked}
             canSetFulfillmentStatus={isFullAccess(user.role) && !locked}
-            productName={currentProductName}
             agents={agents}
             activeProducts={activeProducts}
+            initialLines={initialLines}
           />
         </CardContent>
       </Card>

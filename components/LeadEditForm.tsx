@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Input, Label, Select, Textarea, FieldError } from "@/components/ui/Field";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
-import { ProductCombobox } from "@/components/ProductCombobox";
+import { OrderItemsEditor, type EditorLine, type EditorProduct } from "@/components/OrderItemsEditor";
 import { AddressSelect } from "@/components/AddressSelect";
 import { LEAD_STATUS_LABELS, PAYMENT_METHOD_SUGGESTIONS, selectableStatuses } from "@/lib/validation";
 import type { Order, Profile } from "@/lib/types";
@@ -83,9 +83,9 @@ export function LeadEditForm({
   canReassign,
   canSeePreviousOrderFields,
   canSetFulfillmentStatus = false,
-  productName,
   agents,
   activeProducts,
+  initialLines,
 }: {
   order: Order;
   action: (formData: FormData) => void | Promise<void>;
@@ -94,13 +94,16 @@ export function LeadEditForm({
   canSeePreviousOrderFields: boolean;
   /** Full-access users may set Pancake-owned fulfillment statuses by hand. */
   canSetFulfillmentStatus?: boolean;
-  productName: string;
   agents: Pick<Profile, "id" | "full_name" | "username">[];
-  activeProducts: { id: string; name: string; code: string | null }[];
+  activeProducts: EditorProduct[];
+  /** The order's existing lines, so an edit starts from what is there rather
+   * than from a blank row. */
+  initialLines: EditorLine[];
 }) {
   const initial = useMemo(() => snapshotFrom(order), [order]);
   const [form, setForm] = useState<FormState>(initial);
   const [missing, setMissing] = useState<string[]>([]);
+  const [lines, setLines] = useState<EditorLine[]>(initialLines);
   const isDirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(initial), [form, initial]);
   const isDirtyRef = useRef(isDirty);
   isDirtyRef.current = isDirty;
@@ -143,8 +146,12 @@ export function LeadEditForm({
       if (!form.barangay.trim()) missingFields.push("barangay");
       if (!form.city.trim()) missingFields.push("city");
       if (!form.province.trim()) missingFields.push("province");
-      if (!form.product_id) missingFields.push("product_id");
-      if (!form.unit_price.trim()) missingFields.push("unit_price");
+      // Asked of the lines now rather than the retired single-product fields.
+      // A line with a product but no price is the same omission the server
+      // will reject, so it is caught here too.
+      const filled = lines.filter((line) => line.product_id);
+      if (filled.length === 0) missingFields.push("product_id");
+      else if (filled.every((line) => line.unit_price.trim() === "")) missingFields.push("unit_price");
       if (missingFields.length > 0) {
         e.preventDefault();
         setMissing(missingFields);
@@ -271,62 +278,16 @@ export function LeadEditForm({
         <p className="-mt-2 text-xs text-slate-400">Previous order information is informational and can only be corrected by an Administrator.</p>
       )}
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="product_id">New Product Order</Label>
-          <ProductCombobox
-            name="product_id"
-            products={activeProducts}
-            defaultValue={form.product_id}
-            defaultLabel={productName}
-            disabled={!canEdit}
-            onChange={(id) => update("product_id", id)}
-          />
-          {missing.includes("product_id") && <FieldError>New Product Order is required.</FieldError>}
-        </div>
-        <div>
-          <Label htmlFor="unit_price">Unit price</Label>
-          <Input
-            id="unit_price"
-            name="unit_price"
-            type="number"
-            min={0}
-            step={0.01}
-            inputMode="decimal"
-            value={form.unit_price}
-            onChange={(e) => update("unit_price", e.target.value)}
-            disabled={!canEdit}
-            className={err("unit_price")}
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="variant">Variant</Label>
-          <Input
-            id="variant"
-            name="variant"
-            value={form.variant}
-            onChange={(e) => update("variant", e.target.value)}
-            disabled={!canEdit}
-            placeholder="Optional"
-          />
-        </div>
-        <div>
-          <Label htmlFor="discount">Discount</Label>
-          <Input
-            id="discount"
-            name="discount"
-            type="number"
-            min={0}
-            step={0.01}
-            inputMode="decimal"
-            value={form.discount}
-            onChange={(e) => update("discount", e.target.value)}
-            disabled={!canEdit}
-          />
-        </div>
+      <div>
+        <Label htmlFor="items">Products</Label>
+        <OrderItemsEditor
+          products={activeProducts}
+          initialLines={initialLines}
+          shippingFee={Number(form.shipping_fee) || 0}
+          disabled={!canEdit}
+          onLinesChange={setLines}
+        />
+        {missing.includes("product_id") && <FieldError>At least one product is required.</FieldError>}
       </div>
 
       <div className="grid grid-cols-2 gap-4">
