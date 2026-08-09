@@ -1,6 +1,12 @@
 import { Download } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { LeadImportClient } from "@/components/LeadImportClient";
+import { LEAD_IMPORT_HEADERS, LEAD_IMPORT_FORBIDDEN_HEADERS } from "@/lib/validation";
+
+// A few thousand rows is one long write, and Vercel's default cuts a function
+// off well before the work is done — which showed up as an import that never
+// reported anything at all. 60s is the ceiling on this plan.
+export const maxDuration = 60;
 
 export default async function LeadImportPage() {
   return (
@@ -10,10 +16,14 @@ export default async function LeadImportPage() {
         <CardContent className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium text-slate-800">1. Download the official template</p>
+            {/* Listed from the constants the template and the parser share,
+                so this can never describe a file the importer would reject. */}
             <p className="text-sm text-slate-500">
-              Headers must match exactly: Agent, Customer Name, Phone Number, Purok, Barangay, City, Province,
-              Landmark, Previous Order Date, Previous Order Product, Previous Order Amount. The file must not
-              contain Order Number, Order Date, New Product Order, Unit Price, or Status columns.
+              Headers must match exactly: {LEAD_IMPORT_HEADERS.join(", ")}. The file must not contain{" "}
+              {LEAD_IMPORT_FORBIDDEN_HEADERS.join(", ")} columns.
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              Around 1,000 rows per file imports comfortably. Split a bigger list into several files.
             </p>
           </div>
           <a

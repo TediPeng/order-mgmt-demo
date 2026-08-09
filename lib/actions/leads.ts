@@ -20,6 +20,8 @@ import {
   pipelineBlockReason,
   computeOrderDate,
   findPreviousOrderInfo,
+  buildPreviousOrderIndex,
+  previousOrderFor,
   fulfillmentOverrideBlockReason,
   lockedEditBlockReason,
 } from "@/lib/lead-workflow";
@@ -934,6 +936,14 @@ export async function importLeadsAction(
   const seenInFile = new Set<string>();
   const results: LeadImportRowResult[] = [];
   const now = nowIso();
+  // Built once. Doing this per row walked every order for every line of the
+  // file, against an array the loop was growing — quadratic, and the reason a
+  // two-thousand-row import ran past the function timeout with the page still
+  // saying "Importing…".
+  const previousIndex = buildPreviousOrderIndex(db);
+  const t0 = Date.now();
+  // Same reasoning: matchAgentByCallName scans the profile list per row.
+  const agentCache = new Map<string, Profile | null>();
 
   for (const { row, data: raw } of rawRows) {
     const agentName = String(raw.agent_name ?? "").trim();
@@ -970,7 +980,11 @@ export async function importLeadsAction(
       results.push({ row, category: "duplicate", reason: "Identical to an existing lead or another row in this file", data: raw });
       continue;
     }
-    const match = matchAgentByCallName(agentName, db.profiles);
+    let match = agentCache.get(agentName);
+    if (match === undefined) {
+      match = matchAgentByCallName(agentName, db.profiles) || null;
+      agentCache.set(agentName, match);
+    }
     if (!match || !allowedIds.has(match.id)) {
       results.push({
         row,
@@ -991,7 +1005,7 @@ export async function importLeadsAction(
       data.previous_order_amount != null ||
       data.previous_order_note ||
       data.previous_order_status;
-    const previousInfo = hasProvidedPreviousInfo ? null : findPreviousOrderInfo(db, data.customer_phone);
+    const previousInfo = hasProvidedPreviousInfo ? null : previousOrderFor(previousIndex, data.customer_phone);
 
     const order: Order = {
       id: uuid(),
@@ -1062,6 +1076,10 @@ export async function importLeadsAction(
     },
     { module: "orders", ...info }
   );
+  const tLoop = Date.now();
   await writeDb(db);
+  console.log(
+    `[import] rows=${rawRows.length} loop=${tLoop - t0}ms write=${Date.now() - tLoop}ms total=${Date.now() - t0}ms`
+  );
   return summary;
 }

@@ -433,10 +433,19 @@ async function selectAll(table: string, orderBy = "id"): Promise<{ data: Row[]; 
   }
 }
 
+/** One upsert carrying every row was the whole cost of a large import: 2,400
+ * orders of ~50 columns is a multi-megabyte request body and a single enormous
+ * statement, measured at 67 SECONDS against 35ms for all the work around it.
+ * Vercel cuts the function off long before that, which is why an import of a
+ * few thousand rows reported nothing at all. In chunks it is seconds. */
+const UPSERT_CHUNK = 500;
+
 async function upsertTable(table: string, rows: Row[], idKey = "id"): Promise<void> {
-  if (rows.length === 0) return;
-  const { error } = await supabaseAdmin.from(table).upsert(rows, { onConflict: idKey });
-  if (error) throw new Error(`Supabase upsert failed for ${table}: ${error.message}`);
+  for (let i = 0; i < rows.length; i += UPSERT_CHUNK) {
+    const chunk = rows.slice(i, i + UPSERT_CHUNK);
+    const { error } = await supabaseAdmin.from(table).upsert(chunk, { onConflict: idKey });
+    if (error) throw new Error(`Supabase upsert failed for ${table}: ${error.message}`);
+  }
 }
 
 // deleteRemoved() used to live here: a delete-by-exclusion that removed every

@@ -119,9 +119,20 @@ export function LeadImportClient() {
 
   function handleConfirm() {
     if (!rawRows) return;
+    setFileError(null);
     startTransition(async () => {
-      const result = await importLeadsAction(rawRows, fileName || "import.xlsx");
-      setSummary(result);
+      try {
+        setSummary(await importLeadsAction(rawRows, fileName || "import.xlsx"));
+      } catch {
+        // Without this the button simply stayed on "Importing…" forever: a
+        // server action that throws (a timeout on a very large file, a dropped
+        // connection) rejects the promise and nothing renders. Silence reads
+        // as "still working", which is the one thing it is not.
+        setFileError(
+          "The import did not finish — nothing was saved. This usually means the file is too large to process in one go; " +
+            "try splitting it into smaller files (about 1,000 rows each) and uploading them one after another."
+        );
+      }
     });
   }
 

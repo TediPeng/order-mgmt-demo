@@ -158,23 +158,68 @@ export function computeOrderDate(order: Pick<Order, "order_date">, newStatus: Or
  *
  * The note carried across is that order's own Notes, which is where an agent
  * records what the customer asked for or agreed to. */
-export function findPreviousOrderInfo(
-  db: DbShape,
-  phone: string
-): { date: string; product: string; amount: number; note: string; status: string } | null {
-  const target = normalizePhone(phone);
-  if (!target) return null;
-  const candidates = db.orders.filter((o) => o.order_date && normalizePhone(o.customer_phone) === target);
-  if (candidates.length === 0) return null;
-  candidates.sort((a, b) => (b.order_date as string).localeCompare(a.order_date as string));
-  const best = candidates[0];
+export interface PreviousOrderInfo {
+  date: string;
+  product: string;
+  amount: number;
+  note: string;
+  /** Where that order ended up — delivered, returned, cancelled and so on. */
+  status: string;
+}
+
+function describePrevious(db: DbShape, best: Order): PreviousOrderInfo {
   const product = best.product_id ? db.products.find((p) => p.id === best.product_id)?.name : best.product_name;
   return {
     date: best.order_date as string,
     product: product || best.product_name || "",
     amount: best.total_amount,
     note: best.notes || "",
-    // Where that order ended up — delivered, returned, cancelled and so on.
     status: best.status,
   };
+}
+
+export function findPreviousOrderInfo(db: DbShape, phone: string): PreviousOrderInfo | null {
+  const target = normalizePhone(phone);
+  if (!target) return null;
+  let best: Order | null = null;
+  for (const o of db.orders) {
+    if (!o.order_date || normalizePhone(o.customer_phone) !== target) continue;
+    if (!best || (o.order_date as string) > (best.order_date as string)) best = o;
+  }
+  return best ? describePrevious(db, best) : null;
+}
+
+/**
+ * The same answer for every phone number at once.
+ *
+ * findPreviousOrderInfo() walks all orders per call, which one lead form can
+ * afford and a two-thousand-row import cannot: called per row against an array
+ * that the import is itself growing, it is quadratic, and an import that used
+ * to take a few seconds took minutes and then died on the function timeout
+ * with the page still saying "Importing…".
+ *
+ * Built once before the loop. Rows created BY the import never belong in it
+ * anyway — they have no order_date until they reach Packaging — so a snapshot
+ * taken up front is not merely a shortcut, it is the same result.
+ */
+export function buildPreviousOrderIndex(db: DbShape): Map<string, PreviousOrderInfo> {
+  const bestByPhone = new Map<string, Order>();
+  for (const o of db.orders) {
+    if (!o.order_date) continue;
+    const phone = normalizePhone(o.customer_phone);
+    if (!phone) continue;
+    const current = bestByPhone.get(phone);
+    if (!current || (o.order_date as string) > (current.order_date as string)) bestByPhone.set(phone, o);
+  }
+
+  const index = new Map<string, PreviousOrderInfo>();
+  for (const [phone, best] of bestByPhone) index.set(phone, describePrevious(db, best));
+  return index;
+}
+
+/** Lookup against the index above, with the same normalisation as the walk. */
+export function previousOrderFor(index: Map<string, PreviousOrderInfo>, phone: string): PreviousOrderInfo | null {
+  const target = normalizePhone(phone);
+  if (!target) return null;
+  return index.get(target) || null;
 }
