@@ -27,6 +27,7 @@ const FIELD_KEYS = [
   // Order matters: these keys are matched to the template's columns by
   // position, so this list and LEAD_IMPORT_HEADERS must stay in step.
   "previous_order_note",
+  "previous_order_status",
 ] as const;
 
 const CATEGORY_LABELS: Record<string, string> = {

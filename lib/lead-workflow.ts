@@ -161,7 +161,7 @@ export function computeOrderDate(order: Pick<Order, "order_date">, newStatus: Or
 export function findPreviousOrderInfo(
   db: DbShape,
   phone: string
-): { date: string; product: string; amount: number; note: string } | null {
+): { date: string; product: string; amount: number; note: string; status: string } | null {
   const target = normalizePhone(phone);
   if (!target) return null;
   const candidates = db.orders.filter((o) => o.order_date && normalizePhone(o.customer_phone) === target);
@@ -174,5 +174,7 @@ export function findPreviousOrderInfo(
     product: product || best.product_name || "",
     amount: best.total_amount,
     note: best.notes || "",
+    // Where that order ended up — delivered, returned, cancelled and so on.
+    status: best.status,
   };
 }

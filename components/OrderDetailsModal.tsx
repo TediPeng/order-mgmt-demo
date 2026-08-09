@@ -10,7 +10,7 @@ import { OrderItemsEditor, type EditorLine } from "@/components/OrderItemsEditor
 import { summarizeItems, totalsFor } from "@/lib/order-totals";
 import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { cn, formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
-import { LEAD_STATUS_LABELS, PAYMENT_METHOD_SUGGESTIONS, selectableStatuses } from "@/lib/validation";
+import { LEAD_STATUS_LABELS, LEAD_STATUSES, PAYMENT_METHOD_SUGGESTIONS, selectableStatuses } from "@/lib/validation";
 import { isOrderLocked, SYNCED_LOCK_MESSAGE } from "@/lib/lead-workflow";
 import { useCallSession } from "@/components/CallSessionProvider";
 import { displayOrderId, isPendingOrderId, PANCAKE_SYNC_SOURCE_LABELS, type PancakeSyncSource } from "@/lib/types";
@@ -76,6 +76,12 @@ function snapshotFrom(order: Order): EditForm {
   };
 }
 
+/** Previous Status is a text column (an import may name a status this system
+ * does not have), so anything rendered as a badge has to be checked first. */
+function isKnownStatus(value: string | null): value is OrderStatus {
+  return !!value && (LEAD_STATUSES as readonly string[]).includes(value);
+}
+
 function buildRawFromOrder(o: Order, overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     customer_name: o.customer_name,
@@ -92,6 +98,7 @@ function buildRawFromOrder(o: Order, overrides: Record<string, unknown> = {}): R
     previous_order_product: o.previous_order_product || "",
     previous_order_amount: o.previous_order_amount,
     previous_order_note: o.previous_order_note || "",
+    previous_order_status: o.previous_order_status || "",
     product_id: o.product_id || "",
     unit_price: o.unit_price,
     status: o.status,
@@ -767,6 +774,18 @@ export function OrderDetailsModal({
               <p className="text-slate-700">
                 {order.previous_order_amount != null ? formatCurrency(order.previous_order_amount) : "—"}
               </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase text-slate-400">Previous Status</p>
+              {/* The column is text, so it can hold a status an import file
+                  named that this system does not have. Badge the ones we know
+                  and print the rest as-is — StatusBadge would throw on a key
+                  that has no style. */}
+              {isKnownStatus(order.previous_order_status) ? (
+                <StatusBadge status={order.previous_order_status as OrderStatus} />
+              ) : (
+                <p className="text-slate-700">{order.previous_order_status || "—"}</p>
+              )}
             </div>
             {/* Full width: a note is a sentence, not a value, and wrapping it
                 into a third-of-a-row column made it unreadable. */}

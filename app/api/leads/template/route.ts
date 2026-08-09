@@ -18,9 +18,10 @@ export async function GET() {
       "Manila",
       "Metro Manila",
       "Near the sari-sari store",
-      // Previous Order Date / Product / Amount / Note — all optional. Left
-      // blank in the sample: the system fills them from the customer's last
-      // packaged order when the file does not.
+      // Previous Order Date / Product / Amount / Note / Status — all optional.
+      // Left blank in the sample: the system fills them from the customer's
+      // last packaged order when the file does not.
+      "",
       "",
       "",
       "",

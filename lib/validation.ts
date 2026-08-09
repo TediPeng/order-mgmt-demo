@@ -226,6 +226,7 @@ export const leadFormSchema = z.object({
   previous_order_product: z.string().trim().optional().default(""),
   previous_order_amount: z.coerce.number().nonnegative().optional().nullable(),
   previous_order_note: z.string().trim().optional().default(""),
+  previous_order_status: z.string().trim().optional().default(""),
   product_id: z.string().trim().optional().default(""),
   // Section 0.6: back on the agent form, so it is part of the schema rather than
   // being read straight off the raw body.
@@ -335,7 +336,26 @@ export const leadImportRowSchema = z.object({
   previous_order_product: textCell,
   previous_order_amount: numberCell,
   previous_order_note: textCell,
+  previous_order_status: textCell,
 });
+
+/** Turns whatever a spreadsheet says a previous status was into our own key.
+ *
+ * "Delivered", "delivered" and "DELIVERED" all mean the same thing to the
+ * person filling in the file, so all three resolve to `delivered`. Anything we
+ * do not recognise is kept verbatim rather than rejected: the column is
+ * informational, and refusing the row over a wording difference would cost the
+ * uploader a lead to gain nothing. */
+export function normalizePreviousStatus(raw: string): string {
+  const value = raw.trim();
+  if (!value) return "";
+  const key = value.toLowerCase().replace(/\s+/g, "_");
+  if ((LEAD_STATUSES as readonly string[]).includes(key)) return key;
+  const byLabel = (LEAD_STATUSES as readonly string[]).find(
+    (s) => LEAD_STATUS_LABELS[s as (typeof LEAD_STATUSES)[number]].toLowerCase() === value.toLowerCase()
+  );
+  return byLabel || value;
+}
 
 export const LEAD_IMPORT_HEADERS = [
   "Agent",
@@ -350,6 +370,7 @@ export const LEAD_IMPORT_HEADERS = [
   "Previous Order Product",
   "Previous Order Amount",
   "Previous Note",
+  "Previous Status",
 ];
 
 // Columns the template must NOT contain — they're generated/completed inside

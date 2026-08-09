@@ -60,6 +60,7 @@ export async function GET(req: NextRequest) {
     "Previous Order Product",
     "Previous Order Amount",
     "Previous Note",
+    "Previous Status",
     "New Product Order",
     "Unit Price",
     "Total",
@@ -81,6 +82,11 @@ export async function GET(req: NextRequest) {
     o.previous_order_product || "",
     o.previous_order_amount != null ? formatCurrency(o.previous_order_amount) : "",
     o.previous_order_note || "",
+    // Labelled when it is a status we know, verbatim when an import brought in
+    // one we do not.
+    o.previous_order_status
+      ? LEAD_STATUS_LABELS[o.previous_order_status as keyof typeof LEAD_STATUS_LABELS] || o.previous_order_status
+      : "",
     o.product_name || "",
     o.unit_price != null ? formatCurrency(o.unit_price) : "",
     formatCurrency(o.total_amount),

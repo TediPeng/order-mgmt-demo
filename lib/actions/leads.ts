@@ -9,7 +9,7 @@ import { getActiveSessionForOrder, endSession } from "@/lib/call-sessions";
 import { isFullAccess } from "@/lib/permissions";
 import { requireUser, requirePermission, requireAdministrator } from "./guards";
 import { describeParseFailure } from "@/lib/zod-error";
-import { leadFormSchema, leadImportRowSchema, parseOrderItemFields, type OrderItemFields, PACKAGING_STATUS, PRE_SALE_STATUSES } from "@/lib/validation";
+import { leadFormSchema, leadImportRowSchema, normalizePreviousStatus, parseOrderItemFields, type OrderItemFields, PACKAGING_STATUS, PRE_SALE_STATUSES } from "@/lib/validation";
 import { listItems, replaceItems, summarizeItems, totalsFor } from "@/lib/order-items";
 import type { OrderItemInput } from "@/lib/types";
 import { matchAgentByCallName } from "@/lib/agent-match";
@@ -57,6 +57,7 @@ function buildLeadFieldErrors(formData: FormData): Record<string, unknown> {
     previous_order_product: field("previous_order_product"),
     previous_order_amount: numeric("previous_order_amount"),
     previous_order_note: field("previous_order_note"),
+    previous_order_status: field("previous_order_status"),
     product_id: field("product_id"),
     quantity: field("quantity"),
     unit_price: numeric("unit_price"),
@@ -164,7 +165,11 @@ export async function createLeadAction(formData: FormData) {
   }
 
   const hasProvidedPreviousInfo =
-    data.previous_order_date || data.previous_order_product || data.previous_order_amount != null || data.previous_order_note;
+    data.previous_order_date ||
+    data.previous_order_product ||
+    data.previous_order_amount != null ||
+    data.previous_order_note ||
+    data.previous_order_status;
   const previousInfo = hasProvidedPreviousInfo ? null : findPreviousOrderInfo(db, data.customer_phone || "");
 
   const order: Order = {
@@ -181,6 +186,7 @@ export async function createLeadAction(formData: FormData) {
     previous_order_product: data.previous_order_product || previousInfo?.product || null,
     previous_order_amount: data.previous_order_amount ?? previousInfo?.amount ?? null,
     previous_order_note: data.previous_order_note || previousInfo?.note || null,
+    previous_order_status: normalizePreviousStatus(data.previous_order_status) || previousInfo?.status || null,
     // These stay on the order as its summary, so lists, dashboards, exports
     // and the Pancake payload keep reading one row per order. With lines they
     // are derived; with none they fall back to what the form posted, which is
@@ -371,6 +377,7 @@ export async function applyLeadUpdate(
     raw.previous_order_product = order.previous_order_product || "";
     raw.previous_order_amount = order.previous_order_amount ?? null;
     raw.previous_order_note = order.previous_order_note || "";
+    raw.previous_order_status = order.previous_order_status || "";
   }
 
   const parsed = leadFormSchema.safeParse(raw);
@@ -515,6 +522,7 @@ export async function applyLeadUpdate(
   order.previous_order_product = data.previous_order_product || null;
   order.previous_order_amount = data.previous_order_amount ?? null;
   order.previous_order_note = data.previous_order_note || null;
+  order.previous_order_status = normalizePreviousStatus(data.previous_order_status) || null;
   // Clear product_name only on an explicit un-select (product_id was set and is
   // now blank); if product_id was already empty (a legacy free-text row) and
   // stays empty, leave the display text alone -- otherwise any save that
@@ -974,10 +982,15 @@ export async function importLeadsAction(
     }
 
     seenInFile.add(key);
-    // Previous Note is deliberately absent from leadDedupeKey above: two rows
-    // that differ only in what was noted are still the same lead typed twice.
+    // Previous Note and Previous Status are deliberately absent from
+    // leadDedupeKey above: two rows that differ only in what was noted, or in
+    // how the last order ended, are still the same lead typed twice.
     const hasProvidedPreviousInfo =
-      data.previous_order_date || data.previous_order_product || data.previous_order_amount != null || data.previous_order_note;
+      data.previous_order_date ||
+      data.previous_order_product ||
+      data.previous_order_amount != null ||
+      data.previous_order_note ||
+      data.previous_order_status;
     const previousInfo = hasProvidedPreviousInfo ? null : findPreviousOrderInfo(db, data.customer_phone);
 
     const order: Order = {
@@ -994,6 +1007,7 @@ export async function importLeadsAction(
       previous_order_product: data.previous_order_product || previousInfo?.product || null,
       previous_order_amount: data.previous_order_amount ?? previousInfo?.amount ?? null,
       previous_order_note: data.previous_order_note || previousInfo?.note || null,
+      previous_order_status: normalizePreviousStatus(data.previous_order_status) || previousInfo?.status || null,
       product_id: null,
       product_name: "",
       quantity: 1,

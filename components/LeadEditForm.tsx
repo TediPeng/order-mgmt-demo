@@ -6,7 +6,7 @@ import { Button, LinkButton } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { OrderItemsEditor, type EditorLine, type EditorProduct } from "@/components/OrderItemsEditor";
 import { AddressSelect } from "@/components/AddressSelect";
-import { LEAD_STATUS_LABELS, PAYMENT_METHOD_SUGGESTIONS, selectableStatuses } from "@/lib/validation";
+import { LEAD_STATUS_LABELS, LEAD_STATUSES, PAYMENT_METHOD_SUGGESTIONS, selectableStatuses } from "@/lib/validation";
 import type { Order, Profile } from "@/lib/types";
 
 interface FormState {
@@ -25,6 +25,7 @@ interface FormState {
   previous_order_product: string;
   previous_order_amount: string;
   previous_order_note: string;
+  previous_order_status: string;
   product_id: string;
   unit_price: string;
   discount: string;
@@ -54,6 +55,7 @@ function snapshotFrom(order: Order): FormState {
     previous_order_product: order.previous_order_product || "",
     previous_order_amount: order.previous_order_amount != null ? String(order.previous_order_amount) : "",
     previous_order_note: order.previous_order_note || "",
+    previous_order_status: order.previous_order_status || "",
     product_id: order.product_id || "",
     unit_price: order.unit_price != null ? String(order.unit_price) : "",
     discount: order.discount ? String(order.discount) : "",
@@ -276,6 +278,30 @@ export function LeadEditForm({
           />
         </div>
       </div>
+      <div>
+        <Label htmlFor="previous_order_status">Previous status</Label>
+        <Select
+          id="previous_order_status"
+          name="previous_order_status"
+          value={form.previous_order_status}
+          onChange={(e) => update("previous_order_status", e.target.value)}
+          disabled={!canSeePreviousOrderFields}
+        >
+          <option value="">—</option>
+          {/* A value an import brought in that is not one of ours would
+              otherwise vanish the moment this form is saved. */}
+          {form.previous_order_status &&
+            !(LEAD_STATUSES as readonly string[]).includes(form.previous_order_status) && (
+              <option value={form.previous_order_status}>{form.previous_order_status}</option>
+            )}
+          {LEAD_STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {LEAD_STATUS_LABELS[s]}
+            </option>
+          ))}
+        </Select>
+      </div>
+
       <div>
         <Label htmlFor="previous_order_note">Previous note</Label>
         <Textarea

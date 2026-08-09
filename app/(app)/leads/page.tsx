@@ -207,6 +207,7 @@ export default async function LeadsPage({
   // Tagging creates a regular customer, so it takes the create grant — not
   // merely being able to see the Regular Customers list.
   const canTagRegular = can(user.role, "regular_customers", "create", db.role_permissions);
+  const canViewRegularCustomers = can(user.role, "regular_customers", "view", db.role_permissions);
 
   // Duplicate warnings are computed for Management/Team Lead only. Agents are
   // never given them: the detector spans every agent's customers by design, so
@@ -288,9 +289,16 @@ export default async function LeadsPage({
             canBreak={!!ownAttendance?.time_in && !ownAttendance.time_out}
             redirectTo="/leads"
           />
-          {/* Adds a LEAD. The Add Regular Customer button lives on
-              /regular-customers, because it is a different act. */}
-          <LinkButton href="/leads/new">New Lead</LinkButton>
+          {/* The primary action here is now ordering for someone the agent
+              already keeps: pick them by phone number, then the order form
+              opens on their saved details. A role that cannot see Regular
+              Customers keeps the plain New Lead button, so it is never left
+              with no way to create anything. */}
+          {canViewRegularCustomers ? (
+            <LinkButton href="/regular-customers/order">Create Order from Regular Customer</LinkButton>
+          ) : (
+            <LinkButton href="/leads/new">New Lead</LinkButton>
+          )}
         </div>
       </div>
 

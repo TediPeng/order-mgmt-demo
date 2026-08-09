@@ -168,6 +168,11 @@ export interface Order {
   // notes when the form or import file does not supply it, same as the three
   // fields above.
   previous_order_note: string | null;
+  // How that order ended. Held as text rather than the order_status enum: an
+  // imported file may name a status this system does not have, and keeping the
+  // row is worth more than enforcing the vocabulary. Rendered through
+  // LEAD_STATUS_LABELS when it is one we know.
+  previous_order_status: string | null;
   product_id: string | null; // source of truth for the selected product going forward
   product_name: string; // denormalized display text (legacy free-text for old rows)
   variant: string | null; // selected variant, when the product defines any
