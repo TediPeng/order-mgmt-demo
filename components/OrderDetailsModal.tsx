@@ -6,7 +6,8 @@ import { Check, ChevronDown, ChevronRight, Copy, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
-import { ProductCombobox } from "@/components/ProductCombobox";
+import { OrderItemsEditor, type EditorLine } from "@/components/OrderItemsEditor";
+import { summarizeItems, totalsFor } from "@/lib/order-items";
 import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { cn, formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import { LEAD_STATUS_LABELS, PAYMENT_METHOD_SUGGESTIONS, selectableStatuses } from "@/lib/validation";
@@ -18,7 +19,7 @@ import { CallingPanel } from "@/components/CallingPanel";
 import { CallHistory } from "@/components/CallHistory";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { tagRegularCustomerAction } from "@/lib/actions/regular-customers";
-import { computeOrderTotal, validateForPancake as computePancakeCheck } from "@/lib/pancake/validate";
+import { validateForPancake as computePancakeCheck } from "@/lib/pancake/validate";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 import type { CallSession, Order, OrderStatus } from "@/lib/types";
 
@@ -132,6 +133,7 @@ export function OrderDetailsModal({
   productName,
   latestStatusUpdate,
   activeProducts,
+  initialLines,
   canEdit,
   canManageIntegrations = false,
   canSeeFulfillment = false,
@@ -149,7 +151,17 @@ export function OrderDetailsModal({
   agentName: string;
   productName: string;
   latestStatusUpdate: { status: OrderStatus; at: string } | null;
-  activeProducts: { id: string; name: string; code: string | null; variants?: string[] | null }[];
+  activeProducts: {
+    id: string;
+    name: string;
+    code: string | null;
+    variants: string[] | null;
+    selling_price: number | null;
+    pancake_variation_id: string | null;
+  }[];
+  /** The order's existing lines, so opening Edit starts from what is on the
+   * order rather than a blank row. */
+  initialLines: EditorLine[];
   canEdit: boolean;
   canManageIntegrations?: boolean;
   /** Fulfillment/Pancake surface is hidden from agents entirely. */
@@ -175,6 +187,7 @@ export function OrderDetailsModal({
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const initial = useMemo(() => snapshotFrom(order), [order]);
   const [form, setForm] = useState<EditForm>(initial);
+  const [lines, setLines] = useState<EditorLine[]>(initialLines);
   const [statusDraft, setStatusDraft] = useState<string>(order.status);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -269,22 +282,39 @@ export function OrderDetailsModal({
     setForm((f) => ({ ...f, [key]: value }));
   }
 
-  // --- Live order economics (mirrors the server's computeOrderTotal) --------
-  const draftQuantity = Number(form.quantity) || 0;
-  const draftUnitPrice = form.unit_price.trim() === "" ? 0 : Number(form.unit_price) || 0;
-  const draftDiscount = form.discount.trim() === "" ? 0 : Number(form.discount) || 0;
+  // --- Live order economics ------------------------------------------------
+  // Derived from the lines now, using the same arithmetic the server applies
+  // when it stores them, so the figures shown here and the figures saved
+  // cannot disagree.
   const draftShipping = form.shipping_fee.trim() === "" ? 0 : Number(form.shipping_fee) || 0;
-  const lineTotal = draftUnitPrice * draftQuantity;
-  const grandTotal = computeOrderTotal({
-    unit_price: form.unit_price.trim() === "" ? null : draftUnitPrice,
-    quantity: draftQuantity,
-    discount: draftDiscount,
-    shipping_fee: form.shipping_fee.trim() === "" ? null : draftShipping,
-  });
+  const draftLines = lines.filter((line) => line.product_id);
+  const draftTotals = totalsFor(
+    draftLines.map((line) => ({
+      quantity: Number(line.quantity) || 0,
+      unit_price: Number(line.unit_price) || 0,
+      discount: Number(line.discount) || 0,
+    })),
+    draftShipping
+  );
+  const draftQuantity = draftTotals.quantity;
+  const draftDiscount = draftTotals.discount;
+  const lineTotal = draftTotals.subtotal + draftTotals.discount;
+  const grandTotal = draftTotals.total;
+  // The first priced line stands in for the order wherever a single figure is
+  // still wanted — the Pancake pre-check below asks for one unit price.
+  const draftUnitPrice = Number(draftLines[0]?.unit_price) || 0;
 
-  // Review step: exactly what the server will check before sending.
+  // Review step: exactly what the server will check before sending. With
+  // several lines the check still asks for one product name, so it gets the
+  // same summary the order itself will carry.
   const selectedProductName =
-    activeProducts.find((p) => p.id === form.product_id)?.name || (form.product_id ? productName : "");
+    draftLines.length === 0
+      ? ""
+      : summarizeItems(
+          draftLines.map((line) => ({
+            product_name: activeProducts.find((p) => p.id === line.product_id)?.name || line.product_name,
+          }))
+        );
   const pancakeCheck = computePancakeCheck({
     customer_name: form.customer_name,
     customer_phone: form.customer_phone,
@@ -351,11 +381,16 @@ export function OrderDetailsModal({
         pancake_district_id: form.pancake_district_id,
         pancake_commune_id: form.pancake_commune_id,
         landmark: form.landmark,
-        product_id: form.product_id,
-        variant: form.variant,
-        quantity: form.quantity.trim() === "" ? undefined : Number(form.quantity),
-        unit_price: form.unit_price.trim() === "" ? null : Number(form.unit_price),
-        discount: form.discount.trim() === "" ? 0 : Number(form.discount),
+        // The products travel as lines. Only the Edit flow sends them; Update
+        // Status deliberately does not, so changing a status leaves an order's
+        // products exactly as they were.
+        items: draftLines.map((line) => ({
+          product_id: line.product_id,
+          variant: line.variant,
+          quantity: Number(line.quantity) || 1,
+          unit_price: Number(line.unit_price) || 0,
+          discount: Number(line.discount) || 0,
+        })),
         shipping_fee: form.shipping_fee.trim() === "" ? null : Number(form.shipping_fee),
         courier: form.courier,
         payment_method: form.payment_method,
@@ -389,8 +424,6 @@ export function OrderDetailsModal({
   }
 
   const style = LEAD_STATUS_STYLES[order.status];
-  // Variants the selected product defines, if any; otherwise the field is free text.
-  const productVariants = activeProducts.find((p) => p.id === form.product_id)?.variants || [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={requestClose}>
@@ -580,55 +613,18 @@ export function OrderDetailsModal({
 
               {step === 2 && (
                 <div className="space-y-3">
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="col-span-2">
-                      <Label htmlFor="m_product_id">Product</Label>
-                      <ProductCombobox
-                        name="product_id"
-                        products={activeProducts}
-                        defaultValue={form.product_id}
-                        defaultLabel={productName}
-                        onChange={(id) => update("product_id", id)}
-                      />
-                    </div>
-                    {canSeeFulfillment && (
-                    <div>
-                      <Label htmlFor="m_variant">Variant</Label>
-                      {productVariants.length > 0 ? (
-                        <Select id="m_variant" value={form.variant} onChange={(e) => update("variant", e.target.value)}>
-                          <option value="">— none —</option>
-                          {productVariants.map((v) => (
-                            <option key={v} value={v}>
-                              {v}
-                            </option>
-                          ))}
-                        </Select>
-                      ) : (
-                        <Input
-                          id="m_variant"
-                          value={form.variant}
-                          onChange={(e) => update("variant", e.target.value)}
-                          placeholder="Optional"
-                        />
-                      )}
-                    </div>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <Label htmlFor="m_quantity">Quantity</Label>
-                      <Input id="m_quantity" type="number" min={1} step={1} value={form.quantity} onChange={(e) => update("quantity", e.target.value)} />
-                    </div>
-                    <div>
-                      <Label htmlFor="m_unit_price">Unit Price</Label>
-                      <Input id="m_unit_price" type="number" min={0} step={0.01} value={form.unit_price} onChange={(e) => update("unit_price", e.target.value)} />
-                    </div>
-                    {canSeeFulfillment && (
-                    <div>
-                      <Label htmlFor="m_discount">Discount</Label>
-                      <Input id="m_discount" type="number" min={0} step={0.01} value={form.discount} onChange={(e) => update("discount", e.target.value)} />
-                    </div>
-                    )}
+                  <div>
+                    <Label htmlFor="m_items">Products</Label>
+                    {/* The editor posts nothing itself here — this modal sends
+                        JSON, so `lines` is what travels in the body. Its inputs
+                        still carry names, which is harmless: they are not
+                        inside a form element. */}
+                    <OrderItemsEditor
+                      products={activeProducts}
+                      initialLines={initialLines}
+                      shippingFee={draftShipping}
+                      onLinesChange={setLines}
+                    />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     {canSeeFulfillment && (

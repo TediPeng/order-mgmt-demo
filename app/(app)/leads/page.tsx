@@ -4,6 +4,7 @@ import { latestStatusChangeByOrder } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { scopeOrders, allowedAssigneeIds } from "@/lib/order-access";
+import { listItemsFor } from "@/lib/order-items";
 import { normalizePhone, isValidPhoneQuery, canonicalPhone, todayInTz } from "@/lib/utils";
 import { BreakControls } from "@/components/BreakControls";
 import { getActiveBioBreak } from "@/lib/bio-breaks";
@@ -162,7 +163,33 @@ export default async function LeadsPage({
   const careStaffById = Object.fromEntries(db.profiles.map((p) => [p.id, { name: p.full_name, email: p.email }]));
   const activeProducts = db.products
     .filter((p) => p.status === "active")
-    .map((p) => ({ id: p.id, name: p.name, code: p.code, variants: p.variants }));
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      code: p.code,
+      variants: p.variants,
+      selling_price: p.selling_price,
+      pancake_variation_id: p.pancake_variation_id,
+    }));
+
+  // Lines for the page's orders in one query, not one per row — the modal
+  // opens on whichever order is clicked, and fetching per order would mean a
+  // round trip on every open.
+  const itemsByOrder = await listItemsFor(pageOrders.map((o) => o.id));
+  const linesByOrder = Object.fromEntries(
+    pageOrders.map((o) => [
+      o.id,
+      (itemsByOrder.get(o.id) || []).map((item) => ({
+        product_id: item.product_id || "",
+        product_name: item.product_name,
+        variant: item.variant || "",
+        quantity: String(item.quantity),
+        // Empty stays empty rather than becoming a zero someone has to clear.
+        unit_price: item.unit_price ? String(item.unit_price) : "",
+        discount: item.discount ? String(item.discount) : "",
+      })),
+    ])
+  );
   const productNameByOrderId = Object.fromEntries(
     pageOrders.map((o) => [o.id, o.product_id ? db.products.find((p) => p.id === o.product_id)?.name || o.product_name : o.product_name])
   );
@@ -381,6 +408,7 @@ export default async function LeadsPage({
           careStaffById={careStaffById}
           productNameByOrderId={productNameByOrderId}
           activeProducts={activeProducts}
+          linesByOrder={linesByOrder}
           canEdit={canEdit}
           canTagRegular={canTagRegular}
           callSessionsByOrderId={callSessionsByOrderId}
@@ -395,6 +423,7 @@ export default async function LeadsPage({
         productNameByOrderId={productNameByOrderId}
         latestStatusUpdateByOrderId={latestStatusUpdateByOrderId}
         activeProducts={activeProducts}
+        linesByOrder={linesByOrder}
         canEdit={canEdit}
         canManageIntegrations={canManageIntegrations}
         canSetFulfillmentStatus={isFullAccess(user.role)}

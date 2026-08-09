@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { StatusBadge, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { OrderDetailsModal } from "@/components/OrderDetailsModal";
+import type { EditorLine } from "@/components/OrderItemsEditor";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import type { CallSession, Order } from "@/lib/types";
 import { displayOrderId, isPendingOrderId } from "@/lib/types";
@@ -59,6 +60,7 @@ export function AgentLeadsTable({
   careStaffById,
   productNameByOrderId,
   activeProducts,
+  linesByOrder,
   canEdit,
   canTagRegular = false,
   callSessionsByOrderId = {},
@@ -68,7 +70,17 @@ export function AgentLeadsTable({
   orders: Order[];
   careStaffById: Record<string, CareStaff>;
   productNameByOrderId: Record<string, string>;
-  activeProducts: { id: string; name: string; code: string | null }[];
+  activeProducts: {
+    id: string;
+    name: string;
+    code: string | null;
+    variants: string[] | null;
+    selling_price: number | null;
+    pancake_variation_id: string | null;
+  }[];
+  /** Existing lines per order id, fetched in one query by the page so the
+   * modal opens on the order as it stands rather than a blank row. */
+  linesByOrder: Record<string, EditorLine[]>;
   canEdit: boolean;
   canTagRegular?: boolean;
   callSessionsByOrderId?: Record<string, CallSession[]>;
@@ -203,6 +215,7 @@ export function AgentLeadsTable({
           productName={productNameByOrderId[openOrder.id] || openOrder.product_name}
           latestStatusUpdate={null}
           activeProducts={activeProducts}
+          initialLines={linesByOrder[openOrder.id] ?? []}
           canEdit={canEdit}
           // Agents get no fulfillment surface and cannot set fulfillment
           // statuses; both are also refused server-side.

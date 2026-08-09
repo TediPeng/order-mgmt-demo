@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { OrderDetailsModal } from "@/components/OrderDetailsModal";
+import type { EditorLine } from "@/components/OrderItemsEditor";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 import type { CallSession, Order, OrderStatus } from "@/lib/types";
@@ -16,6 +17,7 @@ export function LeadsTable({
   productNameByOrderId,
   latestStatusUpdateByOrderId,
   activeProducts,
+  linesByOrder,
   canEdit,
   canManageIntegrations = false,
   canSetFulfillmentStatus = false,
@@ -33,7 +35,17 @@ export function LeadsTable({
   agentFullNameById: Record<string, string>;
   productNameByOrderId: Record<string, string>;
   latestStatusUpdateByOrderId: Record<string, { status: OrderStatus; at: string } | undefined>;
-  activeProducts: { id: string; name: string; code: string | null }[];
+  activeProducts: {
+    id: string;
+    name: string;
+    code: string | null;
+    variants: string[] | null;
+    selling_price: number | null;
+    pancake_variation_id: string | null;
+  }[];
+  /** Existing lines per order id, fetched in one query by the page so the
+   * modal opens on the order as it stands rather than a blank row. */
+  linesByOrder: Record<string, EditorLine[]>;
   canEdit: boolean;
   canManageIntegrations?: boolean;
   canSetFulfillmentStatus?: boolean;
@@ -159,6 +171,7 @@ export function LeadsTable({
           productName={productNameByOrderId[openOrder.id] || openOrder.product_name}
           latestStatusUpdate={latestStatusUpdateByOrderId[openOrder.id] || null}
           activeProducts={activeProducts}
+          initialLines={linesByOrder[openOrder.id] ?? []}
           canEdit={canEdit}
           canManageIntegrations={canManageIntegrations}
           canSetFulfillmentStatus={canSetFulfillmentStatus}
