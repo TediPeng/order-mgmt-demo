@@ -1,5 +1,10 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import type { OrderItem, OrderItemInput } from "@/lib/types";
+// Re-exported so server callers keep a single import, while the browser takes
+// the same arithmetic from lib/order-totals directly and never reaches this
+// module or the service-role client it holds.
+import { lineTotal } from "@/lib/order-totals";
+export { lineTotal, totalsFor, summarizeItems, type OrderTotals } from "@/lib/order-totals";
 
 /** Order line items.
  *
@@ -27,48 +32,6 @@ function map(row: Record<string, unknown>): OrderItem {
     discount: Number(row.discount ?? 0),
     line_total: Number(row.line_total ?? 0),
   };
-}
-
-/** quantity × unit price − discount, rounded to centavos. One definition,
- * used when writing a line and when totalling an order, so the parts can
- * never disagree with the whole. */
-export function lineTotal(item: { quantity: number; unit_price: number; discount: number }): number {
-  const gross = (item.unit_price || 0) * (item.quantity || 0);
-  return Math.round((gross - (item.discount || 0)) * 100) / 100;
-}
-
-export interface OrderTotals {
-  /** Units across every line — what orders.quantity carries. */
-  quantity: number;
-  /** Summed line discounts — what orders.discount carries. Agents enter
-   * discounts per line; the order-level column is their sum rather than a
-   * second figure someone types, because two competing inputs produce totals
-   * that disagree with themselves. */
-  discount: number;
-  /** Lines only, before shipping. */
-  subtotal: number;
-  /** Grand total: subtotal + shipping. Line discounts are already deducted
-   * inside each line_total. */
-  total: number;
-}
-
-export function totalsFor(items: { quantity: number; unit_price: number; discount: number }[], shippingFee: number | null): OrderTotals {
-  const subtotal = items.reduce((sum, i) => sum + lineTotal(i), 0);
-  return {
-    quantity: items.reduce((sum, i) => sum + (i.quantity || 0), 0),
-    discount: Math.round(items.reduce((sum, i) => sum + (i.discount || 0), 0) * 100) / 100,
-    subtotal: Math.round(subtotal * 100) / 100,
-    total: Math.round((subtotal + (shippingFee ?? 0)) * 100) / 100,
-  };
-}
-
-/** The summary shown wherever one order gets one line of text — lists,
- * exports, the Pancake label. Names the first product and counts the rest,
- * rather than concatenating every line into something unreadable. */
-export function summarizeItems(items: { product_name: string }[]): string {
-  if (items.length === 0) return "";
-  if (items.length === 1) return items[0].product_name;
-  return `${items[0].product_name} +${items.length - 1} more`;
 }
 
 export async function listItems(orderId: string): Promise<OrderItem[]> {
