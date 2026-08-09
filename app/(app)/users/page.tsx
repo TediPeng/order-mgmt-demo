@@ -10,6 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Field";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { toggleActiveAction, adminResetPasswordAction } from "@/lib/actions/users";
 import { CreateUserForm } from "@/components/CreateUserForm";
@@ -49,6 +51,7 @@ export default async function UsersPage({
     role?: string;
     sort?: string;
     dir?: string;
+    q?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -72,7 +75,21 @@ export default async function UsersPage({
   const showDeleted = sp.show_deleted === "1";
   const allProfiles = [...db.profiles].sort((a, b) => a.created_at.localeCompare(b.created_at));
   const deletedCount = allProfiles.filter((p) => p.is_deleted).length;
-  const visible = showDeleted ? allProfiles : allProfiles.filter((p) => !p.is_deleted);
+  const notDeleted = showDeleted ? allProfiles : allProfiles.filter((p) => !p.is_deleted);
+
+  // Search runs BEFORE the role counts, so a tab still promises exactly the
+  // rows clicking it produces. Everything someone might have in front of them
+  // is searchable — a name, the username on a ticket, the email they were
+  // invited on, the call name heard on the floor, or a phone number.
+  const query = (sp.q || "").trim();
+  const needle = query.toLowerCase();
+  const visible = needle
+    ? notDeleted.filter((p) =>
+        [p.full_name, p.username, p.email, p.call_name, p.contact_number]
+          .filter(Boolean)
+          .some((field) => String(field).toLowerCase().includes(needle))
+      )
+    : notDeleted;
 
   // Role filter. Counts come from `visible` rather than every profile, so a
   // tab's number always matches how many rows clicking it produces -- a count
@@ -90,6 +107,7 @@ export default async function UsersPage({
     show_deleted: showDeleted ? "1" : "",
     sort: sp.sort || "",
     dir: sp.dir || "",
+    q: query,
   };
   const hrefWith = (overrides: Partial<typeof state>) => {
     const params = new URLSearchParams();
@@ -260,6 +278,41 @@ export default async function UsersPage({
           created in Settings is filterable the day it exists. Roles with
           nobody in them are dropped — a tab that always yields an empty table
           is noise. */}
+      {/* A GET form, so a search is a plain URL: shareable, bookmarkable, and
+          survivable by the back button. The other controls travel as hidden
+          fields rather than being rebuilt, so searching never silently drops
+          the role tab or the sort you were on. */}
+      <form className="mb-3 flex flex-wrap items-center gap-2">
+        {Object.entries(state)
+          .filter(([key, value]) => key !== "q" && value)
+          .map(([key, value]) => (
+            <input key={key} type="hidden" name={key} value={value} />
+          ))}
+        <Input
+          name="q"
+          defaultValue={query}
+          placeholder="Search name, username, email, call name or contact"
+          aria-label="Search users"
+          className="w-full sm:w-96"
+        />
+        <Button type="submit" variant="outline">
+          Search
+        </Button>
+        {query && (
+          <Link href={hrefWith({ q: "" })} className="text-xs font-medium text-[var(--brand-primary)] hover:underline">
+            Clear
+          </Link>
+        )}
+      </form>
+
+      {query && (
+        <p className="mb-3 text-xs text-slate-500">
+          {visible.length} account{visible.length === 1 ? "" : "s"} matching{" "}
+          <span className="font-medium text-slate-700">{query}</span>
+          {!showDeleted && deletedCount > 0 ? " (deleted accounts are hidden)" : ""}
+        </p>
+      )}
+
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Link
           href={filterHref("")}
@@ -459,6 +512,26 @@ export default async function UsersPage({
                 </tr>
               );
             })}
+            {/* An empty table with no word in it reads as broken rather than
+                as "nothing matched". */}
+            {sorted.length === 0 && (
+              <tr>
+                <td colSpan={14} className="px-4 py-10 text-center text-slate-400">
+                  {query ? (
+                    <>
+                      No account matches <span className="font-medium text-slate-500">{query}</span>
+                      {roleFilter ? " in this role" : ""}.{" "}
+                      <Link href={hrefWith({ q: "" })} className="text-[var(--brand-primary)] hover:underline">
+                        Clear the search
+                      </Link>
+                      .
+                    </>
+                  ) : (
+                    "No accounts to show."
+                  )}
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
