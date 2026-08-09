@@ -253,6 +253,27 @@ export const leadFormSchema = z.object({
   variant: z.string().trim().optional().default(""),
 });
 
+/** The Add Regular Customer form.
+ *
+ * Deliberately NOT leadFormSchema with fields dropped: adding a regular
+ * customer is a different act from adding a lead. There is no product, no
+ * quantity, no price and no status pipeline here — only the person — and the
+ * phone number is required, because it is the identity a customer record is
+ * matched on (a lead may be saved without one). */
+export const regularCustomerFormSchema = z.object({
+  full_name: z.string().trim().min(1, "Customer name is required"),
+  phone: z.string().trim().min(1, "Phone number is required"),
+  purok: z.string().trim().optional().default(""),
+  barangay: z.string().trim().optional().default(""),
+  city: z.string().trim().optional().default(""),
+  province: z.string().trim().optional().default(""),
+  landmark: z.string().trim().optional().default(""),
+  customer_status: z.enum(["active", "inactive"]).default("active"),
+  agent_id: z.string().trim().optional().default(""),
+});
+
+export type RegularCustomerFormInput = z.infer<typeof regularCustomerFormSchema>;
+
 // Suggested values for the free-text Payment Method field (not enforced).
 export const PAYMENT_METHOD_SUGGESTIONS = ["COD", "GCash", "Bank Transfer"] as const;
 

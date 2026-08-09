@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Alert } from "@/components/ui/Alert";
 import { LinkButton } from "@/components/ui/Button";
-import { RegularCustomerForm } from "@/components/RegularCustomerForm";
+import { LeadForm } from "@/components/LeadForm";
 import { createLeadAction } from "@/lib/actions/leads";
 import { allowedAssigneeIds } from "@/lib/order-access";
 import { getCurrentUser } from "@/lib/auth";
@@ -48,7 +48,9 @@ export default async function NewLeadPage({
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="mb-4 text-page-title text-slate-900">Regular Customer</h1>
+      {/* This page adds a LEAD. Adding a Regular Customer is a separate act
+          with its own page at /regular-customers/new. */}
+      <h1 className="mb-4 text-page-title text-slate-900">New Lead</h1>
 
       {(notTimedIn || time_in_required) && (
         <Alert kind="warning" className="mb-4">
@@ -76,7 +78,7 @@ export default async function NewLeadPage({
               Time in for today to start creating orders.
             </p>
           ) : (
-            <RegularCustomerForm
+            <LeadForm
               action={createLeadAction}
               agents={agents}
               activeProducts={activeProducts}

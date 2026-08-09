@@ -8,12 +8,13 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
+import { LinkButton } from "@/components/ui/Button";
 import { untagRegularCustomerAction } from "@/lib/actions/regular-customers";
 
 export default async function RegularCustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tagged?: string; untagged?: string; error?: string }>;
+  searchParams: Promise<{ tagged?: string; untagged?: string; created?: string; error?: string }>;
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
@@ -21,6 +22,9 @@ export default async function RegularCustomersPage({
 
   if (!can(user.role, "regular_customers", "view", db.role_permissions)) redirect("/dashboard");
   const canManage = can(user.role, "regular_customers", "manage", db.role_permissions);
+  // Adding a regular customer is its own grant — it is not adding a lead, and
+  // an agent holds it by default so they can build their own list.
+  const canCreate = can(user.role, "regular_customers", "create", db.role_permissions);
 
   // Scope mirrors the leads rules: agents see their own, team leads their
   // team's, management everyone's.
@@ -52,17 +56,26 @@ export default async function RegularCustomersPage({
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-page-title text-slate-900">Regular Customers</h1>
-        {canSeeDuplicates && openDuplicates.length > 0 && (
-          <Link
-            href="/regular-customers/duplicates"
-            className="rounded-md bg-amber-100 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-200"
-          >
-            {openDuplicates.length} possible duplicate{openDuplicates.length === 1 ? "" : "s"} to review
-          </Link>
-        )}
+        <div>
+          <h1 className="text-page-title text-slate-900">Regular Customers</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Your own repeat customers. They are kept out of the Leads list — adding one here does not create a lead.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {canSeeDuplicates && openDuplicates.length > 0 && (
+            <Link
+              href="/regular-customers/duplicates"
+              className="rounded-md bg-amber-100 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-200"
+            >
+              {openDuplicates.length} possible duplicate{openDuplicates.length === 1 ? "" : "s"} to review
+            </Link>
+          )}
+          {canCreate && <LinkButton href="/regular-customers/new">Add Regular Customer</LinkButton>}
+        </div>
       </div>
 
+      {sp.created && <Alert kind="success" className="mb-4">Regular customer added. No lead was created.</Alert>}
       {sp.tagged && <Alert kind="success" className="mb-4">Customer moved to Regular Customers. Their leads no longer appear in the active list.</Alert>}
       {sp.untagged && <Alert kind="success" className="mb-4">Customer returned to the active Leads list.</Alert>}
       {sp.error && <Alert kind="error" className="mb-4">{sp.error}</Alert>}
@@ -92,26 +105,28 @@ export default async function RegularCustomersPage({
                   {[customer.purok, customer.barangay, customer.city, customer.province].filter(Boolean).join(", ") || "—"}
                 </td>
                 <td className="px-4 py-3 text-slate-600">{nameById.get(customer.owner_agent_id) || "—"}</td>
+                {/* Their orders are out of the Leads list by design, so this
+                    page has to be the way back to them. */}
                 <td className="px-4 py-3 text-slate-600">
                   {previous ? (
-                    <>
+                    <Link href={`/leads/${previous.id}`} className="block hover:underline">
                       <div>{previous.order_date ? formatDate(previous.order_date) : "—"}</div>
                       <div className="text-xs text-slate-400">
                         {previous.product_name || "—"} · {formatCurrency(previous.total_amount)}
                       </div>
-                    </>
+                    </Link>
                   ) : (
                     "—"
                   )}
                 </td>
                 <td className="px-4 py-3 text-slate-600">
                   {latest ? (
-                    <>
+                    <Link href={`/leads/${latest.id}`} className="block hover:underline">
                       <div>{latest.order_date ? formatDate(latest.order_date) : "—"}</div>
                       <div className="text-xs text-slate-400">
                         {latest.product_name || "—"} · {formatCurrency(latest.total_amount)}
                       </div>
-                    </>
+                    </Link>
                   ) : (
                     "—"
                   )}
@@ -137,7 +152,10 @@ export default async function RegularCustomersPage({
             {rows.length === 0 && (
               <tr>
                 <td colSpan={canManage ? 10 : 9} className="px-4 py-10 text-center text-slate-400">
-                  No regular customers yet. Tag one from a lead&apos;s details popup.
+                  No regular customers yet.{" "}
+                  {canCreate
+                    ? "Use Add Regular Customer, or tag one from a lead's details popup."
+                    : "They are added from a lead's details popup."}
                 </td>
               </tr>
             )}

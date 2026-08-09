@@ -2,7 +2,14 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { canonicalPhone, normalizePhone } from "@/lib/utils";
 import type { Customer, CustomerDuplicateMatch, Order } from "@/lib/types";
 
-/** Regular Customers.
+/** Regular Customers — an agent's own repeat buyers, deliberately kept OUT of
+ * their Leads list.
+ *
+ * Two ways in, and they are not the same act:
+ *  - `createRegularCustomer` — the Add Regular Customer button. A person only,
+ *    with no order behind them. This is NOT adding a lead.
+ *  - `upsertRegularCustomer` — tagging the customer behind an existing lead,
+ *    which also moves that lead's history over.
  *
  * Tagging is a lifecycle move, never a delete: the flag takes the record out
  * of the active Leads list while every order, call and audit entry stays put.
@@ -29,6 +36,101 @@ export async function listCustomers(filter: { ownerAgentIds?: string[] } = {}): 
   const { data, error } = await query.order("regular_since", { ascending: false });
   if (error) throw new Error(`customers read failed: ${error.message}`);
   return (data || []).map(mapCustomer);
+}
+
+/** The regular customer an agent already owns for this phone number, if any.
+ *
+ * Used both to refuse a duplicate entry on the Add Regular Customer form and
+ * to keep the rule true at lead-creation time: a new order for someone the
+ * agent has already tagged joins that customer's record instead of reappearing
+ * in the active Leads list. */
+export async function findRegularCustomerByPhone(phone: string, ownerAgentId: string): Promise<Customer | null> {
+  const normalized = canonicalPhone(phone);
+  if (!normalized) return null;
+  const { data, error } = await supabaseAdmin
+    .from("customers")
+    .select("*")
+    .eq("phone_normalized", normalized)
+    .eq("owner_agent_id", ownerAgentId)
+    .eq("is_regular_customer", true)
+    .maybeSingle();
+  if (error) throw new Error(`customers read failed: ${error.message}`);
+  return data ? mapCustomer(data) : null;
+}
+
+export interface RegularCustomerInput {
+  full_name: string;
+  phone: string;
+  purok?: string | null;
+  barangay?: string | null;
+  city?: string | null;
+  province?: string | null;
+  landmark?: string | null;
+  customer_status?: string;
+}
+
+/** Creates a Regular Customer directly — no order, no lead.
+ *
+ * This is the deliberate difference from adding a lead: a lead is a sale being
+ * worked and lives in `orders`; a regular customer is a person the agent keeps,
+ * and lives only here. Nothing created through this path can appear in Leads,
+ * because there is no order to appear.
+ *
+ * A record that exists but is untagged (returned to Leads earlier) is re-tagged
+ * rather than duplicated, so the same person never occupies two rows. */
+export async function createRegularCustomer(input: RegularCustomerInput, ownerAgentId: string): Promise<Customer> {
+  const phoneNormalized = canonicalPhone(input.phone) || normalizePhone(input.phone);
+  const now = new Date().toISOString();
+  const fields = {
+    full_name: input.full_name,
+    purok: input.purok || null,
+    barangay: input.barangay || null,
+    city: input.city || null,
+    province: input.province || null,
+    landmark: input.landmark || null,
+    customer_status: input.customer_status || "active",
+  };
+
+  if (phoneNormalized) {
+    const { data: existing } = await supabaseAdmin
+      .from("customers")
+      .select("*")
+      .eq("phone_normalized", phoneNormalized)
+      .eq("owner_agent_id", ownerAgentId)
+      .maybeSingle();
+    if (existing) {
+      const { data: updated, error } = await supabaseAdmin
+        .from("customers")
+        .update({
+          ...fields,
+          phone_raw: input.phone,
+          is_regular_customer: true,
+          regular_since: (existing.regular_since as string) || now,
+          updated_at: now,
+        })
+        .eq("id", existing.id)
+        .select("*")
+        .single();
+      if (error) throw new Error(`Could not update the customer: ${error.message}`);
+      return mapCustomer(updated);
+    }
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("customers")
+    .insert({
+      ...fields,
+      phone_raw: input.phone,
+      phone_normalized: phoneNormalized,
+      owner_agent_id: ownerAgentId,
+      original_agent_id: ownerAgentId,
+      is_regular_customer: true,
+      regular_since: now,
+    })
+    .select("*")
+    .single();
+  if (error) throw new Error(`Could not create the customer: ${error.message}`);
+  return mapCustomer(data);
 }
 
 /** Normalized-name comparison for the name-based rules: case, punctuation and

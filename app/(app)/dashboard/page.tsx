@@ -11,6 +11,7 @@ import {
   Undo2,
   Percent,
   Sparkles,
+  UserCheck,
 } from "lucide-react";
 import { readDb } from "@/lib/db";
 import { recentActivity as fetchRecentActivity } from "@/lib/audit-log";
@@ -54,6 +55,7 @@ export default async function DashboardPage({
   const canImport = can(user.role, "orders", "upload", db.role_permissions);
   const canViewCallLogs = !isAgent && can(user.role, "call_logs", "view", db.role_permissions);
   const canUploadCallLogs = can(user.role, "call_logs", "upload", db.role_permissions);
+  const canAddRegularCustomer = can(user.role, "regular_customers", "create", db.role_permissions);
   const canViewPerformance = can(user.role, "performance", "view", db.role_permissions);
 
   const dashboardRange = resolveDateRange(sp.range, sp.from, sp.to);
@@ -323,9 +325,16 @@ export default async function DashboardPage({
               <CardTitle>Quick Actions</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-3">
+              {/* Two separate actions on purpose: one creates a lead, the
+                  other a regular customer. They are not the same thing. */}
               <LinkButton href="/leads/new" variant="outline">
-                <PlusCircle className="h-4 w-4" /> Regular Customer
+                <PlusCircle className="h-4 w-4" /> New Lead
               </LinkButton>
+              {canAddRegularCustomer && (
+                <LinkButton href="/regular-customers/new" variant="outline">
+                  <UserCheck className="h-4 w-4" /> Add Regular Customer
+                </LinkButton>
+              )}
               {canImport && (
                 <LinkButton href="/leads/import" variant="outline">
                   <FileSpreadsheet className="h-4 w-4" /> Import Excel

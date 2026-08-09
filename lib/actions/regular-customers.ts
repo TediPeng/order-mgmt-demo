@@ -8,11 +8,110 @@ import { getRequestInfo } from "@/lib/request-info";
 import { orderInScope } from "@/lib/order-access";
 import { can, isFullAccess } from "@/lib/permissions";
 import { canonicalPhone } from "@/lib/utils";
-import { findDuplicates, recordDuplicates, upsertRegularCustomer } from "@/lib/customers";
+import {
+  createRegularCustomer,
+  findDuplicates,
+  findRegularCustomerByPhone,
+  recordDuplicates,
+  upsertRegularCustomer,
+} from "@/lib/customers";
+import { allowedAssigneeIds } from "@/lib/order-access";
+import { regularCustomerFormSchema } from "@/lib/validation";
+import { describeParseFailure } from "@/lib/zod-error";
 import { requireUser } from "./guards";
 import type { DuplicateStatus } from "@/lib/types";
 
 const PATH = "/regular-customers";
+const NEW_PATH = "/regular-customers/new";
+
+/** Adds a Regular Customer directly — the Add Regular Customer button.
+ *
+ * This is NOT the lead form and must not become it: no product, no status, no
+ * order is created, so nothing from here can turn up in the Leads list. What
+ * is created is a person the agent owns.
+ *
+ * Agents create for themselves; only a role that may assign leads (Team Lead,
+ * Administrator) can file one under another agent, and `allowedAssigneeIds`
+ * is what decides that — the same rule Leads uses, so ownership cannot be
+ * widened here by posting a different agent_id. */
+export async function createRegularCustomerAction(formData: FormData) {
+  const { user, db } = await requireUser();
+  if (!can(user.role, "regular_customers", "create", db.role_permissions)) {
+    redirect(`${PATH}?error=${encodeURIComponent("You do not have permission to add regular customers.")}`);
+  }
+
+  const parsed = regularCustomerFormSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!parsed.success) {
+    redirect(`${NEW_PATH}?error=${encodeURIComponent(describeParseFailure(parsed.error))}`);
+  }
+  const data = parsed.data;
+
+  const allowed = allowedAssigneeIds(user, db);
+  const ownerAgentId = data.agent_id && allowed.includes(data.agent_id) ? data.agent_id : user.id;
+
+  // One record per person per agent: a second entry for the same number would
+  // split their order history across two rows.
+  const existing = await findRegularCustomerByPhone(data.phone, ownerAgentId);
+  if (existing) {
+    redirect(
+      `${NEW_PATH}?error=${encodeURIComponent(
+        `${existing.full_name} is already a regular customer on that phone number.`
+      )}`
+    );
+  }
+
+  const customer = await createRegularCustomer(
+    {
+      full_name: data.full_name,
+      phone: data.phone,
+      purok: data.purok,
+      barangay: data.barangay,
+      city: data.city,
+      province: data.province,
+      landmark: data.landmark,
+      customer_status: data.customer_status,
+    },
+    ownerAgentId
+  );
+
+  // Orders this agent already holds for the same number belong to the customer
+  // record now, and therefore leave the active Leads list — the same move
+  // tagging performs, so both routes in end in the same state.
+  const target = canonicalPhone(data.phone);
+  let moved = 0;
+  if (target) {
+    for (const o of db.orders) {
+      if (canonicalPhone(o.customer_phone) !== target || o.agent_id !== ownerAgentId) continue;
+      o.is_regular_customer = true;
+      o.regular_customer_since = o.regular_customer_since || customer.regular_since;
+      o.customer_id = customer.id;
+      moved++;
+    }
+  }
+  if (moved > 0) await supabaseAdmin.from("customers").update({ total_orders: moved }).eq("id", customer.id);
+
+  const findings = await findDuplicates({
+    id: customer.id,
+    full_name: customer.full_name,
+    phone_normalized: customer.phone_normalized,
+    purok: customer.purok,
+    barangay: customer.barangay,
+    city: customer.city,
+    province: customer.province,
+  });
+  await recordDuplicates(customer.id, findings);
+
+  const info = await getRequestInfo();
+  logActivity(db, user.id, "REGULAR_CUSTOMER_CREATED", "customer", customer.id, {
+    customer_name: customer.full_name,
+    owner_agent_id: ownerAgentId,
+    orders_moved: moved,
+    potential_duplicates: findings.length,
+  }, { module: "regular_customers", ...info });
+  await writeDb(db);
+
+  redirect(`${PATH}?created=1`);
+}
 
 /** Tags the customer behind a lead as Regular.
  *
@@ -27,6 +126,11 @@ const PATH = "/regular-customers";
  * discover another agent's customers. */
 export async function tagRegularCustomerAction(orderId: string) {
   const { user, db } = await requireUser();
+  // Same grant as the Add Regular Customer button: both create a regular
+  // customer, they only differ in whether a lead already exists.
+  if (!can(user.role, "regular_customers", "create", db.role_permissions)) {
+    redirect(`/leads?error=${encodeURIComponent("You do not have permission to add regular customers.")}`);
+  }
 
   const order = db.orders.find((o) => o.id === orderId);
   if (!order) redirect(`/leads?error=${encodeURIComponent("Lead not found.")}`);

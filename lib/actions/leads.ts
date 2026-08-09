@@ -24,6 +24,7 @@ import {
   lockedEditBlockReason,
 } from "@/lib/lead-workflow";
 import { timeInBlockReason } from "@/lib/time-in-gate";
+import { findRegularCustomerByPhone } from "@/lib/customers";
 import { forwardOrderToPancake } from "@/lib/pancake/forward";
 import { computeOrderTotal, validateForPancake } from "@/lib/pancake/validate";
 import { verifyOrderAddress } from "@/lib/pancake/verifyAddress";
@@ -80,7 +81,8 @@ export async function createLeadAction(formData: FormData) {
   const { user, db } = await requireUser();
   requirePermission(user, "orders", "create", db, "/leads/new");
 
-  // Creating a Regular Customer order requires being timed in (Section 2).
+  // Creating a lead requires being timed in (Section 2). Adding a regular
+  // customer deliberately does not — see app/(app)/regular-customers/new.
   const notTimedIn = timeInBlockReason(db, user);
   if (notTimedIn) redirect(`/leads/new?error=${encodeURIComponent(notTimedIn)}&time_in_required=1`);
 
@@ -222,6 +224,19 @@ export async function createLeadAction(formData: FormData) {
   };
   // Stable external reference Pancake echoes back on status updates.
   order.system_order_id = order.order_number;
+
+  // A regular customer stays a regular customer. An order taken for someone the
+  // assigned agent already keeps joins that customer's record instead of
+  // landing back in their Leads list — otherwise every repeat purchase would
+  // quietly re-add them as a lead, which is exactly what the section exists to
+  // prevent. The order itself is untouched in every other respect.
+  const regular = await findRegularCustomerByPhone(order.customer_phone, order.agent_id);
+  if (regular) {
+    order.customer_id = regular.id;
+    order.is_regular_customer = true;
+    order.regular_customer_since = regular.regular_since || now;
+  }
+
   db.orders.push(order);
   const info = await getRequestInfo();
   logActivity(db, user.id, "LEAD_CREATED", "order", order.id, { order_number: order.order_number }, {
