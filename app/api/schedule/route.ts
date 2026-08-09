@@ -6,6 +6,7 @@ import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { scopeSchedules, scopeAgentsForSchedule } from "@/lib/schedule-access";
 import { upsertSchedule, notifyAgentSchedule } from "@/lib/actions/schedules";
+import { displayCallName, displayUserName } from "@/lib/types";
 
 const SCHEDULE_STATUS_COLORS: Record<string, string> = {
   scheduled: "#16a34a", // green -- Scheduled for Duty
@@ -38,14 +39,24 @@ export async function GET(req: NextRequest) {
   if (statusFilter) schedules = schedules.filter((s) => s.status === statusFilter);
 
   const byId = new Map(db.profiles.map((p) => [p.id, p]));
-  if (q) schedules = schedules.filter((s) => (byId.get(s.agent_id)?.full_name || "").toLowerCase().includes(q));
+  // Search still matches the full name as well as the call name: the chip shows
+  // the short one, but someone looking for "Aaliyah Cruz" should still find her.
+  if (q) {
+    schedules = schedules.filter((s) => {
+      const agent = byId.get(s.agent_id);
+      return `${agent?.full_name || ""} ${agent?.call_name || ""}`.toLowerCase().includes(q);
+    });
+  }
 
   const events = schedules.map((s) => {
     const agent = byId.get(s.agent_id);
     const timeLabel = s.duty_start && s.duty_end ? ` ${s.duty_start}-${s.duty_end}` : "";
     return {
       id: s.id,
-      title: `${agent?.full_name || "Unknown"}${timeLabel}`,
+      // Call name only. A month cell is about 200px wide, and "Kim Marjorie
+      // Andres 08:00-17:00" is cut off mid-name; the full name is still on the
+      // event's own popup through extendedProps below.
+      title: `${displayCallName(agent)}${timeLabel}`,
       start: s.duty_start ? `${s.schedule_date}T${s.duty_start}` : s.schedule_date,
       end: s.duty_end ? `${s.schedule_date}T${s.duty_end}` : undefined,
       allDay: !s.duty_start,
@@ -54,7 +65,9 @@ export async function GET(req: NextRequest) {
       borderColor: SCHEDULE_STATUS_COLORS[s.status] || SCHEDULE_STATUS_COLORS.unassigned,
       extendedProps: {
         agent_id: s.agent_id,
-        agent_name: agent?.full_name || "Unknown",
+        // The popup has room for the full name, and that is where someone
+        // goes to be sure which person a chip refers to.
+        agent_name: displayUserName(agent),
         status: s.status,
         is_rest_day: s.is_rest_day,
         remarks: s.remarks,

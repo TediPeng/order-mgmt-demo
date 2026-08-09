@@ -66,6 +66,17 @@ export function displayUserName(profile: Pick<Profile, "full_name" | "is_deleted
   return profile.is_deleted ? "Deleted User" : profile.full_name;
 }
 
+/** The short name for dense surfaces — the calendar chip, where a full name
+ * plus a time range is wider than a day cell and gets cut off mid-surname.
+ * Falls back to the full name for an account with no Call Name set. */
+export function displayCallName(
+  profile: Pick<Profile, "full_name" | "call_name" | "is_deleted"> | null | undefined
+): string {
+  if (!profile) return "Unknown User";
+  if (profile.is_deleted) return "Deleted User";
+  return profile.call_name?.trim() || profile.full_name;
+}
+
 // Pre-sale statuses (new/ringing/hung_up/cbr/rsrv) are agent-driven; a lead
 // becomes a sale on entering packaging (which also
 // forwards it to Pancake POS), then the fulfillment statuses
