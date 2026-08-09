@@ -1,7 +1,8 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
-import { readDb } from "./db";
+import { supabaseAdmin } from "./supabaseAdmin";
 import type { Profile } from "./types";
 
 const COOKIE_NAME = "session";
@@ -76,14 +77,29 @@ export async function getSessionUserId(): Promise<string | null> {
   return unsign(raw);
 }
 
-export async function getCurrentUser(): Promise<Profile | null> {
+/**
+ * The signed-in user, from one row.
+ *
+ * This used to read the WHOLE database to find a single profile — and it runs
+ * on every page render and every action, so after a large import each request
+ * was fetching tens of thousands of orders before it could even say who was
+ * asking. One row by primary key instead.
+ *
+ * The returned object is deliberately NOT the one inside a DbShape: callers
+ * that change a profile (login stamping last_login_at, a password change, an
+ * avatar) already re-find it in db.profiles before mutating, because that is
+ * the copy writeDb() persists. Nothing may mutate this object and expect it to
+ * be saved.
+ */
+export const getCurrentUser = cache(async (): Promise<Profile | null> => {
   const userId = await getSessionUserId();
   if (!userId) return null;
-  const db = await readDb();
-  const profile = db.profiles.find((p) => p.id === userId);
+  const { data, error } = await supabaseAdmin.from("profiles").select("*").eq("id", userId).maybeSingle();
+  if (error) throw new Error(`Could not load the signed-in user: ${error.message}`);
+  const profile = data as Profile | null;
   if (!profile || !profile.is_active) return null;
   return profile;
-}
+});
 
 export function verifyPassword(plain: string, hash: string): boolean {
   return bcrypt.compareSync(plain, hash);

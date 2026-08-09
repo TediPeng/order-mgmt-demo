@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { accountCreatorIds } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
@@ -56,7 +56,10 @@ export default async function UsersPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  // Lite: this page is about accounts. It never reads an order, and loading
+  // tens of thousands of them to render a user table is the whole reason the
+  // app got slow after a large import.
+  const db = await readDbLite();
 
   if (!can(user.role, "users", "view", db.role_permissions)) redirect("/dashboard");
   const canCreate = can(user.role, "users", "create", db.role_permissions);

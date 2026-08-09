@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { getCurrentUser } from "@/lib/auth";
-import { readDb, writeDb } from "@/lib/db";
+import { readDbLite, writeDb } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { sweepAutoAbsences } from "@/lib/attendance-sweep";
 import { maybeSweepPancakeSync } from "@/lib/pancake/sweep";
@@ -30,7 +30,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect(CHANGE_PASSWORD_PATH);
   }
 
-  const db = await readDb();
+  // Lite: the sidebar, the permission map and the notification bell need
+  // roles, permissions and notifications — not the orders table, which on a
+  // busy floor is tens of thousands of rows fetched to render a menu.
+  const db = await readDbLite();
   if (sweepAutoAbsences(db)) await writeDb(db);
   // Throttled, fire-and-forget: drives Pancake retries/polling without
   // depending on the Vercel Cron frequency available on the current plan.

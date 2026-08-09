@@ -1,4 +1,5 @@
-﻿import bcrypt from "bcryptjs";
+﻿import { cache } from "react";
+import bcrypt from "bcryptjs";
 import { v4 as uuid } from "uuid";
 import type { DbShape, Profile, RolePermission, RoleDef, WorkSchedule } from "./types";
 import { ORDER_PANCAKE_DEFAULTS } from "./types";
@@ -453,7 +454,39 @@ async function upsertTable(table: string, rows: Row[], idKey = "id"): Promise<vo
 // because its second branch — no rows in the array, therefore delete the
 // entire table — is one stale read away from emptying production.
 
-export async function readDb(): Promise<DbShape> {
+/**
+ * One read per request, shared.
+ *
+ * A page render calls this at least twice — the authenticated layout needs the
+ * user and their notifications, then the page itself needs its own data — and
+ * each call was fetching every table again. With 27,000 orders that is two
+ * full copies of the table for one page view, and the layout does not look at
+ * a single order.
+ *
+ * React's cache() is per-request, so two renders of the same request share the
+ * result and two different requests never do. The object is deliberately the
+ * SAME object for both callers: actions mutate the shape in place and persist
+ * it with writeDb(), so a second reader seeing those mutations is the
+ * behaviour that was already assumed.
+ */
+export const readDb = cache(() => readDbUncached(true));
+
+/**
+ * The same shape with `orders` left empty, for callers that never look at one.
+ *
+ * The authenticated layout is the case that pays for itself immediately: it
+ * renders on every page in the app to draw the sidebar and the notification
+ * bell, and it was fetching all 27,000 orders to do it.
+ *
+ * Use this ONLY where the whole call graph is known not to touch db.orders —
+ * an empty array reads as "no orders exist", which is silently wrong rather
+ * than loudly broken. writeDb() is safe either way: it upserts what it is
+ * given and only deletes what an action explicitly queued, so an empty orders
+ * array writes nothing at all.
+ */
+export const readDbLite = cache(() => readDbUncached(false));
+
+async function readDbUncached(withOrders: boolean): Promise<DbShape> {
   const { data: existingProfiles, error: checkError } = await supabaseAdmin.from("profiles").select("id").limit(1);
   if (checkError) throw new Error(`Supabase read failed: ${checkError.message}`);
 
@@ -481,7 +514,7 @@ export async function readDb(): Promise<DbShape> {
   ] = await Promise.all([
     selectAll("roles"),
     selectAll("profiles"),
-    selectAll("orders"),
+    withOrders ? selectAll("orders") : Promise.resolve({ data: [] as Row[], error: null }),
     selectAll("products"),
     selectAll("attendance"),
     selectAll("call_logs"),
