@@ -1,4 +1,4 @@
-﻿import { Download } from "lucide-react";
+﻿import { Copy as CopyIcon, Download } from "lucide-react";
 import { readDb } from "@/lib/db";
 import { latestStatusChangeByOrder } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
@@ -9,6 +9,7 @@ import { normalizePhone, isValidPhoneQuery, canonicalPhone, todayInTz } from "@/
 import { BreakControls } from "@/components/BreakControls";
 import { getActiveBioBreak } from "@/lib/bio-breaks";
 import { findDuplicates } from "@/lib/customers";
+import { findDuplicateGroups, summarizeDuplicates } from "@/lib/duplicate-leads";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
@@ -67,6 +68,9 @@ export default async function LeadsPage({
   const isAgent = !seesBeyondOwnLeads;
   const canImport = can(user.role, "orders", "upload", db.role_permissions);
   const canExport = can(user.role, "orders", "export", db.role_permissions);
+  // Counted over the same scope the tables use, so an agent's badge reflects
+  // their own leads and not the whole floor's.
+  const duplicateCount = summarizeDuplicates(findDuplicateGroups(scopeOrders(user, db.orders, db))).groups;
 
   // Regular Customers live in their own section; the flag takes them out of
   // the active list while every order and its history stays put.
@@ -279,6 +283,13 @@ export default async function LeadsPage({
           {canImport && (
             <LinkButton href="/leads/import" variant="outline">
               Import Excel
+            </LinkButton>
+          )}
+          {/* Surfaced with a count so a bad import is visible from the Leads
+              page itself rather than only to whoever thinks to look. */}
+          {duplicateCount > 0 && (
+            <LinkButton href="/leads/duplicates" variant="outline">
+              <CopyIcon className="h-4 w-4" /> Duplicates {duplicateCount}
             </LinkButton>
           )}
           <BreakControls
