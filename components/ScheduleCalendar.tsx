@@ -16,11 +16,13 @@ import { ScheduleEventModal, type AgentOption, type ScheduleModalState } from "@
 import { BulkAssignModal } from "@/components/BulkAssignModal";
 import { CopyScheduleModal } from "@/components/CopyScheduleModal";
 
+// Must match SCHEDULE_STATUS_COLORS in app/api/schedule/route.ts — the swatch
+// here is what tells someone what the coloured bar in the grid means.
 const LEGEND = [
-  { color: "bg-green-600", label: "Scheduled for Duty" },
-  { color: "bg-blue-600", label: "Rest Day" },
-  { color: "bg-orange-600", label: "Suspension" },
-  { color: "bg-slate-400", label: "No Schedule Assigned" },
+  { color: "bg-green-700", label: "Scheduled for Duty" },
+  { color: "bg-blue-700", label: "Rest Day" },
+  { color: "bg-orange-700", label: "Suspension" },
+  { color: "bg-slate-500", label: "No Schedule Assigned" },
 ];
 
 export function ScheduleCalendar({
@@ -214,6 +216,16 @@ export function ScheduleCalendar({
           eventResize={handleEventResize}
           height="auto"
           firstDay={1}
+          // Every schedule is a filled bar in its status colour with just the
+          // name on it — the same highlight the rest-day entries always had,
+          // now applied to duty as well. Left global rather than per-view:
+          // FullCalendar only honours eventDisplay at the top level, and in
+          // the time-grid views a timed event is drawn as a block regardless.
+          eventDisplay="block"
+          // The time itself is dropped from the month grid only. Week and day
+          // views keep it, where position already implies the hour and the
+          // label is the confirmation.
+          views={{ dayGridMonth: { displayEventTime: false } }}
         />
       </div>
 

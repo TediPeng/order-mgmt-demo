@@ -8,11 +8,15 @@ import { scopeSchedules, scopeAgentsForSchedule } from "@/lib/schedule-access";
 import { upsertSchedule, notifyAgentSchedule } from "@/lib/actions/schedules";
 import { displayCallName, displayUserName } from "@/lib/types";
 
+/** Month-view events are filled bars with white text on them, so these are the
+ * 700 shades rather than the 600s: white on green-600 is 3.5:1, which fails
+ * AA for label-sized text. Keep the legend swatches in ScheduleCalendar.tsx in
+ * step with these. */
 const SCHEDULE_STATUS_COLORS: Record<string, string> = {
-  scheduled: "#16a34a", // green -- Scheduled for Duty
-  rest_day: "#2563eb", // blue -- Rest Day
-  suspension: "#ea580c", // orange -- Suspension
-  unassigned: "#9ca3af", // gray -- No Schedule Assigned
+  scheduled: "#15803d", // green -- Scheduled for Duty
+  rest_day: "#1d4ed8", // blue -- Rest Day
+  suspension: "#c2410c", // orange -- Suspension
+  unassigned: "#64748b", // slate -- No Schedule Assigned
 };
 
 /** Fetches only the visible date range (Section 9) -- FullCalendar's `events`
@@ -50,13 +54,14 @@ export async function GET(req: NextRequest) {
 
   const events = schedules.map((s) => {
     const agent = byId.get(s.agent_id);
-    const timeLabel = s.duty_start && s.duty_end ? ` ${s.duty_start}-${s.duty_end}` : "";
     return {
       id: s.id,
-      // Call name only. A month cell is about 200px wide, and "Kim Marjorie
-      // Andres 08:00-17:00" is cut off mid-name; the full name is still on the
-      // event's own popup through extendedProps below.
-      title: `${displayCallName(agent)}${timeLabel}`,
+      // The name and nothing else. Everyone on the floor works the same hours,
+      // so repeating "08:00-17:00" down a column of fifteen agents cost the
+      // width that the names needed. The times are still on the event (start /
+      // end below, and extendedProps for the popup), and the week and day
+      // views still show them — this is about the month grid.
+      title: displayCallName(agent),
       start: s.duty_start ? `${s.schedule_date}T${s.duty_start}` : s.schedule_date,
       end: s.duty_end ? `${s.schedule_date}T${s.duty_end}` : undefined,
       allDay: !s.duty_start,
