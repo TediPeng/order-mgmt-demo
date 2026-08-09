@@ -1,15 +1,15 @@
 ﻿import { Copy as CopyIcon, Download } from "lucide-react";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { latestStatusChangeByOrder } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
-import { scopeOrders, allowedAssigneeIds } from "@/lib/order-access";
+import { allowedAssigneeIds } from "@/lib/order-access";
 import { listItemsFor } from "@/lib/order-items";
-import { normalizePhone, isValidPhoneQuery, canonicalPhone, todayInTz } from "@/lib/utils";
+import { canonicalPhone, todayInTz } from "@/lib/utils";
 import { BreakControls } from "@/components/BreakControls";
 import { getActiveBioBreak } from "@/lib/bio-breaks";
 import { findDuplicates } from "@/lib/customers";
-import { findDuplicateGroups, summarizeDuplicates } from "@/lib/duplicate-leads";
+import { leadScopeFor, leadStatusCounts, duplicatePhoneCount, queryLeads } from "@/lib/leads-query";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
@@ -49,7 +49,10 @@ export default async function LeadsPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  // Lite: the orders this page shows come from bounded queries below, not from
+  // the whole-table read. Loading 57,000 rows to display twenty-five was what
+  // made this page take twenty seconds.
+  const db = await readDbLite();
 
   // The page was previously reachable by direct URL for any signed-in role: the
   // sidebar hid the link but nothing here checked the permission, so whether a
@@ -68,78 +71,52 @@ export default async function LeadsPage({
   const isAgent = !seesBeyondOwnLeads;
   const canImport = can(user.role, "orders", "upload", db.role_permissions);
   const canExport = can(user.role, "orders", "export", db.role_permissions);
-  // Counted over the same scope the tables use, so an agent's badge reflects
-  // their own leads and not the whole floor's.
-  const duplicateCount = summarizeDuplicates(findDuplicateGroups(scopeOrders(user, db.orders, db))).groups;
-
-  // Regular Customers live in their own section; the flag takes them out of
-  // the active list while every order and its history stays put.
-  let orders = scopeOrders(user, db.orders, db)
-    .filter((o) => !o.is_regular_customer)
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
-
-  // Dashboard cards deep-link agents into a pre-filtered status view â€” that's
-  // internal navigation, not a search control, so status stays honored for
-  // everyone. Every other filter param is Agent-only-rejected per Section 3.
-  if (sp.status) orders = orders.filter((o) => o.status === sp.status);
-
-  if (isAgent) {
-    const term = (sp.q || sp.phone || "").trim();
-    if (term) {
-      const lower = term.toLowerCase();
-      const looksLikePhone = isValidPhoneQuery(term);
-      const phoneTarget = looksLikePhone ? normalizePhone(term) : "";
-      orders = orders.filter(
-        (o) =>
-          // Either reference matches: agents quote the Pancake ID once an order
-          // is synced, but may still have the internal number written down.
-          o.order_number.toLowerCase().includes(lower) ||
-          (o.pancake_order_id || "").toLowerCase().includes(lower) ||
-          o.customer_name.toLowerCase().includes(lower) ||
-          (o.tracking_number || "").toLowerCase().includes(lower) ||
-          (looksLikePhone && phoneTarget !== "" && normalizePhone(o.customer_phone).includes(phoneTarget))
-      );
-    }
-  } else {
-    if (sp.q) {
-      const q = sp.q.toLowerCase();
-      const usernameByAgentId = new Map(db.profiles.map((p) => [p.id, p.username.toLowerCase()]));
-      orders = orders.filter(
-        (o) =>
-          o.order_number.toLowerCase().includes(q) ||
-          (o.pancake_order_id || "").toLowerCase().includes(q) ||
-          o.customer_name.toLowerCase().includes(q) ||
-          o.customer_phone.toLowerCase().includes(q) ||
-          (usernameByAgentId.get(o.agent_id) || "").includes(q)
-      );
-    }
-    if (sp.order_number) {
-      const needle = sp.order_number.toLowerCase();
-      orders = orders.filter(
-        (o) => o.order_number.toLowerCase().includes(needle) || (o.pancake_order_id || "").toLowerCase().includes(needle)
-      );
-    }
-    if (sp.date_from) orders = orders.filter((o) => (o.order_date || "") >= sp.date_from!);
-    if (sp.date_to) orders = orders.filter((o) => (o.order_date || "") <= sp.date_to!);
-    if (sp.agent) orders = orders.filter((o) => o.agent_id === sp.agent);
-    if (sp.customer_name) orders = orders.filter((o) => o.customer_name.toLowerCase().includes(sp.customer_name!.toLowerCase()));
-    if (sp.phone) orders = orders.filter((o) => o.customer_phone.toLowerCase().includes(sp.phone!.toLowerCase()));
-    if (sp.city) orders = orders.filter((o) => o.city.toLowerCase().includes(sp.city!.toLowerCase()));
-    if (sp.province) orders = orders.filter((o) => o.province.toLowerCase().includes(sp.province!.toLowerCase()));
-    if (sp.product) orders = orders.filter((o) => o.product_id === sp.product);
-    if (sp.prev_from) orders = orders.filter((o) => (o.previous_order_date || "") >= sp.prev_from!);
-    if (sp.prev_to) orders = orders.filter((o) => (o.previous_order_date || "") <= sp.prev_to!);
+  // Everything below is asked of the database. The whole scoped set never
+  // reaches this process any more — only the page being shown, plus counts.
+  const scope = leadScopeFor(user, db);
+  const usernameToIds = new Map<string, string[]>();
+  for (const p of db.profiles) {
+    const key = p.username.toLowerCase();
+    usernameToIds.set(key, [...(usernameToIds.get(key) || []), p.id]);
   }
 
+  const page = Math.max(1, parseInt(sp.page || "1", 10) || 1);
+
+  const [countsByStatus, duplicateCount, leadPage] = await Promise.all([
+    leadStatusCounts(scope),
+    duplicatePhoneCount(scope),
+    queryLeads({
+      scope,
+      // Dashboard cards deep-link into a pre-filtered status view — that is
+      // internal navigation, not a search control, so status is honoured for
+      // everyone. Every other filter stays Agent-rejected (Section 3).
+      filters: isAgent
+        ? { status: sp.status, q: sp.q, phone: sp.phone }
+        : {
+            status: sp.status,
+            q: sp.q,
+            order_number: sp.order_number,
+            agent: sp.agent,
+            customer_name: sp.customer_name,
+            phone: sp.phone,
+            city: sp.city,
+            province: sp.province,
+            product: sp.product,
+            date_from: sp.date_from,
+            date_to: sp.date_to,
+            prev_from: sp.prev_from,
+            prev_to: sp.prev_to,
+          },
+      isAgentView: isAgent,
+      page,
+      pageSize: PAGE_SIZE,
+      usernameToIds,
+    }),
+  ]);
+
   // Status-card counts come from the viewer's whole scoped set, before the
-  // status filter is applied, so selecting a card doesn't zero the others. One
-  // pass builds every bucket rather than a query per card. Everyone gets these
-  // now — a Team Lead counting their team's Ringing leads wants exactly what an
-  // agent wants, just over a wider scope.
-  const cardScoped = scopeOrders(user, db.orders, db).filter((o) => !o.is_regular_customer);
-  const totalLeads = cardScoped.length;
-  const countsByStatus = new Map<string, number>();
-  for (const o of cardScoped) countsByStatus.set(o.status, (countsByStatus.get(o.status) ?? 0) + 1);
+  // status filter is applied, so selecting a card doesn't zero the others.
+  const totalLeads = Array.from(countsByStatus.values()).reduce((n, c) => n + c, 0);
   const statusCounts = QUICK_FILTER_STATUSES.map((s) => ({ status: s, count: countsByStatus.get(s) ?? 0 }));
   const statusHref = (status?: string) => qs({ status, page: undefined });
 
@@ -150,9 +127,8 @@ export default async function LeadsPage({
       sp.product || sp.date_from || sp.date_to || sp.prev_from || sp.prev_to
   );
 
-  const page = Math.max(1, parseInt(sp.page || "1", 10) || 1);
-  const totalPages = Math.max(1, Math.ceil(orders.length / PAGE_SIZE));
-  const pageOrders = orders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(leadPage.total / PAGE_SIZE));
+  const pageOrders = leadPage.rows;
 
   // The agent filter must list only agents the viewer is allowed to see. It used
   // to list every active profile, so a Team Lead's dropdown named agents outside
@@ -464,7 +440,7 @@ export default async function LeadsPage({
       {totalPages > 1 && (
         <div className="mt-4 flex items-center justify-between text-sm text-slate-500">
           <span>
-            Page {page} of {totalPages} ({orders.length} leads)
+            Page {page} of {totalPages} ({leadPage.total} leads)
           </span>
           <div className="flex gap-2">
             <LinkButton
