@@ -407,6 +407,32 @@ type Row = Record<string, unknown>;
 // what this request logged, which writeDb() inserts and empties. Reads of the
 // trail go through lib/audit-log.ts, which queries the slice a page needs.
 
+/** PostgREST caps a single response at 1000 rows (Supabase's `db-max-rows`).
+ * A plain `select("*")` therefore returns the FIRST THOUSAND and says nothing
+ * about the rest: with 6,585 orders the dashboard read exactly 1000, and every
+ * count, list, export and metric derived from them was quietly wrong.
+ *
+ * So every table is read in pages until a short page arrives. The explicit
+ * order matters as much as the range — without one, Postgres may return rows
+ * in a different order per request, which across page boundaries silently
+ * duplicates some rows and drops others. */
+const PAGE_SIZE = 1000;
+
+async function selectAll(table: string, orderBy = "id"): Promise<{ data: Row[]; error: { message: string } | null }> {
+  const rows: Row[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabaseAdmin
+      .from(table)
+      .select("*")
+      .order(orderBy, { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) return { data: [], error };
+    const page = (data || []) as Row[];
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) return { data: rows, error: null };
+  }
+}
+
 async function upsertTable(table: string, rows: Row[], idKey = "id"): Promise<void> {
   if (rows.length === 0) return;
   const { error } = await supabaseAdmin.from(table).upsert(rows, { onConflict: idKey });
@@ -444,19 +470,20 @@ export async function readDb(): Promise<DbShape> {
     orderSeqRes,
     appSettingsRes,
   ] = await Promise.all([
-    supabaseAdmin.from("roles").select("*"),
-    supabaseAdmin.from("profiles").select("*"),
-    supabaseAdmin.from("orders").select("*"),
-    supabaseAdmin.from("products").select("*"),
-    supabaseAdmin.from("attendance").select("*"),
-    supabaseAdmin.from("call_logs").select("*"),
-    supabaseAdmin.from("call_log_records").select("*"),
-    supabaseAdmin.from("role_permissions").select("*"),
-    supabaseAdmin.from("leave_requests").select("*"),
-    supabaseAdmin.from("notifications").select("*"),
-    supabaseAdmin.from("schedules").select("*"),
-    supabaseAdmin.from("suspensions").select("*"),
-    supabaseAdmin.from("order_sequences").select("*"),
+    selectAll("roles"),
+    selectAll("profiles"),
+    selectAll("orders"),
+    selectAll("products"),
+    selectAll("attendance"),
+    selectAll("call_logs"),
+    selectAll("call_log_records"),
+    selectAll("role_permissions"),
+    selectAll("leave_requests"),
+    selectAll("notifications"),
+    selectAll("schedules"),
+    selectAll("suspensions"),
+    // Keyed by seq_date, not id.
+    selectAll("order_sequences", "seq_date"),
     supabaseAdmin.from("app_settings").select("*").eq("id", 1).single(),
   ]);
 
@@ -484,8 +511,8 @@ export async function readDb(): Promise<DbShape> {
   const shape: DbShape = {
     schema_version: SCHEMA_VERSION,
     attendance_sweep_cursor: settings.attendance_sweep_cursor,
-    profiles: (profilesRes.data || []) as DbShape["profiles"],
-    roles: (rolesRes.data || []) as DbShape["roles"],
+    profiles: (profilesRes.data || []) as unknown as DbShape["profiles"],
+    roles: (rolesRes.data || []) as unknown as DbShape["roles"],
     orders: (ordersRes.data || []).map((o) => ({
       ...o,
       previous_order_amount: numOrNull(o.previous_order_amount),
@@ -496,28 +523,28 @@ export async function readDb(): Promise<DbShape> {
       // Must match the column exactly: writeDb upserts these objects back, so
       // a key that is not a real column fails the whole write.
       pancake_retry_count: num(o.pancake_retry_count ?? 0),
-    })) as DbShape["orders"],
-    products: (productsRes.data || []) as DbShape["products"],
+    })) as unknown as DbShape["orders"],
+    products: (productsRes.data || []) as unknown as DbShape["products"],
     attendance: (attendanceRes.data || []).map((a) => ({
       ...a,
       total_hours: numOrNull(a.total_hours),
       overtime_hours: num(a.overtime_hours),
       scheduled_time_in: time5(a.scheduled_time_in),
       scheduled_time_out: time5(a.scheduled_time_out),
-    })) as DbShape["attendance"],
-    call_logs: (callLogsRes.data || []) as DbShape["call_logs"],
-    call_log_records: (callLogRecordsRes.data || []) as DbShape["call_log_records"],
+    })) as unknown as DbShape["attendance"],
+    call_logs: (callLogsRes.data || []) as unknown as DbShape["call_logs"],
+    call_log_records: (callLogRecordsRes.data || []) as unknown as DbShape["call_log_records"],
     // Outbox, not history: only what this request logs. See the note above.
     activity_log: [],
-    role_permissions: (rolePermsRes.data || []) as DbShape["role_permissions"],
-    leave_requests: (leaveRequestsRes.data || []) as DbShape["leave_requests"],
-    notifications: (notificationsRes.data || []) as DbShape["notifications"],
+    role_permissions: (rolePermsRes.data || []) as unknown as DbShape["role_permissions"],
+    leave_requests: (leaveRequestsRes.data || []) as unknown as DbShape["leave_requests"],
+    notifications: (notificationsRes.data || []) as unknown as DbShape["notifications"],
     schedules: (schedulesRes.data || []).map((s) => ({
       ...s,
       duty_start: time5OrNull(s.duty_start),
       duty_end: time5OrNull(s.duty_end),
-    })) as DbShape["schedules"],
-    suspensions: (suspensionsRes.data || []) as DbShape["suspensions"],
+    })) as unknown as DbShape["schedules"],
+    suspensions: (suspensionsRes.data || []) as unknown as DbShape["suspensions"],
     order_seq: Object.fromEntries((orderSeqRes.data || []).map((r) => [r.seq_date, r.last_seq])),
     performance_thresholds: {
       top_performer_min_ratio: num(settings.top_performer_min_ratio),
