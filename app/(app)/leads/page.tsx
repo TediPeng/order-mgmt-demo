@@ -204,7 +204,9 @@ export default async function LeadsPage({
   // The agent's open call (if any) and the call history for the rows on this
   // page. Loaded here so a reopened popup restores its timer from the server
   // rather than restarting the count.
-  const canTagRegular = can(user.role, "regular_customers", "view", db.role_permissions);
+  // Tagging creates a regular customer, so it takes the create grant — not
+  // merely being able to see the Regular Customers list.
+  const canTagRegular = can(user.role, "regular_customers", "create", db.role_permissions);
 
   // Duplicate warnings are computed for Management/Team Lead only. Agents are
   // never given them: the detector spans every agent's customers by design, so
@@ -286,7 +288,9 @@ export default async function LeadsPage({
             canBreak={!!ownAttendance?.time_in && !ownAttendance.time_out}
             redirectTo="/leads"
           />
-          <LinkButton href="/leads/new">Regular Customer</LinkButton>
+          {/* Adds a LEAD. The Add Regular Customer button lives on
+              /regular-customers, because it is a different act. */}
+          <LinkButton href="/leads/new">New Lead</LinkButton>
         </div>
       </div>
 

@@ -59,7 +59,10 @@ export const MODULE_ACTIONS: Record<ModuleKey, ActionKey[]> = {
   // Pancake POS integration settings, manual sync/retry, and sync logs.
   integrations: ["view", "manage"],
   file_uploads: ["view", "upload", "download"],
-  regular_customers: ["view", "edit", "manage"],
+  // "create" is deliberately its own grant, separate from orders.create:
+  // adding a Regular Customer is not adding a lead. It covers both the Add
+  // Regular Customer button and tagging an existing lead's customer as one.
+  regular_customers: ["view", "create", "edit", "manage"],
 };
 
 type Grant = [ModuleKey, ActionKey];
@@ -105,6 +108,7 @@ const TEAM_LEAD_DEFAULTS: Grant[] = [
   ["file_uploads", "view"],
   ["file_uploads", "upload"],
   ["regular_customers", "view"],
+  ["regular_customers", "create"],
 ];
 
 const AGENT_DEFAULTS: Grant[] = [
@@ -127,6 +131,12 @@ const AGENT_DEFAULTS: Grant[] = [
   ["disciplinary", "view"],
   ["file_uploads", "view"],
   ["file_uploads", "upload"],
+  // Regular Customers are the agent's OWN repeat buyers: they keep their own
+  // list and may add to it, but they cannot untag one back into Leads
+  // ("manage" stays with Team Lead/Administrator), and row scoping in
+  // app/(app)/regular-customers/page.tsx limits the list to their own.
+  ["regular_customers", "view"],
+  ["regular_customers", "create"],
 ];
 
 export const SYSTEM_ROLE_DEFAULTS: Record<"team_lead" | "agent", Grant[]> = {

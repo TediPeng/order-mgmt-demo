@@ -11,7 +11,10 @@ export const TIME_IN_HREF = "/attendance/clock";
 
 /**
  * Agents must be timed in for the current workday before they can start a call,
- * process an order, change a status, or create a Regular Customer order.
+ * process an order, change a status, or create a lead.
+ *
+ * Adding a Regular Customer is deliberately NOT gated: that records who a
+ * repeat buyer is, which is not call-floor work being credited to a shift.
  *
  * "Timed in" means an attendance row exists for today carrying a `time_in`. A
  * later time-out does NOT revoke it: an agent who clocks out and still has
