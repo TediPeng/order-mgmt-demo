@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { writeDb, uuid, nowIso, nextOrderNumber, queueDelete } from "@/lib/db";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { orderInScope, allowedAssigneeIds } from "@/lib/order-access";
@@ -904,8 +905,18 @@ function leadDedupeKey(f: {
     .join("|");
 }
 
-/** Re-validates every row server-side (never trusts client parsing) and returns
- * a full categorized summary the client can render and turn into a CSV error report. */
+/**
+ * Re-validates every row server-side (never trusts client parsing) and returns
+ * a full categorized summary the client can render and turn into a CSV error
+ * report.
+ *
+ * Called once per BATCH — the browser sends a large file a few hundred rows at
+ * a time — so this must not do work proportional to the whole import. The new
+ * rows are inserted directly rather than through writeDb(), which upserts the
+ * entire orders table: with that, batch twelve rewrote everything batches one
+ * to eleven had just written, and the cost grew with every batch until the
+ * function timed out.
+ */
 export async function importLeadsAction(
   rawRows: { row: number; data: Record<string, unknown> }[],
   fileName: string
@@ -944,6 +955,7 @@ export async function importLeadsAction(
   const t0 = Date.now();
   // Same reasoning: matchAgentByCallName scans the profile list per row.
   const agentCache = new Map<string, Profile | null>();
+  const newOrders: Order[] = [];
 
   for (const { row, data: raw } of rawRows) {
     const agentName = String(raw.agent_name ?? "").trim();
@@ -1044,7 +1056,10 @@ export async function importLeadsAction(
       updated_at: now,
     };
     order.system_order_id = order.order_number;
-    db.orders.push(order);
+    // Collected, not pushed into db.orders: these are inserted directly below.
+    // Pushing them would hand them to writeDb(), which rewrites every order in
+    // the table — the cost this batching exists to avoid.
+    newOrders.push(order);
     results.push({ row, category: "imported", reason: "", data: raw });
   }
 
@@ -1058,14 +1073,21 @@ export async function importLeadsAction(
     results,
   };
 
+  const tLoop = Date.now();
+  await insertImportedOrders(newOrders, db.order_seq);
+
   const info = await getRequestInfo();
-  logActivity(
-    db,
-    user.id,
-    "LEADS_IMPORTED",
-    "order",
-    null,
-    {
+  // Written straight to the table for the same reason the orders are: this
+  // must not drag the whole-database write back in. Same shape logActivity()
+  // would have produced.
+  await supabaseAdmin.from("activity_log").insert({
+    id: uuid(),
+    user_id: user.id,
+    user_email: user.email,
+    action: "LEADS_IMPORTED",
+    entity_type: "order",
+    entity_id: null,
+    details: {
       file_name: fileName,
       total: summary.total,
       imported: summary.imported,
@@ -1074,12 +1096,41 @@ export async function importLeadsAction(
       missing_info: summary.missingInfo,
       unrecognized_agents: summary.unrecognizedAgents,
     },
-    { module: "orders", ...info }
-  );
-  const tLoop = Date.now();
-  await writeDb(db);
+    module: "orders",
+    ip_address: info.ip_address,
+    device_info: info.device_info,
+    created_at: nowIso(),
+  });
+
   console.log(
     `[import] rows=${rawRows.length} loop=${tLoop - t0}ms write=${Date.now() - tLoop}ms total=${Date.now() - t0}ms`
   );
   return summary;
+}
+
+/**
+ * Writes the batch: the orders themselves, then the day's order-number counter.
+ *
+ * Chunked because one request carrying thousands of ~50-column rows is a
+ * multi-megabyte body and a single enormous statement — the measured
+ * difference was 67 seconds against 14.
+ *
+ * The counter is saved AFTER the rows. If the insert fails, the numbers this
+ * batch reserved are simply never used, which leaves a gap in the sequence;
+ * saving it first and then failing would hand the same numbers to the next
+ * batch, and two orders sharing a number is worse than a gap.
+ */
+async function insertImportedOrders(orders: Order[], orderSeq: Record<string, number>): Promise<void> {
+  const CHUNK = 500;
+  for (let i = 0; i < orders.length; i += CHUNK) {
+    const chunk = orders.slice(i, i + CHUNK) as unknown as Record<string, unknown>[];
+    const { error } = await supabaseAdmin.from("orders").insert(chunk);
+    if (error) throw new Error(`Could not save the imported leads: ${error.message}`);
+  }
+
+  const rows = Object.entries(orderSeq).map(([seq_date, last_seq]) => ({ seq_date, last_seq }));
+  if (rows.length > 0) {
+    const { error } = await supabaseAdmin.from("order_sequences").upsert(rows, { onConflict: "seq_date" });
+    if (error) throw new Error(`Could not update the order counter: ${error.message}`);
+  }
 }

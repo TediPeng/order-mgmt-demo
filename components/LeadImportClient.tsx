@@ -30,6 +30,11 @@ const FIELD_KEYS = [
   "previous_order_status",
 ] as const;
 
+/** Rows per request. Small enough that one batch is always well inside the
+ * function time limit, large enough that a ten-thousand-row file is twenty
+ * requests rather than two hundred. */
+const BATCH_SIZE = 500;
+
 const CATEGORY_LABELS: Record<string, string> = {
   duplicate: "Duplicate rows",
   invalid: "Invalid rows",
@@ -46,6 +51,7 @@ export function LeadImportClient() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [rawRows, setRawRows] = useState<RawRow[] | null>(null);
   const [summary, setSummary] = useState<LeadImportSummary | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [pending, startTransition] = useTransition();
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -117,22 +123,58 @@ export function LeadImportClient() {
     reader.readAsArrayBuffer(file);
   }
 
+  /**
+   * Sends the file a batch at a time.
+   *
+   * One request carrying every row is what a serverless function's time limit
+   * kills, and it takes the whole import with it. In batches, each request is
+   * a second or two whatever the file's size, and a failure costs one batch
+   * rather than everything — the rows already sent are saved, and re-uploading
+   * the same file skips them as duplicates.
+   */
   function handleConfirm() {
     if (!rawRows) return;
     setFileError(null);
+    setProgress({ done: 0, total: rawRows.length });
+
     startTransition(async () => {
-      try {
-        setSummary(await importLeadsAction(rawRows, fileName || "import.xlsx"));
-      } catch {
-        // Without this the button simply stayed on "Importing…" forever: a
-        // server action that throws (a timeout on a very large file, a dropped
-        // connection) rejects the promise and nothing renders. Silence reads
-        // as "still working", which is the one thing it is not.
-        setFileError(
-          "The import did not finish — nothing was saved. This usually means the file is too large to process in one go; " +
-            "try splitting it into smaller files (about 1,000 rows each) and uploading them one after another."
-        );
+      const batches: RawRow[][] = [];
+      for (let i = 0; i < rawRows.length; i += BATCH_SIZE) batches.push(rawRows.slice(i, i + BATCH_SIZE));
+
+      const merged: LeadImportSummary = {
+        total: 0,
+        imported: 0,
+        duplicates: 0,
+        invalid: 0,
+        missingInfo: 0,
+        unrecognizedAgents: 0,
+        results: [],
+      };
+
+      for (let i = 0; i < batches.length; i++) {
+        try {
+          const part = await importLeadsAction(batches[i], fileName || "import.xlsx");
+          merged.total += part.total;
+          merged.imported += part.imported;
+          merged.duplicates += part.duplicates;
+          merged.invalid += part.invalid;
+          merged.missingInfo += part.missingInfo;
+          merged.unrecognizedAgents += part.unrecognizedAgents;
+          merged.results.push(...part.results);
+          setProgress({ done: merged.total, total: rawRows.length });
+        } catch {
+          // Says what did land rather than leaving the button on "Importing…"
+          // for good: silence reads as "still working", which it is not.
+          setFileError(
+            `The import stopped after ${merged.imported} of ${rawRows.length} rows — everything up to that point was saved. ` +
+              "Upload the same file again to continue: rows already in the system are skipped as duplicates."
+          );
+          break;
+        }
       }
+
+      setProgress(null);
+      if (merged.total > 0) setSummary(merged);
     });
   }
 
@@ -175,11 +217,31 @@ export function LeadImportClient() {
       </div>
 
       {rawRows && !summary && (
-        <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3">
-          <span className="text-sm text-slate-600">{rawRows.length} row(s) parsed from {fileName}.</span>
-          <Button variant="primary" disabled={pending} onClick={handleConfirm}>
-            {pending ? "Importing…" : `Confirm Import (${rawRows.length} rows)`}
-          </Button>
+        <div className="space-y-2 rounded-lg border border-slate-200 bg-white px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-slate-600">
+              {rawRows.length} row(s) parsed from {fileName}.
+              {rawRows.length > BATCH_SIZE && ` Sent in ${Math.ceil(rawRows.length / BATCH_SIZE)} batches.`}
+            </span>
+            <Button variant="primary" disabled={pending} onClick={handleConfirm}>
+              {pending ? "Importing…" : `Confirm Import (${rawRows.length} rows)`}
+            </Button>
+          </div>
+          {progress && (
+            <>
+              {/* A file of this size takes long enough that a spinner alone
+                  looks indistinguishable from a hang. */}
+              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full bg-[var(--brand-primary)] transition-[width] duration-300"
+                  style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }}
+                />
+              </div>
+              <p className="text-xs text-slate-500">
+                {progress.done} of {progress.total} rows processed — keep this page open.
+              </p>
+            </>
+          )}
         </div>
       )}
 
