@@ -146,7 +146,8 @@ export default async function DashboardPage({
 
   // Agents only ever see their own entries, so the scoping is pushed into the
   // query rather than filtering a full copy of the trail.
-  const recentActivity = await fetchRecentActivity(10, isAgent ? user.id : null);
+  const canViewAuditLogs = can(user.role, "audit_logs", "view", db.role_permissions);
+  const recentActivity = canViewAuditLogs ? await fetchRecentActivity(10, isAgent ? user.id : null) : [];
 
   const today = new Intl.DateTimeFormat("en-PH", {
     weekday: "long",
@@ -341,6 +342,12 @@ export default async function DashboardPage({
             </CardContent>
           </Card>
 
+          {/* Audit-derived, so it follows audit_logs:view like every other
+              audit surface. Agents were shown their own entries only, which is
+              not a leak — but it is still the audit trail wearing a different
+              title, and an agent has no use for reading their own actions back
+              to themselves. */}
+          {canViewAuditLogs && (
           <Card>
             <CardHeader>
               <CardTitle>Recent Activity</CardTitle>
@@ -364,6 +371,7 @@ export default async function DashboardPage({
               </ul>
             </CardContent>
           </Card>
+          )}
         </div>
 
         <div className="space-y-6">
