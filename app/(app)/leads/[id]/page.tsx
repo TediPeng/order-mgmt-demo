@@ -82,7 +82,10 @@ export default async function LeadDetailPage({
   }));
 
   const byId = new Map(db.profiles.map((p) => [p.id, displayUserName(p)]));
-  const history = await auditForEntity(order.id, "orders");
+  // Not fetched at all when it will not be shown: the trail is not this
+  // agent's to read, so it should not travel to their browser either.
+  const canSeeHistory = can(user.role, "audit_logs", "view", db.role_permissions);
+  const history = canSeeHistory ? await auditForEntity(order.id, "orders") : [];
 
   const canSeeFulfillment = isFullAccess(user.role) || user.role === "team_lead";
   const wasForwarded =
@@ -275,6 +278,13 @@ export default async function LeadDetailPage({
         </Card>
       )}
 
+      {/* The audit trail, behind the same permission as /audit-logs. It was
+          rendered unconditionally, so an agent opening one of their own leads
+          read the whole trail on it — including who else touched it, and the
+          before/after of every field an Administrator changed. Agents do not
+          hold audit_logs:view, and this card was the one place that did not
+          ask. */}
+      {canSeeHistory && (
       <Card>
         <CardHeader>
           <CardTitle>History</CardTitle>
@@ -303,6 +313,7 @@ export default async function LeadDetailPage({
           </ul>
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }
