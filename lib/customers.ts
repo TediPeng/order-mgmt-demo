@@ -66,6 +66,9 @@ export interface RegularCustomerInput {
   city?: string | null;
   province?: string | null;
   landmark?: string | null;
+  pancake_province_id?: string | null;
+  pancake_district_id?: string | null;
+  pancake_commune_id?: string | null;
   customer_status?: string;
 }
 
@@ -88,6 +91,9 @@ export async function createRegularCustomer(input: RegularCustomerInput, ownerAg
     city: input.city || null,
     province: input.province || null,
     landmark: input.landmark || null,
+    pancake_province_id: input.pancake_province_id || null,
+    pancake_district_id: input.pancake_district_id || null,
+    pancake_commune_id: input.pancake_commune_id || null,
     customer_status: input.customer_status || "active",
   };
 
@@ -275,6 +281,11 @@ export async function upsertRegularCustomer(order: Order, ownerAgentId: string):
           city: order.city || null,
           province: order.province || null,
           landmark: order.landmark || null,
+          // Carried from the order so the next order for this customer can be
+          // raised without re-picking the address.
+          pancake_province_id: order.pancake_province_id,
+          pancake_district_id: order.pancake_district_id,
+          pancake_commune_id: order.pancake_commune_id,
           is_regular_customer: true,
           regular_since: (existing.regular_since as string) || now,
           updated_at: now,
@@ -298,6 +309,9 @@ export async function upsertRegularCustomer(order: Order, ownerAgentId: string):
       city: order.city || null,
       province: order.province || null,
       landmark: order.landmark || null,
+      pancake_province_id: order.pancake_province_id,
+      pancake_district_id: order.pancake_district_id,
+      pancake_commune_id: order.pancake_commune_id,
       owner_agent_id: ownerAgentId,
       original_agent_id: ownerAgentId,
       is_regular_customer: true,
@@ -308,6 +322,19 @@ export async function upsertRegularCustomer(order: Order, ownerAgentId: string):
     .single();
   if (error) throw new Error(`Could not create the customer: ${error.message}`);
   return mapCustomer(data);
+}
+
+/** Keeps `customers.total_orders` in step after an order is raised for a
+ * regular customer. The Regular Customers table counts live from `orders`, so
+ * this column is the record for anything that reads the customer row on its
+ * own — reports, exports, the API — rather than a second source of truth for
+ * the page. */
+export async function recordCustomerOrder(customerId: string, totalOrders: number): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from("customers")
+    .update({ total_orders: totalOrders, updated_at: new Date().toISOString() })
+    .eq("id", customerId);
+  if (error) throw new Error(`Could not update the customer: ${error.message}`);
 }
 
 /** Order history behind a regular customer, used for the previous/latest

@@ -12,6 +12,7 @@ import {
   Percent,
   Sparkles,
   UserCheck,
+  UserPlus,
 } from "lucide-react";
 import { readDb } from "@/lib/db";
 import { recentActivity as fetchRecentActivity } from "@/lib/audit-log";
@@ -55,6 +56,7 @@ export default async function DashboardPage({
   const canImport = can(user.role, "orders", "upload", db.role_permissions);
   const canViewCallLogs = !isAgent && can(user.role, "call_logs", "view", db.role_permissions);
   const canUploadCallLogs = can(user.role, "call_logs", "upload", db.role_permissions);
+  const canViewRegularCustomers = can(user.role, "regular_customers", "view", db.role_permissions);
   const canAddRegularCustomer = can(user.role, "regular_customers", "create", db.role_permissions);
   const canViewPerformance = can(user.role, "performance", "view", db.role_permissions);
 
@@ -330,9 +332,16 @@ export default async function DashboardPage({
               <LinkButton href="/leads/new" variant="outline">
                 <PlusCircle className="h-4 w-4" /> New Lead
               </LinkButton>
+              {/* Opens their own Regular Customers list, where each row can
+                  raise an order from the customer's saved details. */}
+              {canViewRegularCustomers && (
+                <LinkButton href="/regular-customers" variant="outline">
+                  <UserCheck className="h-4 w-4" /> Regular Customers
+                </LinkButton>
+              )}
               {canAddRegularCustomer && (
                 <LinkButton href="/regular-customers/new" variant="outline">
-                  <UserCheck className="h-4 w-4" /> Add Regular Customer
+                  <UserPlus className="h-4 w-4" /> Add Regular Customer
                 </LinkButton>
               )}
               {canImport && (

@@ -36,6 +36,15 @@ interface ProductOption {
  * Packaging validation runs here for immediate per-field feedback; the server
  * re-runs the identical check (lib/lead-workflow.ts) and is what actually decides.
  */
+export interface RegularCustomerPrefill {
+  id: string;
+  full_name: string;
+  phone: string;
+  purok: string;
+  landmark: string;
+  address: AddressValue;
+}
+
 export function LeadForm({
   action,
   agents,
@@ -43,6 +52,7 @@ export function LeadForm({
   currentUser,
   canReassign,
   agentStatuses = AGENT_EDITABLE_STATUSES as readonly string[],
+  regularCustomer = null,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   agents: { id: string; full_name: string; username: string }[];
@@ -50,13 +60,18 @@ export function LeadForm({
   currentUser: { id: string; full_name: string; username: string };
   canReassign: boolean;
   agentStatuses?: readonly string[];
+  /** Set when the order is being raised from a Regular Customer's record: the
+   * customer's details start the form and `customer_id` rides along, so the
+   * server can attach the order to that customer rather than re-deriving them
+   * from the typed phone number. */
+  regularCustomer?: RegularCustomerPrefill | null;
 }) {
-  const [address, setAddress] = useState<AddressValue>(EMPTY_ADDRESS);
+  const [address, setAddress] = useState<AddressValue>(regularCustomer?.address ?? EMPTY_ADDRESS);
   const [values, setValues] = useState({
-    customer_name: "",
-    customer_phone: "",
-    purok: "",
-    landmark: "",
+    customer_name: regularCustomer?.full_name ?? "",
+    customer_phone: regularCustomer?.phone ?? "",
+    purok: regularCustomer?.purok ?? "",
+    landmark: regularCustomer?.landmark ?? "",
     product_id: "",
     quantity: "1",
     unit_price: "",
@@ -121,6 +136,17 @@ export function LeadForm({
         <Alert kind="error">
           Missing required fields for Packaging: {problems.map((p) => p.label).join(", ")}.
         </Alert>
+      )}
+
+      {regularCustomer && (
+        <>
+          <Alert kind="info">
+            Order for regular customer <strong>{regularCustomer.full_name}</strong>. Their details are filled in below —
+            edit anything that has changed. This order is recorded against their customer record and stays out of the
+            Leads list.
+          </Alert>
+          <input type="hidden" name="customer_id" value={regularCustomer.id} />
+        </>
       )}
 
       <div>
@@ -221,10 +247,10 @@ export function LeadForm({
       </div>
 
       <div className="flex justify-end gap-2 pt-2">
-        <LinkButton href="/leads" variant="outline">
+        <LinkButton href={regularCustomer ? "/regular-customers" : "/leads"} variant="outline">
           Cancel
         </LinkButton>
-        <Button type="submit">Save Lead</Button>
+        <Button type="submit">{regularCustomer ? "Save Order" : "Save Lead"}</Button>
       </div>
     </form>
   );

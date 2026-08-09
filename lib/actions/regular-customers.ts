@@ -69,6 +69,9 @@ export async function createRegularCustomerAction(formData: FormData) {
       city: data.city,
       province: data.province,
       landmark: data.landmark,
+      pancake_province_id: data.pancake_province_id,
+      pancake_district_id: data.pancake_district_id,
+      pancake_commune_id: data.pancake_commune_id,
       customer_status: data.customer_status,
     },
     ownerAgentId

@@ -25,6 +25,10 @@ export default async function RegularCustomersPage({
   // Adding a regular customer is its own grant — it is not adding a lead, and
   // an agent holds it by default so they can build their own list.
   const canCreate = can(user.role, "regular_customers", "create", db.role_permissions);
+  // Raising an order for a regular customer is still creating an order, so it
+  // takes orders.create — the Regular Customers grant covers the customer, not
+  // the sale.
+  const canOrder = can(user.role, "orders", "create", db.role_permissions);
 
   // Scope mirrors the leads rules: agents see their own, team leads their
   // team's, management everyone's.
@@ -93,7 +97,7 @@ export default async function RegularCustomersPage({
               <th className="px-4 py-3">Total Orders</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Regular Since</th>
-              {canManage && <th className="px-4 py-3">Actions</th>}
+              {(canOrder || canManage) && <th className="px-4 py-3">Actions</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -138,20 +142,32 @@ export default async function RegularCustomersPage({
                   </Badge>
                 </td>
                 <td className="px-4 py-3 text-slate-600">{customer.regular_since ? formatDate(customer.regular_since) : "—"}</td>
-                {canManage && (
+                {(canOrder || canManage) && (
                   <td className="px-4 py-3">
-                    <form action={untagRegularCustomerAction.bind(null, customer.id)}>
-                      <ConfirmSubmitButton confirmMessage="Return this customer to the active Leads list?">
-                        Return to Leads
-                      </ConfirmSubmitButton>
-                    </form>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Starts the order form with this customer's details
+                          already filled in — no retyping, and the order is
+                          recorded against their record. */}
+                      {canOrder && (
+                        <LinkButton href={`/leads/new?customer=${customer.id}`} size="sm">
+                          New Order
+                        </LinkButton>
+                      )}
+                      {canManage && (
+                        <form action={untagRegularCustomerAction.bind(null, customer.id)}>
+                          <ConfirmSubmitButton confirmMessage="Return this customer to the active Leads list?">
+                            Return to Leads
+                          </ConfirmSubmitButton>
+                        </form>
+                      )}
+                    </div>
                   </td>
                 )}
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={canManage ? 10 : 9} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={canOrder || canManage ? 10 : 9} className="px-4 py-10 text-center text-slate-400">
                   No regular customers yet.{" "}
                   {canCreate
                     ? "Use Add Regular Customer, or tag one from a lead's details popup."

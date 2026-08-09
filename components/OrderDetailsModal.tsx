@@ -91,6 +91,7 @@ function buildRawFromOrder(o: Order, overrides: Record<string, unknown> = {}): R
     previous_order_date: o.previous_order_date || "",
     previous_order_product: o.previous_order_product || "",
     previous_order_amount: o.previous_order_amount,
+    previous_order_note: o.previous_order_note || "",
     product_id: o.product_id || "",
     unit_price: o.unit_price,
     status: o.status,
@@ -188,7 +189,6 @@ export function OrderDetailsModal({
   const initial = useMemo(() => snapshotFrom(order), [order]);
   const [form, setForm] = useState<EditForm>(initial);
   const [lines, setLines] = useState<EditorLine[]>(initialLines);
-  const [statusDraft, setStatusDraft] = useState<string>(order.status);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [missing, setMissing] = useState<string[]>([]);
@@ -264,14 +264,15 @@ export function OrderDetailsModal({
   }
 
   const isDirty = mode === "edit" && JSON.stringify(form) !== JSON.stringify(initial);
-  const hasUnsavedChanges = isDirty || statusDraft !== order.status;
+  // Only an in-progress edit can be lost now that the view mode has no controls
+  // of its own to abandon.
+  const hasUnsavedChanges = isDirty;
 
   // Calling session state. `locked` is what disables the controls; the server
   // refuses the same edits independently, so this is only the visible half.
   // The session is app-level state (CallSessionProvider) so the timer survives
   // so a server-rendered open popup has the right state on first paint.
   const { session: callSession, clearSession } = useCallSession();
-  const [callRemarks, setCallRemarks] = useState("");
   const callActive = Boolean(callSession && callSession.order_id === order.id);
   // A synced order is frozen for everyone (the server rejects the same edits);
   // an Administrator unlock sets manual_unlock_active and reopens it for one save.
@@ -353,7 +354,6 @@ export function OrderDetailsModal({
       if (callActive) clearSession();
       onSaved(json.order as Order);
       setMode("view");
-      setStatusDraft(json.order.status);
       setError(null);
       setMissing([]);
     } catch {
@@ -361,11 +361,6 @@ export function OrderDetailsModal({
     } finally {
       setSaving(false);
     }
-  }
-
-  function handleUpdateStatus() {
-    if (statusDraft === order.status) return;
-    submit(buildRawFromOrder(order, { status: statusDraft, call_remarks: callRemarks }));
   }
 
   function handleSaveEdit() {
@@ -773,6 +768,12 @@ export function OrderDetailsModal({
                 {order.previous_order_amount != null ? formatCurrency(order.previous_order_amount) : "—"}
               </p>
             </div>
+            {/* Full width: a note is a sentence, not a value, and wrapping it
+                into a third-of-a-row column made it unreadable. */}
+            <div className="col-span-3">
+              <p className="text-xs uppercase text-slate-400">Previous Note</p>
+              <p className="whitespace-pre-wrap text-slate-700">{order.previous_order_note || "—"}</p>
+            </div>
           </div>
 
           {mode === "view" && (
@@ -899,40 +900,10 @@ export function OrderDetailsModal({
             )}
           </div>
 
-          {canEdit && mode === "view" && (
-            <div className="flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3">
-              <div className="flex-1">
-                <Label htmlFor="m_status_quick">Update Status</Label>
-                <Select id="m_status_quick" value={statusDraft} onChange={(e) => setStatusDraft(e.target.value)} disabled={locked}>
-                  {selectableStatuses(canSetFulfillmentStatus, order.status).map((s) => (
-                    <option key={s} value={s}>
-                      {LEAD_STATUS_LABELS[s]}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={locked || saving || statusDraft === order.status}
-                onClick={handleUpdateStatus}
-              >
-                {saving ? "Updating…" : "Update Status"}
-              </Button>
-              {callActive && (
-                <div className="w-full">
-                  <Label htmlFor="m_call_remarks">Call remarks (saved with this call)</Label>
-                  <Textarea
-                    id="m_call_remarks"
-                    rows={2}
-                    value={callRemarks}
-                    onChange={(e) => setCallRemarks(e.target.value)}
-                    placeholder="What was discussed on this call?"
-                  />
-                </div>
-              )}
-            </div>
-          )}
+          {/* The quick Update Status control and its call-remarks box used to sit
+              here. Removed at the client's request: status is changed through
+              Edit Order, which is the one path that also validates the fields a
+              status needs. */}
 
           {callSessions.length > 0 && (
             <div className="border-t border-slate-100 pt-3">

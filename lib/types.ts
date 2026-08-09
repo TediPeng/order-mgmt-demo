@@ -164,6 +164,10 @@ export interface Order {
   previous_order_date: string | null;
   previous_order_product: string | null;
   previous_order_amount: number | null;
+  // What was noted on the customer's last order. Auto-filled from that order's
+  // notes when the form or import file does not supply it, same as the three
+  // fields above.
+  previous_order_note: string | null;
   product_id: string | null; // source of truth for the selected product going forward
   product_name: string; // denormalized display text (legacy free-text for old rows)
   variant: string | null; // selected variant, when the product defines any
@@ -703,6 +707,12 @@ export interface Customer {
   city: string | null;
   province: string | null;
   landmark: string | null;
+  // Pancake POS's own address IDs, captured by the address picker. Carried so
+  // an order raised from this customer arrives at Pancake with a location —
+  // names alone are ignored there. Same identifier space as orders.pancake_*.
+  pancake_province_id: string | null;
+  pancake_district_id: string | null;
+  pancake_commune_id: string | null;
   owner_agent_id: string;
   original_agent_id: string | null;
   is_regular_customer: boolean;

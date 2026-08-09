@@ -151,14 +151,17 @@ export function computeOrderDate(order: Pick<Order, "order_date">, newStatus: Or
 }
 
 /** Most recent packaged lead for this phone number (normalized), used to
- * auto-fill Previous Order Date/Product/Amount when the file/form doesn't
+ * auto-fill Previous Order Date/Product/Amount/Note when the file/form doesn't
  * supply them. Any lead with an order_date has reached Packaging, so the date
  * is the marker rather than the current status — an order that has since moved
- * on to Shipped or Delivered still counts as a previous order. */
+ * on to Shipped or Delivered still counts as a previous order.
+ *
+ * The note carried across is that order's own Notes, which is where an agent
+ * records what the customer asked for or agreed to. */
 export function findPreviousOrderInfo(
   db: DbShape,
   phone: string
-): { date: string; product: string; amount: number } | null {
+): { date: string; product: string; amount: number; note: string } | null {
   const target = normalizePhone(phone);
   if (!target) return null;
   const candidates = db.orders.filter((o) => o.order_date && normalizePhone(o.customer_phone) === target);
@@ -166,5 +169,10 @@ export function findPreviousOrderInfo(
   candidates.sort((a, b) => (b.order_date as string).localeCompare(a.order_date as string));
   const best = candidates[0];
   const product = best.product_id ? db.products.find((p) => p.id === best.product_id)?.name : best.product_name;
-  return { date: best.order_date as string, product: product || best.product_name || "", amount: best.total_amount };
+  return {
+    date: best.order_date as string,
+    product: product || best.product_name || "",
+    amount: best.total_amount,
+    note: best.notes || "",
+  };
 }

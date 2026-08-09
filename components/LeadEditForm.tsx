@@ -24,6 +24,7 @@ interface FormState {
   previous_order_date: string;
   previous_order_product: string;
   previous_order_amount: string;
+  previous_order_note: string;
   product_id: string;
   unit_price: string;
   discount: string;
@@ -52,6 +53,7 @@ function snapshotFrom(order: Order): FormState {
     previous_order_date: order.previous_order_date || "",
     previous_order_product: order.previous_order_product || "",
     previous_order_amount: order.previous_order_amount != null ? String(order.previous_order_amount) : "",
+    previous_order_note: order.previous_order_note || "",
     product_id: order.product_id || "",
     unit_price: order.unit_price != null ? String(order.unit_price) : "",
     discount: order.discount ? String(order.discount) : "",
@@ -273,6 +275,18 @@ export function LeadEditForm({
             disabled={!canSeePreviousOrderFields}
           />
         </div>
+      </div>
+      <div>
+        <Label htmlFor="previous_order_note">Previous note</Label>
+        <Textarea
+          id="previous_order_note"
+          name="previous_order_note"
+          rows={2}
+          value={form.previous_order_note}
+          onChange={(e) => update("previous_order_note", e.target.value)}
+          disabled={!canSeePreviousOrderFields}
+          placeholder="What was noted on the customer's last order"
+        />
       </div>
       {!canSeePreviousOrderFields && (
         <p className="-mt-2 text-xs text-slate-400">Previous order information is informational and can only be corrected by an Administrator.</p>

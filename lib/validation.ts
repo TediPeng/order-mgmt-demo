@@ -225,6 +225,7 @@ export const leadFormSchema = z.object({
   previous_order_date: dateCell,
   previous_order_product: z.string().trim().optional().default(""),
   previous_order_amount: z.coerce.number().nonnegative().optional().nullable(),
+  previous_order_note: z.string().trim().optional().default(""),
   product_id: z.string().trim().optional().default(""),
   // Section 0.6: back on the agent form, so it is part of the schema rather than
   // being read straight off the raw body.
@@ -268,6 +269,11 @@ export const regularCustomerFormSchema = z.object({
   city: z.string().trim().optional().default(""),
   province: z.string().trim().optional().default(""),
   landmark: z.string().trim().optional().default(""),
+  // Pancake POS address IDs from the Select Address picker, stored so an order
+  // raised from this customer does not have to re-pick the address.
+  pancake_province_id: z.string().trim().optional().default(""),
+  pancake_district_id: z.string().trim().optional().default(""),
+  pancake_commune_id: z.string().trim().optional().default(""),
   customer_status: z.enum(["active", "inactive"]).default("active"),
   agent_id: z.string().trim().optional().default(""),
 });
@@ -328,6 +334,7 @@ export const leadImportRowSchema = z.object({
   previous_order_date: dateCell,
   previous_order_product: textCell,
   previous_order_amount: numberCell,
+  previous_order_note: textCell,
 });
 
 export const LEAD_IMPORT_HEADERS = [
@@ -342,6 +349,7 @@ export const LEAD_IMPORT_HEADERS = [
   "Previous Order Date",
   "Previous Order Product",
   "Previous Order Amount",
+  "Previous Note",
 ];
 
 // Columns the template must NOT contain — they're generated/completed inside

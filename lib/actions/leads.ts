@@ -24,7 +24,7 @@ import {
   lockedEditBlockReason,
 } from "@/lib/lead-workflow";
 import { timeInBlockReason } from "@/lib/time-in-gate";
-import { findRegularCustomerByPhone } from "@/lib/customers";
+import { findRegularCustomerByPhone, getCustomer, recordCustomerOrder } from "@/lib/customers";
 import { forwardOrderToPancake } from "@/lib/pancake/forward";
 import { computeOrderTotal, validateForPancake } from "@/lib/pancake/validate";
 import { verifyOrderAddress } from "@/lib/pancake/verifyAddress";
@@ -56,6 +56,7 @@ function buildLeadFieldErrors(formData: FormData): Record<string, unknown> {
     previous_order_date: field("previous_order_date"),
     previous_order_product: field("previous_order_product"),
     previous_order_amount: numeric("previous_order_amount"),
+    previous_order_note: field("previous_order_note"),
     product_id: field("product_id"),
     quantity: field("quantity"),
     unit_price: numeric("unit_price"),
@@ -162,7 +163,8 @@ export async function createLeadAction(formData: FormData) {
     }
   }
 
-  const hasProvidedPreviousInfo = data.previous_order_date || data.previous_order_product || data.previous_order_amount != null;
+  const hasProvidedPreviousInfo =
+    data.previous_order_date || data.previous_order_product || data.previous_order_amount != null || data.previous_order_note;
   const previousInfo = hasProvidedPreviousInfo ? null : findPreviousOrderInfo(db, data.customer_phone || "");
 
   const order: Order = {
@@ -178,6 +180,7 @@ export async function createLeadAction(formData: FormData) {
     previous_order_date: data.previous_order_date || previousInfo?.date || null,
     previous_order_product: data.previous_order_product || previousInfo?.product || null,
     previous_order_amount: data.previous_order_amount ?? previousInfo?.amount ?? null,
+    previous_order_note: data.previous_order_note || previousInfo?.note || null,
     // These stay on the order as its summary, so lists, dashboards, exports
     // and the Pancake payload keep reading one row per order. With lines they
     // are derived; with none they fall back to what the form posted, which is
@@ -230,7 +233,18 @@ export async function createLeadAction(formData: FormData) {
   // landing back in their Leads list — otherwise every repeat purchase would
   // quietly re-add them as a lead, which is exactly what the section exists to
   // prevent. The order itself is untouched in every other respect.
-  const regular = await findRegularCustomerByPhone(order.customer_phone, order.agent_id);
+  //
+  // `customer_id` is posted when the order was raised from the customer's own
+  // record ("New Order" on Regular Customers). It is trusted only after the
+  // customer is confirmed to belong to the assigned agent, since a form field
+  // is not proof of ownership. Otherwise the phone number decides, which also
+  // covers an order typed straight into the lead form.
+  const postedCustomerId = String(formData.get("customer_id") || "").trim();
+  const claimed = postedCustomerId ? await getCustomer(postedCustomerId) : null;
+  const regular =
+    claimed && claimed.is_regular_customer && claimed.owner_agent_id === order.agent_id
+      ? claimed
+      : await findRegularCustomerByPhone(order.customer_phone, order.agent_id);
   if (regular) {
     order.customer_id = regular.id;
     order.is_regular_customer = true;
@@ -243,7 +257,37 @@ export async function createLeadAction(formData: FormData) {
     module: "orders",
     ...info,
   });
+  // The record of the process the client asked for: an order raised for a
+  // regular customer is logged as its own event, naming the customer and
+  // whether it started from their record or was matched by phone. Separate
+  // from LEAD_CREATED so the customer's order history is auditable on its own.
+  if (regular) {
+    logActivity(db, user.id, "REGULAR_CUSTOMER_ORDER_CREATED", "customer", regular.id, {
+      customer_name: regular.full_name,
+      order_id: order.id,
+      order_number: order.order_number,
+      agent_id: order.agent_id,
+      total_amount: order.total_amount,
+      status: order.status,
+      raised_from: claimed && claimed.id === regular.id ? "customer_record" : "phone_match",
+    }, { module: "regular_customers", ...info });
+  }
   await writeDb(db);
+
+  // Order count on the customer row, kept in step outside the whole-database
+  // write (the customers table is not part of DbShape).
+  if (regular) {
+    const total = db.orders.filter((o) => o.customer_id === regular.id).length;
+    try {
+      await recordCustomerOrder(regular.id, total);
+    } catch (e) {
+      logActivity(db, user.id, "CUSTOMER_TOTAL_ORDERS_WRITE_FAILED", "customer", regular.id, {
+        order_number: order.order_number,
+        error: (e as Error).message,
+      }, { module: "regular_customers", ...info });
+      await writeDb(db);
+    }
+  }
 
   // After writeDb, because the lines carry a foreign key to an order that has
   // to exist first. Its own query, outside the whole-database write.
@@ -326,6 +370,7 @@ export async function applyLeadUpdate(
     raw.previous_order_date = order.previous_order_date || "";
     raw.previous_order_product = order.previous_order_product || "";
     raw.previous_order_amount = order.previous_order_amount ?? null;
+    raw.previous_order_note = order.previous_order_note || "";
   }
 
   const parsed = leadFormSchema.safeParse(raw);
@@ -469,6 +514,7 @@ export async function applyLeadUpdate(
   order.previous_order_date = data.previous_order_date || null;
   order.previous_order_product = data.previous_order_product || null;
   order.previous_order_amount = data.previous_order_amount ?? null;
+  order.previous_order_note = data.previous_order_note || null;
   // Clear product_name only on an explicit un-select (product_id was set and is
   // now blank); if product_id was already empty (a legacy free-text row) and
   // stays empty, leave the display text alone -- otherwise any save that
@@ -928,7 +974,10 @@ export async function importLeadsAction(
     }
 
     seenInFile.add(key);
-    const hasProvidedPreviousInfo = data.previous_order_date || data.previous_order_product || data.previous_order_amount != null;
+    // Previous Note is deliberately absent from leadDedupeKey above: two rows
+    // that differ only in what was noted are still the same lead typed twice.
+    const hasProvidedPreviousInfo =
+      data.previous_order_date || data.previous_order_product || data.previous_order_amount != null || data.previous_order_note;
     const previousInfo = hasProvidedPreviousInfo ? null : findPreviousOrderInfo(db, data.customer_phone);
 
     const order: Order = {
@@ -944,6 +993,7 @@ export async function importLeadsAction(
       previous_order_date: data.previous_order_date || previousInfo?.date || null,
       previous_order_product: data.previous_order_product || previousInfo?.product || null,
       previous_order_amount: data.previous_order_amount ?? previousInfo?.amount ?? null,
+      previous_order_note: data.previous_order_note || previousInfo?.note || null,
       product_id: null,
       product_name: "",
       quantity: 1,

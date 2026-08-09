@@ -10,13 +10,15 @@ import { can, isFullAccess } from "@/lib/permissions";
 import { displayUserName } from "@/lib/types";
 import { creatableStatuses } from "@/lib/validation";
 import { timeInBlockReason, TIME_IN_HREF } from "@/lib/time-in-gate";
+import { getCustomer } from "@/lib/customers";
+import type { RegularCustomerPrefill } from "@/components/LeadForm";
 
 export default async function NewLeadPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; time_in_required?: string }>;
+  searchParams: Promise<{ error?: string; time_in_required?: string; customer?: string }>;
 }) {
-  const { error, time_in_required } = await searchParams;
+  const { error, time_in_required, customer: customerId } = await searchParams;
   const user = (await getCurrentUser())!;
   const db = await readDb();
 
@@ -46,11 +48,45 @@ export default async function NewLeadPage({
   // front rather than only on submit, so the block is obvious before they type.
   const notTimedIn = timeInBlockReason(db, user);
 
+  // Raising an order from a Regular Customer's record. The customer must be one
+  // this user could own the order for, which is the same rule that decides who
+  // a new order may be attributed to — an agent cannot reach another agent's
+  // customer by guessing an id.
+  let regularCustomer: RegularCustomerPrefill | null = null;
+  if (customerId) {
+    const found = await getCustomer(customerId);
+    if (found && found.is_regular_customer && allowedIds.has(found.owner_agent_id)) {
+      regularCustomer = {
+        id: found.id,
+        full_name: found.full_name,
+        phone: found.phone_raw,
+        purok: found.purok || "",
+        landmark: found.landmark || "",
+        address: {
+          province_id: found.pancake_province_id || "",
+          province: found.province || "",
+          city_id: found.pancake_district_id || "",
+          city: found.city || "",
+          barangay_id: found.pancake_commune_id || "",
+          barangay: found.barangay || "",
+        },
+      };
+    }
+  }
+
   return (
     <div className="mx-auto max-w-2xl">
       {/* This page adds a LEAD. Adding a Regular Customer is a separate act
           with its own page at /regular-customers/new. */}
-      <h1 className="mb-4 text-page-title text-slate-900">New Lead</h1>
+      <h1 className="mb-4 text-page-title text-slate-900">
+        {regularCustomer ? "New Order — Regular Customer" : "New Lead"}
+      </h1>
+
+      {customerId && !regularCustomer && (
+        <Alert kind="error" className="mb-4">
+          That regular customer was not found, or is not one of yours.
+        </Alert>
+      )}
 
       {(notTimedIn || time_in_required) && (
         <Alert kind="warning" className="mb-4">
@@ -65,7 +101,7 @@ export default async function NewLeadPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Lead details</CardTitle>
+          <CardTitle>{regularCustomer ? "Order details" : "Lead details"}</CardTitle>
         </CardHeader>
         <CardContent>
           {error && !time_in_required && (
@@ -85,6 +121,7 @@ export default async function NewLeadPage({
               currentUser={{ id: user.id, full_name: user.full_name, username: user.username }}
               canReassign={canReassign}
               agentStatuses={creatableStatuses(isFullAccess(user.role))}
+              regularCustomer={regularCustomer}
             />
           )}
         </CardContent>
