@@ -16,6 +16,21 @@ import { CreateUserForm } from "@/components/CreateUserForm";
 import { RoleSelect } from "@/components/RoleSelect";
 import { TeamLeadSelect } from "@/components/TeamLeadSelect";
 
+/**
+ * Full Name and Username are frozen to the left edge: the table is 1500px wide
+ * and scrolling right to reach Role or Last Time-In used to take both away, so
+ * a row became a line of values with nobody's name on it.
+ *
+ * The widths are fixed rather than automatic because Username's `left` offset
+ * has to equal Full Name's actual width — auto column widths would drift and
+ * leave a gap or an overlap. Header cells sit above body cells (z-20 vs z-10)
+ * so the frozen columns do not paint over their own headings.
+ */
+const FROZEN_COLUMN = {
+  full_name: "sticky left-0 w-[14rem] min-w-[14rem]",
+  username: "sticky left-[14rem] w-[10rem] min-w-[10rem]",
+} as const;
+
 export default async function UsersPage({
   searchParams,
 }: {
@@ -302,7 +317,17 @@ export default async function UsersPage({
                   ["last_time_in", "Last Time-In"],
                 ] as const
               ).map(([key, label]) => (
-                <th key={key} className="px-4 py-3">
+                <th
+                  key={key}
+                  className={cn(
+                    "px-4 py-3",
+                    // The header's own opaque background, so scrolled columns
+                    // pass underneath rather than through.
+                    FROZEN_COLUMN[key as keyof typeof FROZEN_COLUMN] && "z-20 bg-slate-50",
+                    FROZEN_COLUMN[key as keyof typeof FROZEN_COLUMN],
+                    key === "username" && "border-r border-slate-200"
+                  )}
+                >
                   <Link
                     href={sortHref(key)}
                     className={cn(
@@ -329,15 +354,26 @@ export default async function UsersPage({
                 await adminResetPasswordAction(u.id);
               };
               const lastTimeIn = lastTimeInByUser.get(u.id);
+              // The row carries an OPAQUE background so the two frozen columns
+              // can inherit it. A translucent one would let the scrolling
+              // columns show through them.
               return (
-                <tr key={u.id} className={u.is_deleted ? "bg-slate-50/70 text-slate-400" : undefined}>
-                  <td className="px-4 py-3">
+                <tr key={u.id} className={u.is_deleted ? "bg-slate-50 text-slate-400" : "bg-white"}>
+                  <td className={cn("px-4 py-3 z-10 bg-inherit", FROZEN_COLUMN.full_name)}>
                     <span className="flex items-center gap-2">
                       <Avatar name={displayUserName(u)} src={u.avatar_url} size="sm" />
                       <span className={u.is_deleted ? "italic" : undefined}>{displayUserName(u)}</span>
                     </span>
                   </td>
-                  <td className="px-4 py-3 font-medium text-slate-800">{u.username}</td>
+                  <td
+                    className={cn(
+                      "px-4 py-3 z-10 font-medium text-slate-800",
+                      "border-r border-slate-200 bg-inherit",
+                      FROZEN_COLUMN.username
+                    )}
+                  >
+                    {u.username}
+                  </td>
                   <td className="px-4 py-3 text-slate-500">{u.is_deleted ? "—" : u.email}</td>
                   <td className="px-4 py-3 text-slate-500">{u.call_name || "—"}</td>
                   <td className="px-4 py-3">

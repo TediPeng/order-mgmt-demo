@@ -4,10 +4,10 @@ import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { scopeAgentsForSchedule, scopeSchedules, scopeSuspensions, isDateWithinSuspension } from "@/lib/schedule-access";
 import { todayInTz } from "@/lib/utils";
-import { Download } from "lucide-react";
+import { Download, Upload } from "lucide-react";
 import { StatCard } from "@/components/StatCard";
 import { ScheduleCalendar } from "@/components/ScheduleCalendar";
-import { Button } from "@/components/ui/Button";
+import { Button, LinkButton } from "@/components/ui/Button";
 import { PrintButton } from "@/components/PrintButton";
 
 export default async function SchedulePage() {
@@ -43,6 +43,13 @@ export default async function SchedulePage() {
       <div className="flex items-center justify-between">
         <h1 className="text-page-title text-slate-900">Schedule</h1>
         <div className="flex gap-2">
+          {/* Same grant as assigning a shift by hand — an import is the same
+              act, done for a whole team at once. */}
+          {canCreate && (
+            <LinkButton href="/schedule/import" variant="outline" size="sm">
+              <Upload className="h-4 w-4" /> Import Schedule
+            </LinkButton>
+          )}
           {canExport && (
             <a href="/api/schedule/export">
               <Button variant="outline" size="sm">
