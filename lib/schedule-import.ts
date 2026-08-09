@@ -23,13 +23,60 @@
 export const SCHEDULE_IMPORT_AGENT_HEADER = "Agent";
 export const SCHEDULE_IMPORT_NAME_HEADER = "Agent Name";
 
-/** Accepted ways of writing "no duty this day". Case and spacing are ignored. */
-const REST_WORDS = ["rest", "rest day", "restday", "rd", "off", "day off"];
+/**
+ * The five duty statuses, as the client already writes them in their own
+ * roster. These are the dropdown options in the template, in this order, and
+ * the colours match what they use on paper: on duty green, off red.
+ */
+export const DUTY_STATUSES = ["ON DUTY", "HALF DAY", "ON LEAVE", "OFF", "TRAINING"] as const;
+export type DutyStatus = (typeof DUTY_STATUSES)[number];
+
+/** argb fills for the template's conditional formatting, so a cell colours
+ * itself the moment a status is picked. */
+export const DUTY_STATUS_COLORS: Record<DutyStatus, { fill: string; font: string }> = {
+  "ON DUTY": { fill: "FF15803D", font: "FFFFFFFF" },
+  "HALF DAY": { fill: "FFF59E0B", font: "FF1F2937" },
+  "ON LEAVE": { fill: "FF3B82F6", font: "FFFFFFFF" },
+  OFF: { fill: "FFDC2626", font: "FFFFFFFF" },
+  TRAINING: { fill: "FF7C3AED", font: "FFFFFFFF" },
+};
+
+/** Spellings that mean the same status. Everything is compared lower-case with
+ * runs of whitespace collapsed, so "On  Duty" and "ON DUTY" agree. */
+const STATUS_ALIASES: Record<string, DutyStatus> = {
+  "on duty": "ON DUTY",
+  duty: "ON DUTY",
+  onduty: "ON DUTY",
+  "half day": "HALF DAY",
+  halfday: "HALF DAY",
+  half: "HALF DAY",
+  "on leave": "ON LEAVE",
+  leave: "ON LEAVE",
+  onleave: "ON LEAVE",
+  off: "OFF",
+  rest: "OFF",
+  "rest day": "OFF",
+  restday: "OFF",
+  rd: "OFF",
+  "day off": "OFF",
+  training: "TRAINING",
+  train: "TRAINING",
+};
+
+/** The company work day a status is measured against. */
+export interface WorkDayTimes {
+  work_start: string; // HH:mm
+  work_end: string; // HH:mm
+}
 
 export interface ShiftCell {
   kind: "empty" | "rest" | "duty" | "invalid";
   duty_start?: string;
   duty_end?: string;
+  /** The status this cell resolved to, kept for the preview and for the
+   * schedule's remarks — "OFF" and "ON LEAVE" both produce a rest day, and the
+   * remark is what tells them apart afterwards. */
+  status?: DutyStatus;
   /** Set when kind is "invalid" — shown against the offending cell. */
   error?: string;
 }
@@ -44,30 +91,63 @@ function normalizeTime(raw: string): string | null {
   return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
 }
 
+/** Half a work day, rounded to the minute: start → the midpoint between start
+ * and end. An overnight span is treated as crossing midnight. */
+function halfDayEnd(times: WorkDayTimes): string {
+  const toMin = (t: string) => {
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + m;
+  };
+  const start = toMin(times.work_start);
+  const end = toMin(times.work_end);
+  const span = (end - start + 1440) % 1440;
+  const mid = (start + Math.round(span / 2)) % 1440;
+  return `${String(Math.floor(mid / 60)).padStart(2, "0")}:${String(mid % 60).padStart(2, "0")}`;
+}
+
+/** What each dropdown status means as an actual schedule row. */
+export function shiftForStatus(status: DutyStatus, times: WorkDayTimes): ShiftCell {
+  switch (status) {
+    case "OFF":
+    case "ON LEAVE":
+      // Both are "not working"; the status rides along so the remark can say
+      // which, since the schedule model has one rest-day state, not two.
+      return { kind: "rest", status };
+    case "HALF DAY":
+      return { kind: "duty", status, duty_start: times.work_start, duty_end: halfDayEnd(times) };
+    default:
+      // ON DUTY and TRAINING are both a full day at the company's hours.
+      return { kind: "duty", status, duty_start: times.work_start, duty_end: times.work_end };
+  }
+}
+
 /**
  * Reads one roster cell.
  *
+ * The template hands the person a dropdown of the five statuses, so that is
+ * the expected content. Explicit times (08:00-17:00) are still accepted, for a
+ * shift that does not follow the company hours and for files written before
+ * the dropdown existed.
+ *
  * A blank cell means "nothing said about this day" and leaves any existing
  * schedule alone — deleting a shift is not something a blank should be able to
- * do silently. Rest days are written as a word, duties as a range.
+ * do silently.
  */
-export function parseShiftCell(value: unknown): ShiftCell {
+export function parseShiftCell(value: unknown, times: WorkDayTimes): ShiftCell {
   if (value === null || value === undefined) return { kind: "empty" };
   const text = String(value).trim();
   if (!text) return { kind: "empty" };
 
-  if (REST_WORDS.includes(text.toLowerCase().replace(/\s+/g, " "))) return { kind: "rest" };
+  const status = STATUS_ALIASES[text.toLowerCase().replace(/\s+/g, " ")];
+  if (status) return shiftForStatus(status, times);
 
   // En dash and "to" are what people actually type; treat them as the hyphen.
   const parts = text.replace(/[–—]/g, "-").replace(/\bto\b/gi, "-").split("-");
-  if (parts.length !== 2) {
-    return { kind: "invalid", error: `"${text}" is not a shift — use 08:00-17:00, REST, or leave it blank` };
-  }
+  const unrecognised = `"${text}" is not one of ${DUTY_STATUSES.join(", ")} — pick from the dropdown, or write times like 08:00-17:00`;
+  if (parts.length !== 2) return { kind: "invalid", error: unrecognised };
   const start = normalizeTime(parts[0]);
   const end = normalizeTime(parts[1]);
-  if (!start || !end) {
-    return { kind: "invalid", error: `"${text}" is not a shift — use 24-hour times like 08:00-17:00` };
-  }
+  if (!start || !end) return { kind: "invalid", error: unrecognised };
   // An overnight shift (22:00-06:00) is legitimate, so end-before-start is not
   // an error; only an exact match is, since a zero-length duty is a typo.
   if (start === end) return { kind: "invalid", error: `"${text}" starts and ends at the same time` };

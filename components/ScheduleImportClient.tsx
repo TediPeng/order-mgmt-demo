@@ -11,7 +11,7 @@ import {
   SCHEDULE_IMPORT_AGENT_HEADER,
   SCHEDULE_IMPORT_NAME_HEADER,
 } from "@/lib/schedule-import";
-import type { ScheduleImportRow, ScheduleImportSummary } from "@/lib/schedule-import";
+import type { ScheduleImportRow, ScheduleImportSummary, WorkDayTimes } from "@/lib/schedule-import";
 
 /**
  * Reads a filled-in roster and previews it before anything is written.
@@ -36,7 +36,15 @@ interface Preview {
   problems: { row: number; agent: string; message: string }[];
 }
 
-export function ScheduleImportClient({ templateHref }: { templateHref: string }) {
+export function ScheduleImportClient({
+  templateHref,
+  workDay,
+}: {
+  templateHref: string;
+  /** The company work day the statuses resolve against — the same values the
+   * server uses, passed in so the preview cannot disagree with the import. */
+  workDay: WorkDayTimes;
+}) {
   const [fileError, setFileError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -103,7 +111,7 @@ export function ScheduleImportClient({ templateHref }: { templateHref: string })
           const cells = dateCols.map((c) => ({ date: c.date, raw: String(arr[c.index] ?? "").trim() }));
 
           for (const cell of cells) {
-            const shift = parseShiftCell(cell.raw);
+            const shift = parseShiftCell(cell.raw, workDay);
             if (shift.kind === "duty") duty++;
             else if (shift.kind === "rest") rest++;
             else if (shift.kind === "invalid") {

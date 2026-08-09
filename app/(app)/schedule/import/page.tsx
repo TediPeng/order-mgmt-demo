@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { readDb } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { scopeAgentsForSchedule } from "@/lib/schedule-access";
+import { DUTY_STATUSES, shiftForStatus } from "@/lib/schedule-import";
 
 const TEMPLATE_HREF = "/api/schedule/template";
 
@@ -28,6 +29,9 @@ export default async function ImportSchedulePage() {
     (p) => p.role === "agent" && p.is_active && !p.is_deleted
   ).length;
 
+  const workDay = { work_start: db.work_schedule.work_start, work_end: db.work_schedule.work_end };
+  const halfDayEndsAt = shiftForStatus("HALF DAY", workDay).duty_end;
+
   return (
     <div className="mx-auto max-w-3xl">
       <h1 className="mb-4 text-page-title text-slate-900">Import Schedule</h1>
@@ -39,10 +43,14 @@ export default async function ImportSchedulePage() {
         <CardContent className="space-y-3">
           <p className="text-sm text-slate-600">
             The template comes with your {agentCount} agent account{agentCount === 1 ? "" : "s"} already listed — one
-            row each, one column per date, defaulting to next Monday through Sunday. Fill each cell with a shift like{" "}
-            <span className="font-medium text-slate-700">08:00-17:00</span>, or{" "}
-            <span className="font-medium text-slate-700">REST</span> for a rest day. Leave a cell blank to say nothing
-            about that day.
+            row each, one column per date, defaulting to next Monday through Sunday. Every date cell is a dropdown of{" "}
+            {DUTY_STATUSES.join(", ")}, pre-set to ON DUTY and colour-coded, so you only change the exceptions. Leave a
+            cell blank to say nothing about that day.
+          </p>
+          <p className="text-xs text-slate-500">
+            ON DUTY and TRAINING run {db.work_schedule.work_start}–{db.work_schedule.work_end} (the company work
+            schedule); HALF DAY ends at {halfDayEndsAt}; OFF and ON LEAVE are rest days. A shift outside those hours can
+            still be typed as <span className="font-medium">08:00-17:00</span>.
           </p>
           {agentCount === 0 && (
             <Alert kind="warning">
@@ -69,7 +77,10 @@ export default async function ImportSchedulePage() {
           <CardTitle>2. Upload the filled-in roster</CardTitle>
         </CardHeader>
         <CardContent>
-          <ScheduleImportClient templateHref={TEMPLATE_HREF} />
+          <ScheduleImportClient
+            templateHref={TEMPLATE_HREF}
+            workDay={{ work_start: db.work_schedule.work_start, work_end: db.work_schedule.work_end }}
+          />
         </CardContent>
       </Card>
     </div>

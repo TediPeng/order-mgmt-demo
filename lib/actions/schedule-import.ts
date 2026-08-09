@@ -11,6 +11,18 @@ import { parseDateHeader, parseShiftCell } from "@/lib/schedule-import";
 import type { ScheduleImportRow, ScheduleImportRowResult, ScheduleImportSummary } from "@/lib/schedule-import";
 import { requireUser } from "./guards";
 
+/** Statuses the schedule row already says by itself, so they get no remark. */
+const PLAIN_STATUSES: string[] = ["ON DUTY", "OFF"];
+
+/** "ON LEAVE" → "On Leave". The dropdown shouts; a remark should not. */
+function titleCase(status: string): string {
+  return status
+    .toLowerCase()
+    .split(" ")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
 /**
  * Applies an uploaded roster.
  *
@@ -52,6 +64,10 @@ export async function importSchedulesAction(
       .map((p) => [p.username.toLowerCase(), p])
   );
 
+  // ON DUTY / HALF DAY / TRAINING are measured against the company work day,
+  // read here rather than trusted from the request.
+  const times = { work_start: db.work_schedule.work_start, work_end: db.work_schedule.work_end };
+
   const results: ScheduleImportRowResult[] = [];
   const summary = { assigned: 0, restDays: 0, skippedSuspended: 0, unrecognizedAgents: 0, invalid: 0 };
   const touchedByAgent = new Map<string, number>();
@@ -83,7 +99,7 @@ export async function importSchedulesAction(
         continue;
       }
 
-      const shift = parseShiftCell(cell.raw);
+      const shift = parseShiftCell(cell.raw, times);
       if (shift.kind === "empty") continue;
       if (shift.kind === "invalid") {
         summary.invalid++;
@@ -100,7 +116,12 @@ export async function importSchedulesAction(
           duty_start: shift.kind === "duty" ? shift.duty_start! : null,
           duty_end: shift.kind === "duty" ? shift.duty_end! : null,
           is_rest_day: shift.kind === "rest",
-          remarks: null,
+          // The schedule model has one rest-day state and one working state,
+          // so On Leave / Half Day / Training survive as the remark — that is
+          // what the calendar shows and what tells OFF from ON LEAVE. ON DUTY
+          // and OFF are the plain states the row already expresses, so they
+          // add no remark of their own.
+          remarks: shift.status && !PLAIN_STATUSES.includes(shift.status) ? titleCase(shift.status) : null,
         },
         { confirmReplace: true }
       );

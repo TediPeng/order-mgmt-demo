@@ -1,4 +1,3 @@
-import * as XLSX from "xlsx";
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { readDb } from "@/lib/db";
@@ -6,11 +5,7 @@ import { can } from "@/lib/permissions";
 import { scopeAgentsForSchedule, eachDateInclusive, addDaysToYmd } from "@/lib/schedule-access";
 import { displayUserName } from "@/lib/types";
 import { todayInTz } from "@/lib/utils";
-import {
-  dateHeaderLabel,
-  SCHEDULE_IMPORT_AGENT_HEADER,
-  SCHEDULE_IMPORT_NAME_HEADER,
-} from "@/lib/schedule-import";
+import { buildScheduleWorkbook } from "@/lib/schedule-template";
 
 /**
  * The schedule roster template, generated per user rather than shipped as a
@@ -24,7 +19,8 @@ import {
  *
  * Defaults to the coming Monday-to-Sunday week; ?start=YYYY-MM-DD and ?days=N
  * override it. The importer reads the dates back out of the header, so any
- * range the template can produce is one it can also take back.
+ * range this can produce is one it can also take back. The workbook itself is
+ * built in lib/schedule-template.ts.
  */
 
 /** The Monday on or after `ymd`. Rosters are drawn up a week ahead, so the
@@ -51,37 +47,16 @@ export async function GET(req: NextRequest) {
 
   const agents = scopeAgentsForSchedule(db, user)
     .filter((p) => p.role === "agent" && p.is_active && !p.is_deleted)
-    .sort((a, b) => displayUserName(a).localeCompare(displayUserName(b)));
+    .sort((a, b) => displayUserName(a).localeCompare(displayUserName(b)))
+    .map((p) => ({ username: p.username, full_name: displayUserName(p) }));
 
-  const header = [SCHEDULE_IMPORT_AGENT_HEADER, SCHEDULE_IMPORT_NAME_HEADER, ...dates.map(dateHeaderLabel)];
-  const rows = agents.map((a) => [a.username, displayUserName(a), ...dates.map(() => "")]);
-
-  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-  ws["!cols"] = [{ wch: 18 }, { wch: 24 }, ...dates.map(() => ({ wch: 16 }))];
-
-  const guide = XLSX.utils.aoa_to_sheet([
-    ["How to fill in this roster"],
-    [],
-    ["1.", "One row per agent. The Agent column is the account and must not be edited or reordered."],
-    ["2.", "One column per date. Add or remove date columns freely — keep the YYYY-MM-DD at the start of the header."],
-    ["3.", "In each cell put one of:"],
-    ["", "08:00-17:00", "a duty shift, 24-hour times"],
-    ["", "REST", "a rest day (REST, RD, OFF and DAY OFF all work)"],
-    ["", "(blank)", "nothing said about that day — any existing schedule is left alone"],
-    [],
-    ["Overnight shifts are fine: 22:00-06:00 ends the next morning."],
-    ["A date already covered by an active suspension is skipped and reported; suspensions win."],
-    ["An agent who already has a schedule on a date in this file will have it replaced by what the file says."],
-    [],
-    ["Agents listed:", String(agents.length)],
-    ["Generated for:", displayUserName(user)],
-  ]);
-  guide["!cols"] = [{ wch: 4 }, { wch: 18 }, { wch: 70 }];
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Schedule");
-  XLSX.utils.book_append_sheet(wb, guide, "How to fill in");
-  const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+  const wb = buildScheduleWorkbook({
+    agents,
+    dates,
+    times: { work_start: db.work_schedule.work_start, work_end: db.work_schedule.work_end },
+    generatedFor: displayUserName(user),
+  });
+  const buf = await wb.xlsx.writeBuffer();
 
   return new NextResponse(buf, {
     headers: {
