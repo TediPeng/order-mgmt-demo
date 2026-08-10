@@ -27,7 +27,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/Button";
 import { RankingBars, type RankingRow } from "@/components/RankingBars";
 import { scopeAgentsForUser, scopeAgentsForRanking, resolveDateRange } from "@/lib/performance";
-import { leadScopeFor } from "@/lib/leads-query";
+import { leadScopeFor, leadStatusCounts } from "@/lib/leads-query";
+import { LeadStatusCards, QUICK_FILTER_STATUSES } from "@/components/LeadStatusCards";
 import { agentKpis, managementKpis, fulfillmentCounts, agentOrderTotals } from "@/lib/dashboard-query";
 import { countCompletedSessions } from "@/lib/call-sessions";
 import { LEAD_STATUS_LABELS, FULFILLMENT_STATUSES } from "@/lib/validation";
@@ -59,11 +60,21 @@ export default async function DashboardPage({
   // Delivered and Returned have cards of their own, so the In Fulfillment card
   // shows the stages between.
   const inFulfilmentStatuses = FULFILLMENT_STATUSES.filter((s) => s !== "delivered" && s !== "returned");
-  const [agentStats, kpiStats, fulfillmentBreakdown] = await Promise.all([
+  const [agentStats, kpiStats, fulfillmentBreakdown, statusCountsByStatus] = await Promise.all([
     isAgent ? agentKpis(user.id, dashboardRange.from, dashboardRange.to) : Promise.resolve(null),
     !isAgent ? managementKpis(scope, dashboardRange.from, dashboardRange.to) : Promise.resolve(null),
     fulfillmentCounts(scope, dashboardRange.from, dashboardRange.to, inFulfilmentStatuses),
+    // Where the agent's leads are sitting right now. Deliberately not date
+    // ranged: "how many of mine are on Cannot Be Reached" is a question about
+    // the present, not about a period, and the same figures back the cards on
+    // the Leads page.
+    leadStatusCounts(scope),
   ]);
+  const statusCounts = QUICK_FILTER_STATUSES.map((s) => ({
+    status: s,
+    count: statusCountsByStatus.get(s) ?? 0,
+  }));
+  const statusTotal = Array.from(statusCountsByStatus.values()).reduce((n, c) => n + c, 0);
   const fulfillmentTotal = fulfillmentBreakdown.reduce((s, r) => s + r.count, 0);
   const rtsWarn = (pct: number | null) => pct !== null && pct > db.performance_thresholds.rts_warning_threshold_pct;
 
@@ -253,6 +264,23 @@ export default async function DashboardPage({
               icon={Sparkles}
             />
           </StatGrid>
+
+          {/* Where their leads are sitting, every status of it. The cards
+              above answer "how did the period go"; this answers "what is on my
+              desk", which is the question an agent starts the shift with. */}
+          <div>
+            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-section-title text-slate-900">My leads by status</h2>
+              <p className="text-xs text-slate-400">
+                Where your leads stand right now — not affected by the date range above.
+              </p>
+            </div>
+            <LeadStatusCards
+              counts={statusCounts}
+              total={statusTotal}
+              hrefFor={(status) => (status ? `/leads?status=${status}` : "/leads")}
+            />
+          </div>
         </>
       ) : (
         kpiStats && (
