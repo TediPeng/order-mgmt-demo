@@ -9,7 +9,7 @@ import { canonicalPhone, todayInTz } from "@/lib/utils";
 import { BreakControls } from "@/components/BreakControls";
 import { getActiveBioBreak } from "@/lib/bio-breaks";
 import { findDuplicates } from "@/lib/customers";
-import { leadScopeFor, leadStatusCounts, duplicatePhoneCount, queryLeads } from "@/lib/leads-query";
+import { leadScopeFor, leadStatusCounts, duplicatePhoneCount, regularCustomerOrderCount, queryLeads } from "@/lib/leads-query";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
@@ -45,6 +45,7 @@ export default async function LeadsPage({
     deleted?: string;
     error?: string;
     open?: string;
+    include_regular?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -82,11 +83,18 @@ export default async function LeadsPage({
 
   const page = Math.max(1, parseInt(sp.page || "1", 10) || 1);
 
-  const [countsByStatus, duplicateCount, leadPage] = await Promise.all([
-    leadStatusCounts(scope),
+  // Off by default: Regular Customers stay their own section. On, the list and
+  // the cards both include them, because a count that disagrees with the rows
+  // beneath it is worse than either answer.
+  const includeRegular = sp.include_regular === "1";
+
+  const [countsByStatus, duplicateCount, regularOrderCount, leadPage] = await Promise.all([
+    leadStatusCounts(scope, includeRegular),
     duplicatePhoneCount(scope),
+    regularCustomerOrderCount(scope),
     queryLeads({
       scope,
+      includeRegular,
       // Dashboard cards deep-link into a pre-filtered status view — that is
       // internal navigation, not a search control, so status is honoured for
       // everyone. Every other filter stays Agent-rejected (Section 3).
@@ -326,6 +334,31 @@ export default async function LeadsPage({
           Search
         </Button>
       </form>
+
+      {/* Their orders are out of this list by design, and on 2026-08-10 that
+          meant every card read 0 while the floor had worked eleven orders.
+          Saying how many are over there — and offering to fold them in — is
+          the difference between a rule and a disappearance. */}
+      {regularOrderCount > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-slate-500">
+            {includeRegular ? (
+              <>Counting {regularOrderCount} regular-customer order{regularOrderCount === 1 ? "" : "s"} in the figures below.</>
+            ) : (
+              <>
+                {regularOrderCount} order{regularOrderCount === 1 ? "" : "s"} for regular customers {regularOrderCount === 1 ? "is" : "are"} not
+                counted below.
+              </>
+            )}
+          </span>
+          <LinkButton href={qs({ include_regular: includeRegular ? undefined : "1", page: undefined })} variant="outline" size="sm">
+            {includeRegular ? "Hide regular customers" : "Include regular customers"}
+          </LinkButton>
+          <LinkButton href="/regular-customers" variant="outline" size="sm">
+            Regular Customers {regularOrderCount}
+          </LinkButton>
+        </div>
+      )}
 
       <LeadStatusCards counts={statusCounts} total={totalLeads} selected={sp.status} hrefFor={statusHref} />
 

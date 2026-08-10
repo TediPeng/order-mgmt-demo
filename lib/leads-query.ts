@@ -73,6 +73,11 @@ export interface LeadPage {
  * Regular customers are excluded here rather than after the fact — they live
  * in their own section, and filtering them out in the application would mean
  * asking for rows only to throw them away and paging on a wrong total.
+ *
+ * `includeRegular` puts them back, for the agent who wants one list of
+ * everything they have worked. It is off by default, so the section keeps its
+ * meaning; what it fixes is that their work was invisible here, with no way to
+ * ask for it.
  */
 export async function queryLeads(input: {
   scope: AgentScope;
@@ -81,13 +86,12 @@ export async function queryLeads(input: {
   page: number;
   pageSize: number;
   usernameToIds: Map<string, string[]>;
+  includeRegular?: boolean;
 }): Promise<LeadPage> {
-  const { scope, filters, isAgentView, page, pageSize } = input;
+  const { scope, filters, isAgentView, page, pageSize, includeRegular } = input;
 
-  let query = supabaseAdmin
-    .from("orders")
-    .select("*", { count: "exact" })
-    .not("is_regular_customer", "is", true);
+  let query = supabaseAdmin.from("orders").select("*", { count: "exact" });
+  if (!includeRegular) query = query.not("is_regular_customer", "is", true);
   query = applyScope(query, scope);
 
   if (filters.status) query = query.eq("status", filters.status);
@@ -148,12 +152,31 @@ export async function queryLeads(input: {
 /** Counts per status for the cards, from one grouped query. Deliberately
  * ignores the current status filter: selecting a card must not zero the
  * others. */
-export async function leadStatusCounts(scope: AgentScope): Promise<Map<string, number>> {
-  const { data, error } = await supabaseAdmin.rpc("lead_status_counts", { p_agent_ids: scope });
+export async function leadStatusCounts(
+  scope: AgentScope,
+  includeRegular = false
+): Promise<Map<string, number>> {
+  const { data, error } = await supabaseAdmin.rpc("lead_status_counts", {
+    p_agent_ids: scope,
+    p_include_regular: includeRegular,
+  });
   if (error) throw new Error(`Lead status counts failed: ${error.message}`);
   const counts = new Map<string, number>();
   for (const row of (data || []) as { status: string; n: number }[]) counts.set(row.status, Number(row.n));
   return counts;
+}
+
+/**
+ * Orders in scope that belong to a regular customer.
+ *
+ * They are deliberately absent from the list, which on 2026-08-10 meant every
+ * status card read 0 while the floor had worked eleven orders that day. The
+ * card this feeds says how much work is sitting in the other section.
+ */
+export async function regularCustomerOrderCount(scope: AgentScope): Promise<number> {
+  const { data, error } = await supabaseAdmin.rpc("regular_customer_order_count", { p_agent_ids: scope });
+  if (error) throw new Error(`Regular customer order count failed: ${error.message}`);
+  return Number(data ?? 0);
 }
 
 /** How many contact numbers appear on more than one lead, for the badge. */
