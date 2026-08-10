@@ -25,6 +25,15 @@ export const LEAD_STATUS_STYLES: Record<OrderStatus, LeadStatusStyle> = {
   hung_up: { badge: "bg-red-100 text-red-700", row: "bg-red-50", rowHover: "hover:bg-red-100", header: "bg-red-500" },
   cbr: { badge: "bg-orange-100 text-orange-700", row: "bg-orange-50", rowHover: "hover:bg-orange-100", header: "bg-orange-500" },
   rsrv: { badge: "bg-purple-100 text-purple-700", row: "bg-purple-50", rowHover: "hover:bg-purple-100", header: "bg-purple-500" },
+  // The four call outcomes added 2026-08-10. INC # is amber — the lead is
+  // missing something and can be finished — while the three that end the call
+  // sit in cooler, flatter tones, so a list of dead leads does not read as
+  // urgent. `cancel` is the CALL's outcome and is deliberately not the same
+  // red as `cancelled`, which is Pancake's fulfillment cancellation.
+  inc: { badge: "bg-amber-100 text-amber-800", row: "bg-amber-50", rowHover: "hover:bg-amber-100", header: "bg-amber-500" },
+  call_back: { badge: "bg-teal-100 text-teal-700", row: "bg-teal-50", rowHover: "hover:bg-teal-100", header: "bg-teal-500" },
+  reject_offer: { badge: "bg-stone-200 text-stone-700", row: "bg-stone-50", rowHover: "hover:bg-stone-100", header: "bg-stone-500" },
+  cancel: { badge: "bg-rose-100 text-rose-700", row: "bg-rose-50", rowHover: "hover:bg-rose-100", header: "bg-rose-500" },
   // Fulfillment (Pancake-driven), in Pancake's own pipeline order. The hues
   // walk warm → cool → green as an order progresses, then to red/grey for the
   // return and cancellation paths, so a glance down a tinted list reads as

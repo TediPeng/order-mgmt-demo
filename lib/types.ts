@@ -95,6 +95,12 @@ export type OrderStatus =
   | "hung_up"
   | "cbr"
   | "rsrv"
+  // Four more call outcomes, added 2026-08-10. `cancel` is how the CALL ended
+  // and is not `cancelled`, which is Pancake's fulfillment cancellation.
+  | "inc"
+  | "call_back"
+  | "reject_offer"
+  | "cancel"
   // Fulfillment statuses mirror Pancake POS's own set (lib/validation.ts).
   | "waiting_confirmation"
   | "confirmed"

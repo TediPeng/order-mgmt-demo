@@ -3,7 +3,21 @@ import { PRODUCT_STATUSES, type ProductStatus } from "./types";
 
 // Pre-sale statuses cover the call workflow. `new` sits here because a lead
 // starts there, but agents cannot set it back — see AGENT_EDITABLE_STATUSES.
-export const PRE_SALE_STATUSES = ["new", "ringing", "hung_up", "cbr", "rsrv"] as const;
+// `cancel` is the call's outcome — the customer said no before there was an
+// order — and is NOT `cancelled`, which is Pancake's own status for an order
+// cancelled in fulfillment. They read alike and mean different things, so
+// neither may be used for the other.
+export const PRE_SALE_STATUSES = [
+  "new",
+  "ringing",
+  "hung_up",
+  "cbr",
+  "rsrv",
+  "inc",
+  "call_back",
+  "reject_offer",
+  "cancel",
+] as const;
 
 // Fulfillment statuses mirror Pancake POS's own order statuses one-for-one, in
 // Pancake's pipeline order, so what an agent sees here is what the fulfillment
@@ -43,6 +57,10 @@ export const LEAD_STATUS_LABELS: Record<(typeof LEAD_STATUSES)[number], string> 
   hung_up: "Hung Up",
   cbr: "CBR",
   rsrv: "RSRV",
+  inc: "INC #",
+  call_back: "Call Back",
+  reject_offer: "Reject Offer",
+  cancel: "Cancel",
   waiting_confirmation: "Waiting for Confirmation",
   confirmed: "Confirmed",
   restocking: "Restocking",
@@ -91,7 +109,17 @@ export const PACKAGING_STATUS = "packaging" as const;
 /** The only statuses a non-full-access user may set. Everything else after
  * Packaging belongs to Pancake, and `new` is the system's own starting point.
  * Enforced server-side in lib/lead-workflow.ts — the UI merely matches it. */
-export const AGENT_EDITABLE_STATUSES = ["packaging", "ringing", "hung_up", "cbr", "rsrv"] as const;
+export const AGENT_EDITABLE_STATUSES = [
+  "packaging",
+  "ringing",
+  "hung_up",
+  "cbr",
+  "rsrv",
+  "inc",
+  "call_back",
+  "reject_offer",
+  "cancel",
+] as const;
 
 // Every fulfillment stage past Packaging is downstream of it; a lead must have
 // passed through Packaging at least once (i.e. already have an order_date)
@@ -225,7 +253,18 @@ const dateCell = z.preprocess(
  * The values are what the floor says out loud, punctuation included, so the
  * tag on the screen reads the way it is spoken.
  */
-export const ORDER_TAGS = ["INC #", "CALL BACK", "REJECT OFFER", "CANCEL"] as const;
+/**
+ * Empty on purpose.
+ *
+ * INC #, CALL BACK, REJECT OFFER and CANCEL were briefly tags before they
+ * became statuses, which is where they belong: they are what the call ended
+ * as, and a lead has exactly one of those. Keeping them in both places would
+ * have let an order be Ringing and tagged CANCEL at the same time.
+ *
+ * The field stays because orders.tag exists and the plumbing is written; add
+ * a value here and the control reappears with it.
+ */
+export const ORDER_TAGS = [] as const;
 export type OrderTag = (typeof ORDER_TAGS)[number];
 
 export const leadFormSchema = z.object({

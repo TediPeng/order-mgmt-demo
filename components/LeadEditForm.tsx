@@ -380,7 +380,9 @@ export function LeadEditForm({
             placeholder="Optional Pancake routing tag"
           />
         </div>
-        <div>
+        {/* Hidden while ORDER_TAGS is empty — a dropdown whose only option is
+            "No tag" is furniture. See lib/validation.ts. */}
+        <div className={ORDER_TAGS.length === 0 ? "hidden" : undefined}>
           <Label htmlFor="tag">Tag</Label>
           {/* A supervisor's mark on the order. Agents see it and cannot change
               it, so the control is disabled for them — and refused server-side
