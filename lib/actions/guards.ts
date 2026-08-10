@@ -1,13 +1,29 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
-import { readDb } from "@/lib/db";
+import { readDb, readDbLite } from "@/lib/db";
 import type { ActionKey, DbShape, ModuleKey, Profile } from "@/lib/types";
 
 export async function requireUser(): Promise<{ user: Profile; db: DbShape }> {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   const db = await readDb();
+  return { user: user!, db };
+}
+
+/**
+ * The same, with `orders` left empty — for an action that asks the database
+ * about orders directly instead of scanning them in memory.
+ *
+ * Use it ONLY where the whole call graph is known not to read db.orders: an
+ * empty array reads as "no orders exist", which is silently wrong rather than
+ * loudly broken. Writing is safe either way — writeDb() upserts only the
+ * orders an action marks dirty and deletes only what it queues.
+ */
+export async function requireUserLite(): Promise<{ user: Profile; db: DbShape }> {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  const db = await readDbLite();
   return { user: user!, db };
 }
 

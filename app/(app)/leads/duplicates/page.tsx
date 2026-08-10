@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { scopeOrders } from "@/lib/order-access";
-import { findDuplicateGroups, summarizeDuplicates } from "@/lib/duplicate-leads";
+import { leadScopeFor } from "@/lib/leads-query";
+import { duplicateGroupPage, duplicateSummary } from "@/lib/duplicates-query";
 import { displayUserName } from "@/lib/types";
 import { formatDateTime } from "@/lib/utils";
 import { Alert } from "@/components/ui/Alert";
@@ -21,6 +21,10 @@ import {
 
 const PAGE_SIZE = 50;
 
+/** Deleting every duplicate is thousands of rows in chunked statements. The
+ * default ceiling is generous for a page render and short for a sweep. */
+export const maxDuration = 60;
+
 /**
  * Duplicate Leads — the same contact number entered more than once.
  *
@@ -32,6 +36,10 @@ const PAGE_SIZE = 50;
  * the one any call history hangs off — and offers the rest for permanent
  * deletion. Deletion here is final: there is no trash, and the audit entry
  * holds the only remaining copy of the row.
+ *
+ * The grouping happens in the database (lib/duplicates-query.ts). It used to
+ * happen here, over every order in the system — 57,000 rows fetched to render
+ * fifty numbers.
  */
 export default async function DuplicateLeadsPage({
   searchParams,
@@ -40,7 +48,7 @@ export default async function DuplicateLeadsPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
 
   if (!can(user.role, "orders", "view", db.role_permissions)) redirect("/dashboard");
   // Permanent deletion is the orders.delete grant — Administrator only by
@@ -49,13 +57,14 @@ export default async function DuplicateLeadsPage({
   // to resolve it.
   const canDelete = can(user.role, "orders", "delete", db.role_permissions);
 
-  const groups = findDuplicateGroups(scopeOrders(user, db.orders, db));
-  const summary = summarizeDuplicates(groups);
-  const nameById = new Map(db.profiles.map((p) => [p.id, displayUserName(p)]));
-
+  const scope = leadScopeFor(user, db);
   const page = Math.max(1, Number(sp.page) || 1);
-  const pageCount = Math.max(1, Math.ceil(groups.length / PAGE_SIZE));
-  const shown = groups.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const [summary, groups] = await Promise.all([
+    duplicateSummary(scope),
+    duplicateGroupPage(scope, page, PAGE_SIZE),
+  ]);
+  const nameById = new Map(db.profiles.map((p) => [p.id, displayUserName(p)]));
+  const pageCount = Math.max(1, Math.ceil(summary.groups / PAGE_SIZE));
 
   return (
     <div>
@@ -138,7 +147,7 @@ export default async function DuplicateLeadsPage({
         </Card>
       )}
 
-      {groups.length === 0 && (
+      {summary.groups === 0 && (
         <Card>
           <CardContent className="p-10 text-center text-sm text-slate-400">
             No contact number appears twice. Nothing to clean up.
@@ -147,46 +156,46 @@ export default async function DuplicateLeadsPage({
       )}
 
       <div className="space-y-3">
-        {shown.map((group) => (
-          <Card key={group.phone}>
-            <CardContent className="p-0">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium text-slate-800">{group.phone_display}</span>
-                  <Badge className="bg-amber-100 text-amber-800">{group.orders.length} leads</Badge>
-                  <span className="text-xs text-slate-400">{group.keep.customer_name}</span>
+        {groups.map((group) => {
+          const removable = group.orders.filter((o) => !o.is_keeper && !o.protected_reason);
+          const keeper = group.orders.find((o) => o.is_keeper);
+          return (
+            <Card key={group.phone_key}>
+              <CardContent className="p-0">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-slate-800">{group.phone_display}</span>
+                    <Badge className="bg-amber-100 text-amber-800">{group.group_size} leads</Badge>
+                    <span className="text-xs text-slate-400">{keeper?.customer_name}</span>
+                  </div>
+                  {canDelete && removable.length > 0 && (
+                    <form action={resolveDuplicateGroupAction.bind(null, group.phone_key)}>
+                      <ConfirmSubmitButton
+                        confirmMessage={`Permanently delete ${removable.length} duplicate lead${
+                          removable.length === 1 ? "" : "s"
+                        } for ${group.phone_display}? The earliest one is kept. This cannot be undone.`}
+                      >
+                        Keep earliest, delete {removable.length}
+                      </ConfirmSubmitButton>
+                    </form>
+                  )}
                 </div>
-                {canDelete && group.removable.length > 0 && (
-                  <form action={resolveDuplicateGroupAction.bind(null, group.phone)}>
-                    <ConfirmSubmitButton
-                      confirmMessage={`Permanently delete ${group.removable.length} duplicate lead${
-                        group.removable.length === 1 ? "" : "s"
-                      } for ${group.phone_display}? The earliest one is kept. This cannot be undone.`}
-                    >
-                      Keep earliest, delete {group.removable.length}
-                    </ConfirmSubmitButton>
-                  </form>
-                )}
-              </div>
 
-              <table className="w-full text-left text-table">
-                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="px-4 py-2">Order ID</th>
-                    <th className="px-4 py-2">Customer Name</th>
-                    <th className="px-4 py-2">Address</th>
-                    <th className="px-4 py-2">Agent</th>
-                    <th className="px-4 py-2">Status</th>
-                    <th className="px-4 py-2">Created</th>
-                    <th className="px-4 py-2 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {group.orders.map((order) => {
-                    const isKeeper = order.id === group.keep.id;
-                    const blocked = group.protectedOrders.find((p) => p.order.id === order.id);
-                    return (
-                      <tr key={order.id} className={isKeeper ? "bg-green-50/50" : undefined}>
+                <table className="w-full text-left text-table">
+                  <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                    <tr>
+                      <th className="px-4 py-2">Order ID</th>
+                      <th className="px-4 py-2">Customer Name</th>
+                      <th className="px-4 py-2">Address</th>
+                      <th className="px-4 py-2">Agent</th>
+                      <th className="px-4 py-2">Status</th>
+                      <th className="px-4 py-2">Created</th>
+                      <th className="px-4 py-2 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {group.orders.map((order) => (
+                      <tr key={order.id} className={order.is_keeper ? "bg-green-50/50" : undefined}>
                         <td className="px-4 py-2">
                           <Link href={`/leads/${order.id}`} className="font-medium text-[var(--brand-primary)] hover:underline">
                             {order.order_number}
@@ -202,10 +211,10 @@ export default async function DuplicateLeadsPage({
                         </td>
                         <td className="whitespace-nowrap px-4 py-2 text-slate-500">{formatDateTime(order.created_at)}</td>
                         <td className="px-4 py-2 text-right">
-                          {isKeeper ? (
+                          {order.is_keeper ? (
                             <Badge className="bg-green-100 text-green-700">Keeping</Badge>
-                          ) : blocked ? (
-                            <span className="text-xs text-slate-400">{blocked.reason}</span>
+                          ) : order.protected_reason ? (
+                            <span className="text-xs text-slate-400">{order.protected_reason}</span>
                           ) : canDelete ? (
                             <form action={deleteDuplicateOrderAction.bind(null, order.id)} className="inline-flex">
                               <ConfirmSubmitButton
@@ -219,19 +228,19 @@ export default async function DuplicateLeadsPage({
                           )}
                         </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </CardContent>
-          </Card>
-        ))}
+                    ))}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       {pageCount > 1 && (
         <div className="mt-4 flex items-center justify-between text-sm text-slate-500">
           <span>
-            Page {page} of {pageCount} · {groups.length} numbers
+            Page {page} of {pageCount} · {summary.groups} numbers
           </span>
           <div className="flex gap-2">
             {page > 1 && (

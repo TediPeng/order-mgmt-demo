@@ -442,6 +442,11 @@ async function selectAll(table: string, orderBy = "id"): Promise<{ data: Row[]; 
  * few thousand rows reported nothing at all. In chunks it is seconds. */
 const UPSERT_CHUNK = 500;
 
+/** Ids per DELETE. Smaller than UPSERT_CHUNK because the ids travel in the URL
+ * — a UUID is 36 characters plus a separator — and because a delete cascades
+ * into order_items, call_sessions and pancake_sync_logs. See drainDeletes(). */
+const DELETE_CHUNK = 200;
+
 async function upsertTable(table: string, rows: Row[], idKey = "id"): Promise<void> {
   for (let i = 0; i < rows.length; i += UPSERT_CHUNK) {
     const chunk = rows.slice(i, i + UPSERT_CHUNK);
@@ -659,14 +664,22 @@ export async function writeDb(db: DbShape): Promise<void> {
     db.dirty_orders = [];
   }
   await Promise.all([
-    upsertTable("attendance", db.attendance as unknown as Row[]),
+    // Keyed on (user_id, work_date), NOT on id.
+    //
+    // A day has one attendance row per person, and the database enforces it.
+    // sweepAutoAbsences() runs from the authenticated layout on every request
+    // and invents a fresh uuid for each absent day missing from its snapshot,
+    // so two concurrent requests build the same day twice with different ids:
+    // upserting on `id` made the second one an INSERT, which violated
+    // attendance_user_id_work_date_key and failed the ENTIRE save — a delete,
+    // a lead edit, anything, killed by a housekeeping row it never touched.
+    // Keyed on the pair, the second write updates the first one's day instead.
+    upsertTable("attendance", db.attendance as unknown as Row[], "user_id,work_date"),
     upsertTable("call_logs", db.call_logs as unknown as Row[]),
     upsertTable("leave_requests", db.leave_requests as unknown as Row[]),
     upsertTable("suspensions", db.suspensions as unknown as Row[]),
     upsertTable("notifications", db.notifications as unknown as Row[]),
-    upsertTable("activity_log", newActivity as unknown as Row[]),
   ]);
-  db.activity_log.length = 0;
   await Promise.all([
     upsertTable("call_log_records", db.call_log_records as unknown as Row[]),
     upsertTable("schedules", db.schedules as unknown as Row[]),
@@ -718,6 +731,23 @@ export async function writeDb(db: DbShape): Promise<void> {
     const tables = Array.from(new Set(db.pending_deletes.map((d) => d.table))).join(", ");
     throw new Error(`writeDb: queued deletes for unhandled table(s): ${tables}`);
   }
+
+  // Phase 3: the audit entries, LAST — deliberately after the deletions.
+  //
+  // They used to go in with the Phase 1 upserts, which meant an action that
+  // deleted rows wrote "6,255 duplicate leads deleted" and only then attempted
+  // the delete. When the delete failed the audit entry had already committed,
+  // so the trail claimed deletions that never happened — the same 713 rows were
+  // reported deleted five times in eighty seconds on 2026-08-10 while all 713
+  // were still in the table. An entry here is now evidence that the write it
+  // describes actually landed.
+  //
+  // The residual risk is inverted and smaller: if this insert fails after a
+  // successful delete the rows are gone without a record. It is one small
+  // insert against a delete that may be thousands of rows, and the caller sees
+  // the error either way.
+  await upsertTable("activity_log", newActivity as unknown as Row[]);
+  db.activity_log.length = 0;
 }
 
 /** Deletes the queued rows for the given tables and removes them from the
@@ -735,13 +765,26 @@ async function drainDeletes(db: DbShape, tables: string[]): Promise<void> {
     byTable.set(`${d.table}|${key}`, entry);
   }
 
-  await Promise.all(
-    Array.from(byTable, async ([tableKey, { key, ids }]) => {
-      const table = tableKey.split("|")[0];
-      const { error } = await supabaseAdmin.from(table).delete().in(key, ids);
+  for (const [tableKey, { key, ids }] of byTable) {
+    const table = tableKey.split("|")[0];
+    // Chunked for the same reason upserts are, and it took a live failure to
+    // notice: one DELETE carrying 6,255 ids is a quarter-megabyte of URL and a
+    // single statement, and the connection PostgREST hands us inherits
+    // statement_timeout=8s from the authenticator role — service_role sets no
+    // timeout of its own, so it does NOT run unbounded. Every large duplicate
+    // sweep on 2026-08-10 died on "canceling statement due to statement
+    // timeout" and deleted nothing at all. In chunks each statement is a
+    // primary-key lookup that finishes in milliseconds.
+    //
+    // Sequential, not Promise.all: a sweep of thousands would otherwise open
+    // dozens of concurrent statements against a database that seventeen agents
+    // are also using.
+    for (let i = 0; i < ids.length; i += DELETE_CHUNK) {
+      const chunk = ids.slice(i, i + DELETE_CHUNK);
+      const { error } = await supabaseAdmin.from(table).delete().in(key, chunk);
       if (error) throw new Error(`Supabase delete failed for ${table}: ${error.message}`);
-    })
-  );
+    }
+  }
 }
 
 export function nextOrderNumber(db: DbShape, date: Date = new Date()): string {
