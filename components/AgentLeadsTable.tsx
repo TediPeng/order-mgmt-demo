@@ -66,6 +66,7 @@ export function AgentLeadsTable({
   callSessionsByOrderId = {},
   agentNameById = {},
   initialOpenOrderNumber,
+  initialOpenOrderId,
 }: {
   orders: Order[];
   careStaffById: Record<string, CareStaff>;
@@ -86,6 +87,7 @@ export function AgentLeadsTable({
   callSessionsByOrderId?: Record<string, CallSession[]>;
   agentNameById?: Record<string, string>;
   initialOpenOrderNumber?: string;
+  initialOpenOrderId?: string;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState(orders);
@@ -100,6 +102,13 @@ export function AgentLeadsTable({
     // Only for the initial deep-link, not on every refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialOpenOrderNumber]);
+
+  // By id, which is what "Return to active call" has to hand.
+  useEffect(() => {
+    if (!initialOpenOrderId) return;
+    if (orders.some((o) => o.id === initialOpenOrderId)) setOpenId(initialOpenOrderId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialOpenOrderId]);
 
   const openOrder = rows.find((o) => o.id === openId) || null;
 

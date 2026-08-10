@@ -149,6 +149,22 @@ export async function queryLeads(input: {
   return { rows: (data || []) as unknown as Order[], total: count ?? 0 };
 }
 
+/**
+ * One order by id, if the viewer is allowed to see it.
+ *
+ * For deep links that must work regardless of the page, the filters or the
+ * regular-customer exclusion — "Return to active call" being the one that
+ * matters, since the panel that ends a call lives in this table's modal.
+ * Scope is still enforced: a link cannot fetch somebody else's lead.
+ */
+export async function orderForScope(orderId: string, scope: AgentScope): Promise<Order | null> {
+  let query = supabaseAdmin.from("orders").select("*").eq("id", orderId);
+  query = applyScope(query, scope);
+  const { data, error } = await query.maybeSingle();
+  if (error) throw new Error(`Lead lookup failed: ${error.message}`);
+  return (data as unknown as Order) ?? null;
+}
+
 /** Counts per status for the cards, from one grouped query. Deliberately
  * ignores the current status filter: selecting a card must not zero the
  * others. */

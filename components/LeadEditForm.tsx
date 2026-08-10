@@ -6,7 +6,7 @@ import { Button, LinkButton } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { OrderItemsEditor, type EditorLine, type EditorProduct } from "@/components/OrderItemsEditor";
 import { AddressSelect } from "@/components/AddressSelect";
-import { LEAD_STATUS_LABELS, LEAD_STATUSES, PAYMENT_METHOD_SUGGESTIONS, selectableStatuses } from "@/lib/validation";
+import { LEAD_STATUS_LABELS, LEAD_STATUSES, PAYMENT_METHOD_SUGGESTIONS, ORDER_TAGS, selectableStatuses } from "@/lib/validation";
 import type { Order, Profile } from "@/lib/types";
 
 interface FormState {
@@ -34,6 +34,7 @@ interface FormState {
   courier: string;
   payment_method: string;
   order_source: string;
+  tag: string;
   status: string;
   agent_id: string;
   notes: string;
@@ -64,6 +65,7 @@ function snapshotFrom(order: Order): FormState {
     courier: order.courier || "",
     payment_method: order.payment_method || "",
     order_source: order.order_source || "",
+    tag: order.tag || "",
     status: order.status,
     agent_id: order.agent_id,
     notes: order.notes,
@@ -85,6 +87,7 @@ export function LeadEditForm({
   action,
   canEdit,
   canReassign,
+  canTag,
   canSeePreviousOrderFields,
   canSetFulfillmentStatus = false,
   agents,
@@ -95,6 +98,7 @@ export function LeadEditForm({
   action: (formData: FormData) => void | Promise<void>;
   canEdit: boolean;
   canReassign: boolean;
+  canTag: boolean;
   canSeePreviousOrderFields: boolean;
   /** Full-access users may set Pancake-owned fulfillment statuses by hand. */
   canSetFulfillmentStatus?: boolean;
@@ -375,6 +379,27 @@ export function LeadEditForm({
             disabled={!canEdit}
             placeholder="Optional Pancake routing tag"
           />
+        </div>
+        <div>
+          <Label htmlFor="tag">Tag</Label>
+          {/* A supervisor's mark on the order. Agents see it and cannot change
+              it, so the control is disabled for them — and refused server-side
+              as well, because a disabled input is not a permission. */}
+          <Select
+            id="tag"
+            name="tag"
+            value={form.tag}
+            onChange={(e) => update("tag", e.target.value)}
+            disabled={!canEdit || !canTag}
+          >
+            <option value="">No tag</option>
+            {ORDER_TAGS.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </Select>
+          {!canTag && <p className="mt-1 text-xs text-slate-400">Set by Team Leads and Administrators.</p>}
         </div>
       </div>
 

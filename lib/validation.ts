@@ -214,6 +214,19 @@ const dateCell = z.preprocess(
     .transform((v) => (v === "" ? "" : normalizeDateValue(v)!))
 );
 
+/**
+ * The values orders.tag may hold.
+ *
+ * It was a free-text column and had never been used — null on all 51,511 rows
+ * — so it becomes a list rather than a box somebody types into differently
+ * each time. Add a value here and it appears in the form and the tables; there
+ * is nowhere else to change.
+ *
+ * INC: incomplete — the order needs something before it can move on.
+ */
+export const ORDER_TAGS = ["INC"] as const;
+export type OrderTag = (typeof ORDER_TAGS)[number];
+
 export const leadFormSchema = z.object({
   customer_name: z.string().trim().min(1, "Customer name is required"),
   customer_phone: z.string().trim().optional().default(""),
@@ -243,6 +256,15 @@ export const leadFormSchema = z.object({
   courier: z.string().trim().optional().default(""),
   payment_method: z.string().trim().optional().default(""),
   order_source: z.string().trim().optional().default(""),
+  // Empty is a legitimate value — most orders carry no tag. An unrecognised
+  // one is rejected rather than stored, so the column cannot drift back into
+  // free text one typo at a time.
+  tag: z
+    .string()
+    .trim()
+    .optional()
+    .default("")
+    .refine((v) => v === "" || (ORDER_TAGS as readonly string[]).includes(v), "Unknown tag"),
   province_code: z.string().trim().optional().default(""),
   city_code: z.string().trim().optional().default(""),
   barangay_code: z.string().trim().optional().default(""),

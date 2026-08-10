@@ -6,7 +6,8 @@ import {
   AGENT_EDITABLE_STATUSES,
 } from "@/lib/validation";
 import { normalizePhone, isValidPhMobile } from "@/lib/utils";
-import type { DbShape, Order, OrderStatus } from "@/lib/types";
+import type { DbShape, Order, OrderStatus, Profile } from "@/lib/types";
+import { isFullAccess } from "@/lib/permissions";
 
 export interface PackagingCandidate {
   customer_name: string;
@@ -78,6 +79,14 @@ export function packagingProblems(candidate: PackagingCandidate): PackagingField
 /** Labels only — the shape the existing error strings are built from. */
 export function validatePackaging(candidate: PackagingCandidate): string[] {
   return packagingProblems(candidate).map((p) => p.label);
+}
+
+/** Who may set orders.tag: Administrators and Team Leads. An agent reads it —
+ * it is a supervisor's mark on their order, not theirs to change. Lives here
+ * rather than beside the action because a "use server" module may only export
+ * async functions. */
+export function canSetOrderTag(user: Pick<Profile, "role">): boolean {
+  return isFullAccess(user.role) || user.role === "team_lead";
 }
 
 /** Every fulfillment stage past Packaging is downstream of it — a lead must

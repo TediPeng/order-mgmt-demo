@@ -14,7 +14,7 @@ import { LeadEditForm } from "@/components/LeadEditForm";
 import { listItems } from "@/lib/order-items";
 import { listSyncLogs, getAccount } from "@/lib/pancake/store";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
-import { isOrderLocked, SYNCED_LOCK_MESSAGE } from "@/lib/lead-workflow";
+import { isOrderLocked, SYNCED_LOCK_MESSAGE, canSetOrderTag } from "@/lib/lead-workflow";
 import { displayOrderId, displayUserName, isPendingOrderId } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Field";
@@ -208,6 +208,7 @@ export default async function LeadDetailPage({
             action={boundUpdate}
             canEdit={canEdit}
             canReassign={canReassign}
+            canTag={canSetOrderTag(user) && !locked}
             canSeePreviousOrderFields={isFullAccess(user.role) && !locked}
             canSetFulfillmentStatus={isFullAccess(user.role) && !locked}
             agents={agents}

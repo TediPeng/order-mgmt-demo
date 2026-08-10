@@ -544,6 +544,10 @@ export function OrderDetailsModal({
                 <p className="text-xs uppercase text-slate-400">Order Source</p>
                 <p className="text-slate-800">{order.order_source || "—"}</p>
               </div>
+              <div>
+                <p className="text-xs uppercase text-slate-400">Tag</p>
+                <p className="text-slate-800">{order.tag || "—"}</p>
+              </div>
             </div>
           ) : (
             <div className="space-y-4">

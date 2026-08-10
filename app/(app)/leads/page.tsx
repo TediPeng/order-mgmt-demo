@@ -9,7 +9,7 @@ import { canonicalPhone, todayInTz } from "@/lib/utils";
 import { BreakControls } from "@/components/BreakControls";
 import { getActiveBioBreak } from "@/lib/bio-breaks";
 import { findDuplicates } from "@/lib/customers";
-import { leadScopeFor, leadStatusCounts, duplicatePhoneCount, regularCustomerOrderCount, queryLeads } from "@/lib/leads-query";
+import { leadScopeFor, leadStatusCounts, duplicatePhoneCount, regularCustomerOrderCount, queryLeads, orderForScope } from "@/lib/leads-query";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
@@ -45,6 +45,7 @@ export default async function LeadsPage({
     deleted?: string;
     error?: string;
     open?: string;
+    open_id?: string;
     include_regular?: string;
   }>;
 }) {
@@ -136,7 +137,19 @@ export default async function LeadsPage({
   );
 
   const totalPages = Math.max(1, Math.ceil(leadPage.total / PAGE_SIZE));
-  const pageOrders = leadPage.rows;
+
+  // "Return to active call" asks for one specific order, and the modal that
+  // ends the call only exists inside this table. That order may be on another
+  // page, behind a filter, or — as it was for a stuck four-hour session on
+  // 2026-08-10 — a regular customer's, which this list excludes outright. So
+  // it is fetched and put on the page rather than left unreachable: without
+  // it, an agent whose call is on such an order can neither return to it nor
+  // start another one.
+  const pageOrders = [...leadPage.rows];
+  if (sp.open_id && !pageOrders.some((o) => o.id === sp.open_id)) {
+    const pinned = await orderForScope(sp.open_id, scope);
+    if (pinned) pageOrders.unshift(pinned);
+  }
 
   // The agent filter must list only agents the viewer is allowed to see. It used
   // to list every active profile, so a Team Lead's dropdown named agents outside
@@ -446,6 +459,7 @@ export default async function LeadsPage({
           callSessionsByOrderId={callSessionsByOrderId}
           agentNameById={agentFullNameById}
           initialOpenOrderNumber={sp.open}
+          initialOpenOrderId={sp.open_id}
         />
       ) : (
       <LeadsTable
@@ -467,6 +481,7 @@ export default async function LeadsPage({
         canSeeFulfillment={!isAgent}
         fullPageHrefBase={isFullAccess(user.role) ? "/leads" : null}
         initialOpenOrderNumber={sp.open}
+        initialOpenOrderId={sp.open_id}
       />
       )}
 

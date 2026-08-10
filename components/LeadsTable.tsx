@@ -29,6 +29,7 @@ export function LeadsTable({
   canSeeFulfillment = false,
   fullPageHrefBase,
   initialOpenOrderNumber,
+  initialOpenOrderId,
 }: {
   orders: Order[];
   agentUsernameById: Record<string, string>;
@@ -57,6 +58,7 @@ export function LeadsTable({
   canSeeFulfillment?: boolean;
   fullPageHrefBase: string | null;
   initialOpenOrderNumber?: string;
+  initialOpenOrderId?: string;
 }) {
   const router = useRouter();
   const [orders, setOrders] = useState(initialOrders);
@@ -73,6 +75,15 @@ export function LeadsTable({
     // Only run for the initial deep-link, not on every orders refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialOpenOrderNumber]);
+
+  // By id, which is what "Return to active call" has to hand: the call is on
+  // an order id, and the page pins that order into the rows so this always
+  // finds it.
+  useEffect(() => {
+    if (!initialOpenOrderId) return;
+    if (initialOrders.some((o) => o.id === initialOpenOrderId)) setOpenId(initialOpenOrderId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialOpenOrderId]);
 
   const openOrder = orders.find((o) => o.id === openId) || null;
 

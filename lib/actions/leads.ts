@@ -25,6 +25,7 @@ import {
   previousOrderFor,
   fulfillmentOverrideBlockReason,
   lockedEditBlockReason,
+  canSetOrderTag,
 } from "@/lib/lead-workflow";
 import { timeInBlockReason } from "@/lib/time-in-gate";
 import { findRegularCustomerByPhone, getCustomer, recordCustomerOrder } from "@/lib/customers";
@@ -249,6 +250,7 @@ export async function createLeadAction(formData: FormData) {
     courier: data.courier || null,
     payment_method: data.payment_method || null,
     order_source: assignedAgent?.call_name || null,
+    tag: canSetOrderTag(user) ? data.tag || null : null,
     // The sum of the line discounts, not a separate figure — one order cannot
     // have two discounts that disagree.
     discount: items.length > 0 ? totals.discount : data.discount ?? 0,
@@ -696,6 +698,10 @@ export async function applyLeadUpdate(
   // agent's Call Name and must not be settable through the form.
   order.order_source = db.profiles.find((p) => p.id === order.agent_id)?.call_name || order.order_source;
   order.notes = data.notes || "";
+  // The tag is a supervisor's mark on an agent's order, so an agent may read it
+  // but not set it — enforced here, not by disabling the control, since a
+  // crafted request would otherwise walk straight past a greyed-out field.
+  if (canSetOrderTag(user)) order.tag = data.tag || null;
   if (!order.system_order_id) order.system_order_id = order.order_number;
   if (isReassignment) {
     order.agent_id = data.agent_id;
