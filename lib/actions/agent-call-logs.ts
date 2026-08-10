@@ -7,7 +7,7 @@ import { canonicalPhone, normalizePhone } from "@/lib/utils";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { writeDb } from "@/lib/db";
-import { requireUser } from "./guards";
+import { requireUserLite } from "./guards";
 import { isFullAccess } from "@/lib/permissions";
 import { detectDateOrder, parseCallDate, type DateOrder } from "@/lib/call-date";
 
@@ -50,7 +50,7 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
  * counted towards the daily total; the summary reports them separately with
  * the row number and the offending value so the file can be corrected. */
 export async function importAgentCallLogAction(rows: RawCallRow[], fileName: string): Promise<AgentUploadSummary> {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
 
   // One pass to settle the file's date convention, then a second to apply it.
   const rawDates = rows.map((r) => r.call_date);
@@ -155,7 +155,7 @@ export async function importAgentCallLogAction(rows: RawCallRow[], fileName: str
 
 /** Stores a call-log screenshot against the agent, in the private bucket. */
 export async function uploadCallLogImageAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
 
   const file = formData.get("image") as File | null;
   const relatedDate = String(formData.get("related_call_date") || "").trim();
@@ -202,7 +202,7 @@ export async function uploadCallLogImageAction(formData: FormData) {
  * not fatal — the rows are already recorded, and losing the ability to download
  * the original is far better than failing an import that actually succeeded. */
 export async function attachOriginalCallLogFileAction(formData: FormData): Promise<{ ok: boolean }> {
-  const { user } = await requireUser();
+  const { user } = await requireUserLite();
 
   const uploadId = String(formData.get("upload_id") || "");
   const file = formData.get("file") as File | null;
@@ -235,7 +235,7 @@ export async function attachOriginalCallLogFileAction(formData: FormData): Promi
  * agent's call-log count. The records go via the FK cascade; the audit entry
  * keeps what was removed. */
 export async function deleteCallLogUploadAction(uploadId: string) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   if (!isFullAccess(user.role)) {
     redirect(`${PATH}?error=${encodeURIComponent("Only an Administrator can delete an upload.")}`);
   }

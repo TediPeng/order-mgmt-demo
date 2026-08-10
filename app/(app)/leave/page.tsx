@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { Paperclip } from "lucide-react";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { formatDate, formatDateTime, todayInTz } from "@/lib/utils";
@@ -32,7 +32,7 @@ export default async function LeavePage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
 
   const canFile = can(user.role, "leave", "create", db.role_permissions);
   const canApprove = can(user.role, "leave", "approve", db.role_permissions);

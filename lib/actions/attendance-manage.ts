@@ -6,7 +6,7 @@ import { writeDb, uuid, nowIso } from "@/lib/db";
 import { uploadFile } from "@/lib/storage";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
-import { requireUser, requirePermission } from "./guards";
+import { requireUserLite, requirePermission } from "./guards";
 import { attendanceManageSchema } from "@/lib/validation";
 import { computeMinutesBetween, computeMinutesLate, computeOvertimeHours } from "@/lib/attendance-logic";
 import { isFullAccess } from "@/lib/permissions";
@@ -22,7 +22,7 @@ function scopedEmployeeIds(role: string, userId: string, allProfiles: { id: stri
 }
 
 export async function createOrUpdateAttendanceAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "attendance", formData.get("id") ? "edit" : "create", db, "/attendance/manage");
 
   const parsed = attendanceManageSchema.safeParse({

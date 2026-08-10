@@ -6,7 +6,7 @@ import { writeDb, uuid, nowIso } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { notify, agentEventRecipients } from "@/lib/notifications";
-import { requireUser, requirePermission } from "./guards";
+import { requireUserLite, requirePermission } from "./guards";
 import { attendanceOverrideSchema } from "@/lib/validation";
 import { computeMinutesBetween, computeMinutesLate, computeOvertimeHours } from "@/lib/attendance-logic";
 import { activeSuspensionOn } from "@/lib/schedule-access";
@@ -18,7 +18,7 @@ function safeRedirectTarget(raw: FormDataEntryValue | null): string {
 }
 
 export async function timeInAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   const today = todayInTz();
   const target = safeRedirectTarget(formData.get("redirect_to"));
 
@@ -91,7 +91,7 @@ export async function timeInAction(formData: FormData) {
 }
 
 export async function timeOutAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   const today = todayInTz();
   const target = safeRedirectTarget(formData.get("redirect_to"));
 
@@ -137,7 +137,7 @@ export async function timeOutAction(formData: FormData) {
 }
 
 export async function startBreakAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   const today = todayInTz();
   const target = safeRedirectTarget(formData.get("redirect_to"));
 
@@ -164,7 +164,7 @@ export async function startBreakAction(formData: FormData) {
 }
 
 export async function endBreakAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   const today = todayInTz();
   const target = safeRedirectTarget(formData.get("redirect_to"));
 
@@ -216,7 +216,7 @@ export async function endBreakAction(formData: FormData) {
  * from the clock page while the agent is on break, since there's no push
  * infrastructure to flag the exact 60th minute in real time. */
 export async function checkOverBreakAction() {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   const today = todayInTz();
   const record = db.attendance.find((a) => a.user_id === user.id && a.work_date === today);
 
@@ -248,7 +248,7 @@ export async function checkOverBreakAction() {
 }
 
 export async function overrideAttendanceAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "attendance", "approve", db, "/attendance/clock");
 
   const parsed = attendanceOverrideSchema.safeParse({

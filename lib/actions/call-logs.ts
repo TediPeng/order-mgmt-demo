@@ -5,7 +5,7 @@ import { writeDb, uuid, nowIso, queueDelete } from "@/lib/db";
 import { uploadFile, deleteFile } from "@/lib/storage";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
-import { requireUser, requirePermission } from "./guards";
+import { requireUserLite, requirePermission } from "./guards";
 import { CALL_LOG_HEADERS, callLogRowSchema } from "@/lib/validation";
 import { parseSpreadsheetToRows } from "@/lib/call-log-parser";
 import { matchAgentByName } from "@/lib/agent-match";
@@ -14,7 +14,7 @@ import type { CallLog, CallLogRecord } from "@/lib/types";
 const MAX_SIZE = 10 * 1024 * 1024;
 
 export async function uploadCallLogAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "call_logs", "upload", db, "/call-logs");
 
   const file = formData.get("file") as File | null;
@@ -139,7 +139,7 @@ export async function uploadCallLogAction(formData: FormData) {
 
 export async function deleteCallLogAction(callLogId: string) {
   "use server";
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "call_logs", "delete", db, "/call-logs");
 
   const idx = db.call_logs.findIndex((c) => c.id === callLogId);

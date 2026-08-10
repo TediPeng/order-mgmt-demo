@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { getUpload, canViewAgentRecords } from "@/lib/agent-call-logs";
 import { downloadFile } from "@/lib/storage";
 
@@ -19,7 +19,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const upload = await getUpload(id);
   if (!upload) return NextResponse.json({ ok: false, error: "Upload not found." }, { status: 404 });
 
-  const db = await readDb();
+  const db = await readDbLite();
   if (!canViewAgentRecords(viewer, upload.agent_id, db.profiles)) {
     return NextResponse.json({ ok: false, error: "You do not have access to that upload." }, { status: 403 });
   }

@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { requireUser } from "./guards";
+import { requireUserLite } from "./guards";
 import { startBioBreak, endBioBreak } from "@/lib/bio-breaks";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
@@ -22,7 +22,7 @@ function safeRedirectTarget(raw: FormDataEntryValue | null): string {
  * start and stop is attributable. */
 
 export async function startBioBreakAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   const target = safeRedirectTarget(formData.get("redirect_to"));
   const today = todayInTz();
 
@@ -50,7 +50,7 @@ export async function startBioBreakAction(formData: FormData) {
 }
 
 export async function endBioBreakAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   const target = safeRedirectTarget(formData.get("redirect_to"));
 
   const ended = await endBioBreak(user.id);

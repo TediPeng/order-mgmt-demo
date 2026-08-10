@@ -1,4 +1,4 @@
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { formatDate, formatTime, todayInTz } from "@/lib/utils";
@@ -21,7 +21,7 @@ export default async function TimeClockPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
   const today = todayInTz();
   const record = db.attendance.find((a) => a.user_id === user.id && a.work_date === today);
   const canOverride = can(user.role, "attendance", "approve", db.role_permissions);

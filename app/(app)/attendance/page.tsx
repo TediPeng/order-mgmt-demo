@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Download } from "lucide-react";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { formatDate, formatTime, todayInTz } from "@/lib/utils";
@@ -49,7 +49,7 @@ export default async function AttendancePage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
   const canViewAll = can(user.role, "attendance", "view", db.role_permissions);
   const canExport = can(user.role, "attendance", "export", db.role_permissions);
   const canManage = can(user.role, "attendance", "create", db.role_permissions);

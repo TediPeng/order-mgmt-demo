@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { isFullAccess } from "@/lib/permissions";
 import { getCallLogImage } from "@/lib/agent-call-logs";
 import { downloadFile } from "@/lib/storage";
@@ -22,7 +22,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!image) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
 
   if (!isFullAccess(viewer.role)) {
-    const db = await readDb();
+    const db = await readDbLite();
     const allowed =
       viewer.role === "team_lead"
         ? [viewer.id, ...db.profiles.filter((p) => p.team_lead_id === viewer.id).map((p) => p.id)]

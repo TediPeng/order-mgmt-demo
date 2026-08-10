@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Phone, Hourglass, Clock, Coffee, PhoneCall, Percent, Download } from "lucide-react";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { displayUserName } from "@/lib/types";
@@ -30,7 +30,7 @@ export default async function AgentActivityReportPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
 
   if (!can(user.role, "attendance", "view", db.role_permissions)) redirect("/dashboard");
   const isTeamLead = user.role === "team_lead";

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { formatDateTime } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -8,7 +8,7 @@ import { markAllNotificationsReadAction, markNotificationReadAction } from "@/li
 
 export default async function NotificationsPage() {
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
   const notifications = db.notifications
     .filter((n) => n.recipient_id === user.id)
     .sort((a, b) => b.created_at.localeCompare(a.created_at));

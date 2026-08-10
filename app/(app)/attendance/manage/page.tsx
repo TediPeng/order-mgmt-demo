@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Paperclip } from "lucide-react";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { ATTENDANCE_STATUSES } from "@/lib/validation";
@@ -22,7 +22,7 @@ export default async function AttendanceManagePage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
 
   const canCreate = can(user.role, "attendance", "create", db.role_permissions);
   const canEdit = can(user.role, "attendance", "edit", db.role_permissions);

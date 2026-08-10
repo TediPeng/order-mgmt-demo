@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { readDb, writeDb } from "@/lib/db";
+import { readDbLite, writeDb } from "@/lib/db";
 import { downloadFile } from "@/lib/storage";
 import { can } from "@/lib/permissions";
 import { logActivity } from "@/lib/activity";
@@ -9,7 +9,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const db = await readDb();
+  const db = await readDbLite();
   if (!can(user.role, "call_logs", "view", db.role_permissions)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

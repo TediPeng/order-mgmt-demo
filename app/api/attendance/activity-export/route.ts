@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { readDb, writeDb } from "@/lib/db";
+import { readDbLite, writeDb } from "@/lib/db";
 import { can, isFullAccess } from "@/lib/permissions";
 import { logActivity } from "@/lib/activity";
 import { displayUserName } from "@/lib/types";
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const db = await readDb();
+  const db = await readDbLite();
   // Gated on the same pair the page is: attendance:export for the file, and
   // the supervisory check so an agent cannot export a board of everyone else.
   if (!can(user.role, "attendance", "export", db.role_permissions)) {

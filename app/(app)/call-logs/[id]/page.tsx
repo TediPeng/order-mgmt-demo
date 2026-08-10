@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { Download, ArrowLeft } from "lucide-react";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/utils";
@@ -17,7 +17,7 @@ export default async function CallLogDetailPage({
   const { id } = await params;
   const { q } = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
 
   if (!can(user.role, "call_logs", "view", db.role_permissions)) {
     redirect("/call-logs");

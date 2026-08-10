@@ -489,6 +489,17 @@ export const readDb = cache(() => readDbUncached(true));
  * than loudly broken. writeDb() is safe either way: it upserts what it is
  * given and only deletes what an action explicitly queued, so an empty orders
  * array writes nothing at all.
+ *
+ * On it as of 2026-08-10: the authenticated layout, Users, Leads, Dashboard,
+ * AttendanceWidget, Duplicate Leads, and the whole of attendance, leave,
+ * notifications, call logs and audit logs — pages, export routes and actions
+ * alike. None of them displays an order, and each was fetching all 57,000 to
+ * prove it: fifty-eight round trips at ~240ms, about fourteen seconds of
+ * database time per page view, on a Leave page. That one read was 88% of all
+ * database time on the project.
+ *
+ * Before adding an order read to anything on that list, move the file back to
+ * readDb() — or better, ask the database for the orders you need.
  */
 export const readDbLite = cache(() => readDbUncached(false));
 

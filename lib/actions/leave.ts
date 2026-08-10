@@ -7,7 +7,7 @@ import { uploadFile } from "@/lib/storage";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { notify, supervisorRecipients } from "@/lib/notifications";
-import { requireUser, requirePermission } from "./guards";
+import { requireUserLite, requirePermission } from "./guards";
 import { leaveRequestSchema, leaveReviewSchema } from "@/lib/validation";
 import { todayInTz } from "@/lib/utils";
 import type { LeaveRequest, LeaveStatus } from "@/lib/types";
@@ -36,7 +36,7 @@ function eachDate(start: string, end: string): string[] {
 }
 
 export async function fileLeaveAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "leave", "create", db, "/leave");
 
   const parsed = leaveRequestSchema.safeParse({
@@ -131,7 +131,7 @@ export async function fileLeaveAction(formData: FormData) {
 
 export async function cancelLeaveAction(requestId: string) {
   "use server";
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   const request = db.leave_requests.find((r) => r.id === requestId);
   if (!request) redirect("/leave");
   if (request!.agent_id !== user.id) redirect("/leave?error=" + encodeURIComponent("You can only cancel your own requests."));
@@ -153,7 +153,7 @@ export async function cancelLeaveAction(requestId: string) {
 }
 
 export async function resubmitLeaveAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   const requestId = String(formData.get("id") || "");
   const request = db.leave_requests.find((r) => r.id === requestId);
   if (!request) redirect("/leave");
@@ -201,7 +201,7 @@ export async function resubmitLeaveAction(formData: FormData) {
 }
 
 export async function reviewLeaveAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "leave", "approve", db, "/leave");
 
   const parsed = leaveReviewSchema.safeParse({

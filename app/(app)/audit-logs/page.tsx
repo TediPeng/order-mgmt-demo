@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { Download } from "lucide-react";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { queryAuditLog, auditFacets } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
@@ -26,7 +26,7 @@ export default async function AuditLogsPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
 
   if (!can(user.role, "audit_logs", "view", db.role_permissions)) {
     redirect("/dashboard");

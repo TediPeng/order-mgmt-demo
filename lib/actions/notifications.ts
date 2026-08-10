@@ -2,11 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { writeDb } from "@/lib/db";
-import { requireUser } from "./guards";
+import { requireUserLite } from "./guards";
 
 export async function markNotificationReadAction(notificationId: string) {
   "use server";
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   const n = db.notifications.find((x) => x.id === notificationId && x.recipient_id === user.id);
   if (n) {
     n.is_read = true;
@@ -17,7 +17,7 @@ export async function markNotificationReadAction(notificationId: string) {
 
 export async function markAllNotificationsReadAction() {
   "use server";
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   db.notifications.forEach((n) => {
     if (n.recipient_id === user.id) n.is_read = true;
   });

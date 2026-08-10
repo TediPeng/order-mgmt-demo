@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Download, Upload } from "lucide-react";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/utils";
@@ -34,7 +34,7 @@ export default async function CallLogsPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
   const isAgent = user.role === "agent";
   const canView = can(user.role, "call_logs", "view", db.role_permissions);
   const canUpload = can(user.role, "call_logs", "upload", db.role_permissions);

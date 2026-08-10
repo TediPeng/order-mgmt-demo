@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { downloadFile } from "@/lib/storage";
 import { can } from "@/lib/permissions";
 
@@ -8,7 +8,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const db = await readDb();
+  const db = await readDbLite();
   const { id } = await params;
   const record = db.attendance.find((a) => a.id === id);
   if (!record || !record.attachment_path) return NextResponse.json({ error: "Not found" }, { status: 404 });
