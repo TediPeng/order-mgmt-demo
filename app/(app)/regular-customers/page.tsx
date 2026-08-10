@@ -1,11 +1,12 @@
+import { Copy as CopyIcon } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { readDbLite } from "@/lib/db";
 import { ordersForCustomers } from "@/lib/orders-lookup";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
-import { listCustomers, ordersForCustomer, listOpenDuplicates } from "@/lib/customers";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { listCustomers, ordersForCustomer, listOpenDuplicates, scanDuplicateCustomers } from "@/lib/customers";
+import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
@@ -49,7 +50,11 @@ export default async function RegularCustomersPage({
   // The duplicate queue is a Management/Team Lead concern only — an agent is
   // never shown that a match exists.
   const canSeeDuplicates = isFullAccess(user.role) || user.role === "team_lead";
-  const openDuplicates = canSeeDuplicates ? await listOpenDuplicates() : [];
+  // Two different questions, and the card shows the one that matters: the scan
+  // is what is true now, the queue is what somebody has yet to decide about.
+  const [openDuplicates, duplicateGroups] = canSeeDuplicates
+    ? await Promise.all([listOpenDuplicates(), scanDuplicateCustomers()])
+    : [[], []];
 
   // The orders behind the customers on this page, in one query. This used to
   // hand ordersForCustomer() every order in the system, once per customer.
@@ -73,12 +78,45 @@ export default async function RegularCustomersPage({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {canSeeDuplicates && openDuplicates.length > 0 && (
+          {/* A card of its own, always shown to those who may see it — a
+              duplicates control that appears only when there ARE duplicates
+              cannot be used to check that there are none. Amber when there is
+              something to look at, plain when there is not. */}
+          {canSeeDuplicates && (
             <Link
               href="/regular-customers/duplicates"
-              className="rounded-md bg-amber-100 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-200"
+              className={cn(
+                "rounded-lg border px-3 py-2 transition-colors",
+                duplicateGroups.length > 0
+                  ? "border-amber-300 bg-amber-50 hover:bg-amber-100"
+                  : "border-slate-200 bg-white hover:border-slate-300"
+              )}
             >
-              {openDuplicates.length} possible duplicate{openDuplicates.length === 1 ? "" : "s"} to review
+              <span className="flex items-center gap-1.5">
+                <CopyIcon
+                  className={cn("h-3.5 w-3.5", duplicateGroups.length > 0 ? "text-amber-700" : "text-slate-400")}
+                  aria-hidden
+                />
+                <span
+                  className={cn(
+                    "text-xs font-medium",
+                    duplicateGroups.length > 0 ? "text-amber-800" : "text-slate-500"
+                  )}
+                >
+                  Duplicates
+                </span>
+              </span>
+              <span
+                className={cn(
+                  "text-lg font-semibold",
+                  duplicateGroups.length > 0 ? "text-amber-900" : "text-slate-900"
+                )}
+              >
+                {duplicateGroups.length}
+              </span>
+              {openDuplicates.length > 0 && (
+                <span className="ml-2 text-xs text-amber-700">+{openDuplicates.length} to review</span>
+              )}
             </Link>
           )}
           {canCreate && <LinkButton href="/regular-customers/new">Add Regular Customer</LinkButton>}
