@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { getThemeCookie } from "@/lib/auth";
 import { APP_FULL_NAME } from "@/lib/version";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -44,6 +45,7 @@ export default async function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
+        <SpeedInsights />
       </body>
     </html>
   );
