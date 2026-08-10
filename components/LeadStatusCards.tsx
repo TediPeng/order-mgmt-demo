@@ -13,7 +13,20 @@ import type { OrderStatus } from "@/lib/types";
  * there but nothing said where it had gone. Derived from LEAD_STATUSES now, so
  * a status added there appears here without a second edit.
  */
-export const QUICK_FILTER_STATUSES = LEAD_STATUSES;
+/** Stages this floor never works in. They exist in the enum because Pancake
+ * has them and an inbound sync may still set one, and an Administrator can
+ * still pick them in the Status dropdown to correct a record — they simply do
+ * not earn a card of their own. */
+const UNUSED_ON_THIS_FLOOR: readonly OrderStatus[] = [
+  "waiting_confirmation",
+  "confirmed",
+  "restocking",
+  "purchased",
+  "wait_for_printing",
+  "deleted",
+];
+
+export const QUICK_FILTER_STATUSES = LEAD_STATUSES.filter((s) => !UNUSED_ON_THIS_FLOOR.includes(s));
 
 export interface StatusCount {
   status: OrderStatus;

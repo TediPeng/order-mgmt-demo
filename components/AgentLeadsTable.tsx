@@ -128,7 +128,6 @@ export function AgentLeadsTable({
               <th className="sticky left-0 z-30 bg-slate-50 px-3 py-3">Order ID</th>
               <th className="px-3 py-3">Order Date</th>
               <th className="px-3 py-3">Order Source</th>
-              <th className="px-3 py-3">Care Staff</th>
               <th className="px-3 py-3">Customer Name</th>
               <th className="px-3 py-3">Phone Number</th>
               <th className="px-3 py-3">Address (Purok)</th>
@@ -136,9 +135,7 @@ export function AgentLeadsTable({
               <th className="px-3 py-3">City / Municipality</th>
               <th className="px-3 py-3">Barangay</th>
               <th className="px-3 py-3">Landmark</th>
-              <th className="px-3 py-3">Previous Order Date</th>
-              <th className="px-3 py-3">Previous Order Product</th>
-              <th className="px-3 py-3">Previous Order Amount</th>
+              <th className="px-3 py-3">Notes</th>
               <th className="px-3 py-3">New Product Order</th>
               <th className="px-3 py-3">Unit Price</th>
               <th className="px-3 py-3">Tag</th>
@@ -150,7 +147,6 @@ export function AgentLeadsTable({
           <tbody className="divide-y divide-slate-100">
             {rows.map((o) => {
               const style = LEAD_STATUS_STYLES[o.status];
-              const care = careStaffById[o.agent_id];
               return (
                 <tr key={o.id} className={cn(style.row, style.rowHover)}>
                   {/* Order ID doubles as the row control. Once an order syncs
@@ -178,9 +174,6 @@ export function AgentLeadsTable({
                   </td>
                   <td className={cell}>{o.order_date ? formatDate(o.order_date) : "—"}</td>
                   <td className={cell}>{o.order_source || "—"}</td>
-                  <td className={cell} title={care?.email || undefined}>
-                    {care?.name || "—"}
-                  </td>
                   <td className={cell}>{o.customer_name}</td>
                   <td className={cell}>{o.customer_phone || "—"}</td>
                   <td className={cell}>{o.purok || "—"}</td>
@@ -188,10 +181,8 @@ export function AgentLeadsTable({
                   <td className={cell}>{o.city || "—"}</td>
                   <td className={cell}>{o.barangay || "—"}</td>
                   <td className={cell}>{o.landmark || "—"}</td>
-                  <td className={cell}>{o.previous_order_date ? formatDate(o.previous_order_date) : "—"}</td>
-                  <td className={cell}>{o.previous_order_product || "—"}</td>
-                  <td className={cell}>
-                    {o.previous_order_amount != null ? formatCurrency(o.previous_order_amount) : "—"}
+                  <td className={cell} title={o.notes || undefined}>
+                    <span className="block max-w-[22rem] truncate">{o.notes || "—"}</span>
                   </td>
                   <td className={cell}>{productNameByOrderId[o.id] || o.product_name || "—"}</td>
                   <td className={cell}>{o.unit_price != null ? formatCurrency(o.unit_price) : "—"}</td>
