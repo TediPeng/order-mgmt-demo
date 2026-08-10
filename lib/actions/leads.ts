@@ -647,7 +647,13 @@ export async function applyLeadUpdate(
     });
     const totals = totalsFor(pendingItems, order.shipping_fee);
     const first = pendingItems[0];
-    order.quantity = totals.quantity;
+    // orders.quantity is CHECK (quantity > 0), and a lead with no product has
+    // no quantity to speak of — totalsFor() answers 0, which the database
+    // refuses. Every status change on an unquoted lead therefore died in
+    // writeDb and reached the agent as "Network error. Please try again."
+    // Falling back to the schema's own default keeps the row legal and says
+    // the same thing: one, of nothing yet.
+    order.quantity = totals.quantity || 1;
     order.discount = totals.discount;
     order.total_amount = totals.total;
     order.product_id = first?.product_id ?? null;
@@ -680,7 +686,8 @@ export async function applyLeadUpdate(
       // lines: the order would claim one product and a total to match, while
       // the lines it forwards and reports on say something else.
       const totals = totalsFor(existing, order.shipping_fee);
-      order.quantity = totals.quantity;
+      // Same floor as above: CHECK (quantity > 0) leaves no room for zero.
+      order.quantity = totals.quantity || 1;
       order.discount = totals.discount;
       order.total_amount = totals.total;
       order.product_id = existing[0].product_id;
