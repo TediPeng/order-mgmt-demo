@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { runPancakeSync } from "@/lib/pancake/sweep";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// Pro allows 300s. A sweep that has a queue to work through should finish it
+// rather than be cut off half way and leave orders mid-retry.
+export const maxDuration = 300;
 
 /** Scheduled runner for the Pancake retry queue + polling fallback (see
  * vercel.json). The same work also runs lazily from the authenticated layout,

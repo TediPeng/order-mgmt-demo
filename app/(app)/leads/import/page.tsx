@@ -3,10 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { LeadImportClient } from "@/components/LeadImportClient";
 import { LEAD_IMPORT_HEADERS, LEAD_IMPORT_FORBIDDEN_HEADERS } from "@/lib/validation";
 
-// A few thousand rows is one long write, and Vercel's default cuts a function
-// off well before the work is done — which showed up as an import that never
-// reported anything at all. 60s is the ceiling on this plan.
-export const maxDuration = 60;
+// The import sends batches of 500, so no single request needs long — this is
+// headroom for a slow connection, not the plan. 300s is the Pro ceiling.
+export const maxDuration = 300;
 
 export default async function LeadImportPage() {
   return (

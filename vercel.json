@@ -1,10 +1,15 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "regions": ["sin1"],
+  "functions": {
+    "app/api/cron/pancake-sync/route.ts": {
+      "memory": 2048
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/pancake-sync",
-      "schedule": "0 3 * * *"
+      "schedule": "*/10 * * * *"
     }
   ]
 }

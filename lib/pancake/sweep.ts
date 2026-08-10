@@ -188,7 +188,11 @@ export async function runPancakeSync(opts: SweepOptions = {}): Promise<SweepSumm
 // instance (there is no shared timer), which is fine because runPancakeSync is
 // idempotent and every unit of work has its own due-time guard.
 
-const SWEEP_THROTTLE_MS = 5 * 60_000;
+// Raised from 5 minutes now that the Vercel cron runs every 10: the schedule
+// is the primary driver again, and this is the fallback for when nobody has
+// hit the cron recently. Riding on a user's page render is work an agent pays
+// for in latency, so it should happen rarely rather than constantly.
+const SWEEP_THROTTLE_MS = 30 * 60_000;
 /** Small budget: the sweep shares an invocation with a page render. */
 const LAZY_MAX_RETRIES = 3;
 const LAZY_MAX_POLLS = 5;
