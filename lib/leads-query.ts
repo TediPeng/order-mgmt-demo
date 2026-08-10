@@ -212,9 +212,24 @@ export async function regularCustomerOrderCount(scope: AgentScope): Promise<numb
   return Number(data ?? 0);
 }
 
-/** How many contact numbers appear on more than one lead, for the badge. */
+/**
+ * How many contact numbers appear on more than one lead, for the badge.
+ *
+ * Cached for ten minutes. Counting them means evaluating lead_phone_key()
+ * twice for every one of 51,500 rows — around 103,000 regexp calls, measured
+ * at 1.4 seconds — and it ran on every Leads page load, which made it the
+ * single most expensive thing the database did. Every index it could want
+ * already exists; the scan is not the cost, the function is.
+ *
+ * Ten minutes stale is the right trade for a number on a button: it changes
+ * when somebody creates or edits a lead, and nothing is decided on the
+ * difference between 4 and 5. The Duplicates page itself always counts live.
+ */
 export async function duplicatePhoneCount(scope: AgentScope): Promise<number> {
-  const { data, error } = await supabaseAdmin.rpc("lead_duplicate_phone_count", { p_agent_ids: scope });
+  const { data, error } = await supabaseAdmin.rpc("lead_duplicate_phone_count_cached", {
+    p_agent_ids: scope,
+    p_max_age_seconds: 600,
+  });
   if (error) throw new Error(`Duplicate lead count failed: ${error.message}`);
   return Number(data ?? 0);
 }
