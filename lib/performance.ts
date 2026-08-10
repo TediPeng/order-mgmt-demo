@@ -41,8 +41,10 @@ function callEffectiveDate(callDate: string, uploadedAt: string): string {
   return uploadedAt.slice(0, 10);
 }
 
+/** Every account whose work is measured. Excludes full-access roles, who do
+ * not carry leads, and test accounts, whose orders are not the floor's. */
 export function eligibleAgents(db: DbShape): Profile[] {
-  return db.profiles.filter((p) => !isFullAccess(p.role));
+  return db.profiles.filter((p) => !isFullAccess(p.role) && !p.is_test_account);
 }
 
 /** Restricts the visible agent set based on the viewer's role: management/administrator

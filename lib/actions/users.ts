@@ -71,6 +71,7 @@ export async function createUserAction(formData: FormData) {
     permission_profile: data.permission_profile || null,
     last_login_at: null,
     is_deleted: false,
+    is_test_account: false,
     deleted_at: null,
     created_at: nowIso(),
   };

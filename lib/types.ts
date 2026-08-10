@@ -38,6 +38,12 @@ export interface Profile {
    * audit entries keep a valid FK target, rendered as "Deleted User". */
   is_deleted: boolean;
   deleted_at: string | null;
+  /** An account used to test the system, not to sell. Its orders, calls and
+   * attendance are real rows and stay where they are — deleting them would
+   * take the audit trail with them — but they are not the floor's work, so
+   * nothing that measures the floor counts them. Set by hand in the database;
+   * there is no UI for it. See isTestAccount() in lib/permissions.ts. */
+  is_test_account: boolean;
   created_at: string;
 }
 

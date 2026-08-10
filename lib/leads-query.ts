@@ -26,10 +26,25 @@ export type AgentScope = string[] | null;
  * against another table in one query; agent_id is the column every write sets
  * and the one the app treats as authoritative. */
 export function leadScopeFor(user: Profile, db: DbShape): AgentScope {
-  if (isFullAccess(user.role)) return null;
-  if (user.role === "team_lead") {
-    return [user.id, ...db.profiles.filter((p) => p.team_lead_id === user.id).map((p) => p.id)];
+  if (isFullAccess(user.role)) {
+    // A test account's orders are real rows but not the floor's work, so
+    // nothing that measures the floor counts them: this scope feeds the Leads
+    // list, its status cards, the duplicates and the whole Dashboard.
+    //
+    // Null still means "no restriction", and is still what is returned when
+    // there is nothing to leave out — naming every agent would otherwise
+    // change the shape of every query for no reason.
+    if (!db.profiles.some((p) => p.is_test_account)) return null;
+    return db.profiles.filter((p) => !p.is_test_account).map((p) => p.id);
   }
+  if (user.role === "team_lead") {
+    return [
+      user.id,
+      ...db.profiles.filter((p) => p.team_lead_id === user.id && !p.is_test_account).map((p) => p.id),
+    ];
+  }
+  // The test account itself still sees its own leads — it is somebody's
+  // account, and they are testing with it.
   return [user.id];
 }
 

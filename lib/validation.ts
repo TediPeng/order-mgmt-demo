@@ -222,9 +222,10 @@ const dateCell = z.preprocess(
  * each time. Add a value here and it appears in the form and the tables; there
  * is nowhere else to change.
  *
- * INC: incomplete — the order needs something before it can move on.
+ * The values are what the floor says out loud, punctuation included, so the
+ * tag on the screen reads the way it is spoken.
  */
-export const ORDER_TAGS = ["INC"] as const;
+export const ORDER_TAGS = ["INC #", "CALL BACK", "REJECT OFFER", "CANCEL"] as const;
 export type OrderTag = (typeof ORDER_TAGS)[number];
 
 export const leadFormSchema = z.object({

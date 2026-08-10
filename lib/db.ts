@@ -82,6 +82,7 @@ function seedDb(): DbShape {
     permission_profile: null,
     last_login_at: null,
     is_deleted: false,
+    is_test_account: false,
     deleted_at: null,
     must_change_password: true,
     is_active: true,

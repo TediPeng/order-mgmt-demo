@@ -32,7 +32,7 @@ export default async function AgentMonitorPage() {
   const today = todayInTz();
 
   const agents = db.profiles
-    .filter((p) => !p.is_deleted && p.is_active && p.role === "agent")
+    .filter((p) => !p.is_deleted && p.is_active && p.role === "agent" && !p.is_test_account)
     .filter((p) => (isTeamLead ? p.team_lead_id === user.id : true))
     .sort((a, b) => displayUserName(a).localeCompare(displayUserName(b)));
 
