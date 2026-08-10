@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { auditForEntity } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
@@ -30,7 +30,7 @@ export default async function ProductDetailPage({
 }) {
   const { id } = await params;
   const { error, created, updated } = await searchParams;
-  const db = await readDb();
+  const db = await readDbLite();
   const product = db.products.find((p) => p.id === id);
   if (!product) notFound();
 

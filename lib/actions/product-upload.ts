@@ -6,7 +6,7 @@ import { writeDb, uuid, nowIso } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { requireUser, requirePermission } from "./guards";
+import { requireUserLite, requirePermission } from "./guards";
 import { MAX_PRODUCT_UPLOAD_BYTES } from "@/lib/validation";
 import {
   buildProductUploadPreview,
@@ -55,7 +55,7 @@ export interface PreviewState {
 export async function previewProductUploadAction(_prev: unknown, formData: FormData): Promise<
   { ok: true; preview: PreviewState } | { ok: false; error: string }
 > {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "products", "create", db, "/products");
 
   const file = formData.get("file");
@@ -96,7 +96,7 @@ export async function previewProductUploadAction(_prev: unknown, formData: FormD
  * table may have changed since the preview was generated.
  */
 export async function commitProductUploadAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "products", "create", db, "/products");
 
   const { file, buffer, extension } = await readUpload(formData);

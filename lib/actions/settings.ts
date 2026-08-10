@@ -4,12 +4,12 @@ import { redirect } from "next/navigation";
 import { writeDb } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
-import { requireUser, requirePermission } from "./guards";
+import { requireUserLite, requirePermission } from "./guards";
 
 const HHMM_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 export async function updateWorkScheduleAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "settings", "manage", db, "/settings/system");
 
   const workStart = String(formData.get("work_start") || "");
@@ -47,7 +47,7 @@ export async function updateWorkScheduleAction(formData: FormData) {
 }
 
 export async function updateThresholdsAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "settings", "manage", db, "/settings/system");
 
   const topRatio = Number(formData.get("top_performer_min_ratio"));
@@ -84,7 +84,7 @@ export async function updateThresholdsAction(formData: FormData) {
 
 /** Operations settings: how imports treat status, and what counts as a call. */
 export async function updateOperationsAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "settings", "manage", db, "/settings/system");
 
   const minCallSeconds = Number(formData.get("min_call_seconds"));

@@ -1,5 +1,5 @@
 import { getCurrentUser } from "@/lib/auth";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/utils";
 import { displayUserName } from "@/lib/types";
@@ -10,7 +10,7 @@ import { listProductUploads } from "@/lib/actions/product-upload";
 
 export default async function ProductUploadHistoryPage() {
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
 
   if (!can(user.role, "products", "view", db.role_permissions)) {
     return <Alert kind="error">You do not have permission to view product uploads.</Alert>;

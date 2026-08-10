@@ -3,7 +3,7 @@ import { Alert } from "@/components/ui/Alert";
 import { LinkButton } from "@/components/ui/Button";
 import { ScheduleImportClient } from "@/components/ScheduleImportClient";
 import { getCurrentUser } from "@/lib/auth";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { scopeAgentsForSchedule } from "@/lib/schedule-access";
 import { DUTY_STATUSES, shiftForStatus } from "@/lib/schedule-import";
@@ -19,7 +19,7 @@ const TEMPLATE_HREF = "/api/schedule/template";
  */
 export default async function ImportSchedulePage() {
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
 
   if (!can(user.role, "schedules", "create", db.role_permissions)) {
     return <Alert kind="error">You do not have permission to import schedules.</Alert>;

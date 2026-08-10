@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { logActivityStandalone } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
-import { requireUser, requireAdministrator } from "./guards";
+import { requireUserLite, requireAdministrator } from "./guards";
 import { deleteUpdateLog, getUpdateLog, insertUpdateLog, parseLines, updateUpdateLog } from "@/lib/update-logs";
 
 const PATH = "/settings/update-logs";
@@ -27,7 +27,7 @@ function fail(message: string): never {
 }
 
 export async function createUpdateLogAction(formData: FormData) {
-  const { user } = await requireUser();
+  const { user } = await requireUserLite();
   requireAdministrator(user, PATH);
 
   const fields = readForm(formData);
@@ -51,7 +51,7 @@ export async function createUpdateLogAction(formData: FormData) {
 }
 
 export async function updateUpdateLogAction(id: string, formData: FormData) {
-  const { user } = await requireUser();
+  const { user } = await requireUserLite();
   requireAdministrator(user, PATH);
 
   const before = await getUpdateLog(id);
@@ -80,7 +80,7 @@ export async function updateUpdateLogAction(id: string, formData: FormData) {
 /** Publishing is what makes an entry visible on the login page, so it is logged
  * separately from an ordinary content edit. */
 export async function setUpdateLogPublishedAction(id: string, publish: boolean) {
-  const { user } = await requireUser();
+  const { user } = await requireUserLite();
   requireAdministrator(user, PATH);
 
   const before = await getUpdateLog(id);
@@ -107,7 +107,7 @@ export async function setUpdateLogPublishedAction(id: string, publish: boolean) 
 }
 
 export async function deleteUpdateLogAction(id: string) {
-  const { user } = await requireUser();
+  const { user } = await requireUserLite();
   requireAdministrator(user, PATH);
 
   const before = await getUpdateLog(id);

@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { v4 as uuid } from "uuid";
-import { requireUser, requirePermission } from "./guards";
+import { requireUserLite, requirePermission } from "./guards";
 import { getRequestInfo } from "@/lib/request-info";
 import { logActivity } from "@/lib/activity";
 import { writeDb } from "@/lib/db";
@@ -54,7 +54,7 @@ async function clearOtherDefaults(exceptId: string) {
 }
 
 export async function createPancakeAccountAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "integrations", "manage", db, SETTINGS_PATH);
 
   const account_name = String(formData.get("account_name") || "").trim();
@@ -109,7 +109,7 @@ export async function createPancakeAccountAction(formData: FormData) {
 }
 
 export async function updatePancakeAccountAction(accountId: string, formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "integrations", "manage", db, SETTINGS_PATH);
 
   const existing = await getAccount(accountId);
@@ -164,7 +164,7 @@ export async function updatePancakeAccountAction(accountId: string, formData: Fo
 }
 
 export async function deletePancakeAccountAction(accountId: string) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "integrations", "manage", db, SETTINGS_PATH);
   const existing = await getAccount(accountId);
   if (!existing) redirectError(SETTINGS_PATH, "Account not found.");
@@ -181,7 +181,7 @@ export async function deletePancakeAccountAction(accountId: string) {
 }
 
 export async function testPancakeConnectionAction(accountId: string) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "integrations", "manage", db, SETTINGS_PATH);
   const account = await getAccount(accountId);
   if (!account) redirectError(SETTINGS_PATH, "Account not found.");
@@ -199,7 +199,7 @@ export async function testPancakeConnectionAction(accountId: string) {
 const STATUS_MAP_PATH = "/settings/integrations/status-map";
 
 export async function saveStatusMapEntryAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "integrations", "manage", db, STATUS_MAP_PATH);
 
   const id = String(formData.get("id") || "") || uuid();
@@ -225,7 +225,7 @@ export async function saveStatusMapEntryAction(formData: FormData) {
 }
 
 export async function deleteStatusMapEntryAction(id: string) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "integrations", "manage", db, STATUS_MAP_PATH);
   await deleteStatusMapEntry(id);
   await audit(user, "PANCAKE_STATUS_MAP_DELETED", id, {});

@@ -9,7 +9,7 @@ import { scopeAgentsForSchedule } from "@/lib/schedule-access";
 import { upsertSchedule } from "@/lib/actions/schedules";
 import { parseDateHeader, parseShiftCell } from "@/lib/schedule-import";
 import type { ScheduleImportRow, ScheduleImportRowResult, ScheduleImportSummary } from "@/lib/schedule-import";
-import { requireUser } from "./guards";
+import { requireUserLite } from "./guards";
 
 /** Statuses the schedule row already says by itself, so they get no remark. */
 const PLAIN_STATUSES: string[] = ["ON DUTY", "OFF"];
@@ -39,7 +39,7 @@ export async function importSchedulesAction(
   rows: ScheduleImportRow[],
   fileName: string
 ): Promise<ScheduleImportSummary> {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   if (!can(user.role, "schedules", "create", db.role_permissions)) {
     return {
       fileName,

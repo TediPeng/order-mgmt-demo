@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { auditByAction } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 
 export default async function FileUploadsPage() {
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
 
   if (!can(user.role, "file_uploads", "view", db.role_permissions)) redirect("/dashboard");
 

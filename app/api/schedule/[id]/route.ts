@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { readDb, writeDb } from "@/lib/db";
+import { readDbLite, writeDb } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
@@ -13,7 +13,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  const db = await readDb();
+  const db = await readDbLite();
 
   const existing = db.schedules.find((s) => s.id === id);
   if (!existing) return NextResponse.json({ ok: false, error: "Schedule not found." }, { status: 404 });
@@ -82,7 +82,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const { id } = await params;
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  const db = await readDb();
+  const db = await readDbLite();
 
   const existing = db.schedules.find((s) => s.id === id);
   if (!existing) return NextResponse.json({ ok: false, error: "Schedule not found." }, { status: 404 });

@@ -5,7 +5,7 @@ import { writeDb, nowIso } from "@/lib/db";
 import { setThemeCookie } from "@/lib/auth";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
-import { requireUser } from "./guards";
+import { requireUserLite } from "./guards";
 import type { ThemePreference } from "@/lib/types";
 
 const VALID: ThemePreference[] = ["light", "dark", "system"];
@@ -14,7 +14,7 @@ const VALID: ThemePreference[] = ["light", "dark", "system"];
  * layout reads. The account row is what makes the choice follow the user to a
  * different device; the cookie is only what lets the first paint be correct. */
 export async function setThemeAction(theme: string) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   if (!VALID.includes(theme as ThemePreference)) return;
 
   const profile = db.profiles.find((p) => p.id === user.id);

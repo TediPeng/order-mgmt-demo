@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { scopeAgentsForSchedule, scopeSuspensions, effectiveSuspensionStatus } from "@/lib/schedule-access";
@@ -25,7 +25,7 @@ export default async function SuspensionsPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
 
   if (!can(user.role, "disciplinary", "view", db.role_permissions)) redirect("/dashboard");
   const canManage = can(user.role, "disciplinary", "manage", db.role_permissions);

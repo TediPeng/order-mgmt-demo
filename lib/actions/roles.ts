@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { writeDb, uuid, nowIso, queueDelete } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
-import { requireUser, requireAdministrator } from "./guards";
+import { requireUserLite, requireAdministrator } from "./guards";
 import { buildDefaultRows, defaultAllowed, isFullAccess } from "@/lib/permissions";
 import { roleFormSchema } from "@/lib/validation";
 import type { ActionKey, ModuleKey } from "@/lib/types";
@@ -19,7 +19,7 @@ function slugify(name: string): string {
 }
 
 export async function createRoleAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requireAdministrator(user, "/settings/roles");
 
   const parsed = roleFormSchema.safeParse({
@@ -57,7 +57,7 @@ export async function createRoleAction(formData: FormData) {
 
 export async function deleteRoleAction(roleKey: string) {
   "use server";
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requireAdministrator(user, "/settings/roles");
 
   const role = db.roles.find((r) => r.key === roleKey);
@@ -89,7 +89,7 @@ export async function deleteRoleAction(roleKey: string) {
 
 export async function updatePermissionAction(role: string, moduleKey: ModuleKey, action: ActionKey, allowed: boolean) {
   "use server";
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requireAdministrator(user, "/settings/roles");
 
   if (isFullAccess(role)) {
@@ -124,7 +124,7 @@ export async function updatePermissionAction(role: string, moduleKey: ModuleKey,
 
 export async function resetRolePermissionsAction(role: "team_lead" | "agent") {
   "use server";
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requireAdministrator(user, "/settings/roles");
 
   // Reset replaces the rows rather than editing them, so the old ones are

@@ -5,7 +5,7 @@ import { writeDb, uuid, nowIso, queueDelete } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { notify } from "@/lib/notifications";
-import { requireUser, requirePermission } from "./guards";
+import { requireUserLite, requirePermission } from "./guards";
 import { isFullAccess } from "@/lib/permissions";
 import { eachDateInclusive, computeSuspensionEndDate } from "@/lib/schedule-access";
 import { todayInTz } from "@/lib/utils";
@@ -14,7 +14,7 @@ import type { Schedule, Suspension } from "@/lib/types";
 const VALID_DURATIONS = new Set([3, 7, 15]);
 
 export async function issueSuspensionAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "disciplinary", "manage", db, "/schedule/suspensions");
 
   const employeeId = String(formData.get("employee_id") || "");
@@ -157,7 +157,7 @@ export async function issueSuspensionAction(formData: FormData) {
 }
 
 export async function liftSuspensionAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "disciplinary", "manage", db, "/schedule/suspensions");
 
   const id = String(formData.get("id") || "");

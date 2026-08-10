@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { scopeAgentsForSchedule, eachDateInclusive, addDaysToYmd } from "@/lib/schedule-access";
 import { displayUserName } from "@/lib/types";
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const db = await readDb();
+  const db = await readDbLite();
   if (!can(user.role, "schedules", "create", db.role_permissions)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

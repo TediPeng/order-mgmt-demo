@@ -1,5 +1,5 @@
 import { getCurrentUser } from "@/lib/auth";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { Alert } from "@/components/ui/Alert";
 import { ProductUploadClient } from "@/components/ProductUploadClient";
@@ -11,7 +11,7 @@ export default async function ProductUploadPage({
 }) {
   const { error } = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
 
   if (!can(user.role, "products", "create", db.role_permissions)) {
     return <Alert kind="error">You do not have permission to upload products.</Alert>;

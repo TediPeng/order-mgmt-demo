@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { Download } from "lucide-react";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { auditByAction } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/Button";
 
 export default async function ReportsPage() {
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
 
   if (!can(user.role, "reports", "view", db.role_permissions)) redirect("/dashboard");
 

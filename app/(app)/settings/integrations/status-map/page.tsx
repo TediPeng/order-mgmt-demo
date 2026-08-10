@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -24,7 +24,7 @@ export default async function StatusMapPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
 
   if (!can(user.role, "integrations", "view", db.role_permissions)) redirect("/dashboard");
   const canManage = can(user.role, "integrations", "manage", db.role_permissions);

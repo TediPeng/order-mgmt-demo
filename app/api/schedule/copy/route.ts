@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { readDb, writeDb } from "@/lib/db";
+import { readDbLite, writeDb } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
@@ -13,7 +13,7 @@ import { copySchedules } from "@/lib/actions/schedules";
 export async function POST(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  const db = await readDb();
+  const db = await readDbLite();
   if (!can(user.role, "schedules", "assign", db.role_permissions)) {
     return NextResponse.json({ ok: false, error: "You do not have permission to copy schedules." }, { status: 403 });
   }

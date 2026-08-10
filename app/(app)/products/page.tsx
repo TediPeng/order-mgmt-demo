@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
+import { productIdsInUse } from "@/lib/orders-lookup";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { Badge } from "@/components/ui/Badge";
@@ -36,7 +37,7 @@ export default async function ProductsPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
   if (!can(user.role, "products", "view", db.role_permissions)) {
     return (
       <Alert kind="error">You do not have permission to view Products.</Alert>
@@ -62,7 +63,9 @@ export default async function ProductsPage({
   products.sort((a, b) => b.created_at.localeCompare(a.created_at));
 
   const byId = new Map(db.profiles.map((p) => [p.id, displayUserName(p)]));
-  const usedProductIds = new Set(db.orders.filter((o) => o.product_id).map((o) => o.product_id));
+  // Which products a lead already refers to, asked of the database. Reading
+  // every order to collect a few dozen ids is the whole cost of this page.
+  const usedProductIds = await productIdsInUse();
 
   const boundDeactivate = async (id: string) => {
     "use server";

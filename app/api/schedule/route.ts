@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { readDb, writeDb } from "@/lib/db";
+import { readDbLite, writeDb } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
@@ -24,7 +24,7 @@ const SCHEDULE_STATUS_COLORS: Record<string, string> = {
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const db = await readDb();
+  const db = await readDbLite();
   if (!can(user.role, "schedules", "view", db.role_permissions)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  const db = await readDb();
+  const db = await readDbLite();
   if (!can(user.role, "schedules", "create", db.role_permissions)) {
     return NextResponse.json({ ok: false, error: "You do not have permission to create schedules." }, { status: 403 });
   }

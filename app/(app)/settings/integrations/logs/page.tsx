@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
+import { findOrderIdByNumberOrId, orderNumbersByIds } from "@/lib/orders-lookup";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { Input, Select } from "@/components/ui/Field";
@@ -27,13 +28,12 @@ export default async function SyncLogsPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
 
   if (!can(user.role, "integrations", "view", db.role_permissions)) redirect("/dashboard");
 
   const accounts = await listAccounts();
   const accountNameById = new Map(accounts.map((a) => [a.id, a.account_name]));
-  const orderById = new Map(db.orders.map((o) => [o.id, o]));
 
   // "Order" filter accepts an order number; resolve it to the id the logs use.
   const filters: SyncLogFilters = {
@@ -44,12 +44,16 @@ export default async function SyncLogsPage({
     date_to: sp.date_to || undefined,
   };
   if (sp.order) {
-    const match = db.orders.find(
-      (o) => o.order_number.toLowerCase() === sp.order!.toLowerCase() || o.id === sp.order
-    );
-    filters.order_id = match?.id || "00000000-0000-0000-0000-000000000000"; // no match -> empty result set
+    const match = await findOrderIdByNumberOrId(sp.order);
+    filters.order_id = match || "00000000-0000-0000-0000-000000000000"; // no match -> empty result set
   }
   const logs = await listSyncLogs(filters);
+
+  // Order numbers for the logs on this page only. The map used to be built
+  // from every order in the system to label at most a screenful of rows.
+  const orderNumberById = await orderNumbersByIds(
+    logs.map((l) => l.order_id).filter((id): id is string => Boolean(id))
+  );
 
   return (
     <div className="space-y-6">
@@ -109,14 +113,14 @@ export default async function SyncLogsPage({
           </thead>
           <tbody className="divide-y divide-slate-100">
             {logs.map((log) => {
-              const order = log.order_id ? orderById.get(log.order_id) : null;
+              const orderNumber = log.order_id ? orderNumberById.get(log.order_id) : null;
               return (
                 <tr key={log.id} className="align-top">
                   <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatDateTime(log.request_at)}</td>
                   <td className="px-4 py-3">
-                    {order ? (
-                      <Link href={`/leads?open=${encodeURIComponent(order.order_number)}`} className="font-medium text-[var(--brand-primary)] hover:underline">
-                        {order.order_number}
+                    {orderNumber ? (
+                      <Link href={`/leads?open=${encodeURIComponent(orderNumber)}`} className="font-medium text-[var(--brand-primary)] hover:underline">
+                        {orderNumber}
                       </Link>
                     ) : (
                       <span className="text-slate-400">—</span>

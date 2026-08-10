@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
+import { syncedOrderCount } from "@/lib/orders-lookup";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { ClearDataButton } from "@/components/ClearDataButton";
@@ -16,12 +17,14 @@ export default async function SystemSettingsPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
 
   if (!can(user.role, "settings", "view", db.role_permissions)) redirect("/dashboard");
   const canManage = can(user.role, "settings", "manage", db.role_permissions);
-  // Counted from the orders already in memory rather than a second query.
-  const syncedOrderCount = db.orders.filter((o) => o.pancake_order_id || o.forwarded_to_pancake_at).length;
+  // One count, in the database. It used to be a filter over "the orders
+  // already in memory" — which is a fair thing to say about three hundred
+  // orders and a fifty-megabyte read at fifty-seven thousand.
+  const syncedOrders = await syncedOrderCount();
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -237,7 +240,7 @@ export default async function SystemSettingsPage({
                 undo and no backup to restore from.
               </p>
             </div>
-            <ClearDataButton syncedOrderCount={syncedOrderCount} />
+            <ClearDataButton syncedOrderCount={syncedOrders} />
           </CardContent>
         </Card>
       )}

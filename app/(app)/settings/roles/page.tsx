@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { ACTIONS, MODULE_ACTIONS, MODULE_LABELS, ACTION_LABELS, permissionGrid, isFullAccess } from "@/lib/permissions";
 import { MODULES } from "@/lib/types";
@@ -21,7 +21,7 @@ export default async function RolesPage({
   const user = (await getCurrentUser())!;
   if (!isFullAccess(user.role)) redirect("/dashboard");
 
-  const db = await readDb();
+  const db = await readDbLite();
   const activeRoleKey = sp.role || "team_lead";
   const activeRole = db.roles.find((r) => r.key === activeRoleKey) || db.roles.find((r) => r.key === "team_lead")!;
   const grid = permissionGrid(activeRole.key, db.role_permissions);

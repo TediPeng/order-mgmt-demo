@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { scopeAgentsForSchedule, scopeSchedules, scopeSuspensions, isDateWithinSuspension } from "@/lib/schedule-access";
@@ -12,7 +12,7 @@ import { PrintButton } from "@/components/PrintButton";
 
 export default async function SchedulePage() {
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
 
   if (!can(user.role, "schedules", "view", db.role_permissions)) redirect("/dashboard");
   const canCreate = can(user.role, "schedules", "create", db.role_permissions);

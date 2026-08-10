@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { writeDb, uuid, nowIso, queueDelete } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
-import { requireUser, requirePermission } from "./guards";
+import { requireUserLite, requirePermission } from "./guards";
+import { productIsInUse } from "@/lib/orders-lookup";
 import { productFormSchema } from "@/lib/validation";
 import type { Product, ProductStatus } from "@/lib/types";
 import { describeParseFailure } from "@/lib/zod-error";
@@ -23,7 +24,7 @@ function productFormFields(formData: FormData) {
 }
 
 export async function createProductAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "products", "create", db, "/products/new");
 
   const parsed = productFormSchema.safeParse(productFormFields(formData));
@@ -70,7 +71,7 @@ export async function createProductAction(formData: FormData) {
 }
 
 export async function updateProductAction(productId: string, formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "products", "edit", db, `/products/${productId}`);
 
   const product = db.products.find((p) => p.id === productId);
@@ -119,7 +120,7 @@ export async function updateProductAction(productId: string, formData: FormData)
 
 export async function setProductStatusAction(productId: string, status: ProductStatus) {
   "use server";
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "products", "edit", db, "/products");
 
   const product = db.products.find((p) => p.id === productId);
@@ -146,14 +147,15 @@ export async function setProductStatusAction(productId: string, status: ProductS
 
 export async function deleteProductAction(productId: string) {
   "use server";
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "products", "delete", db, "/products");
 
   const product = db.products.find((p) => p.id === productId);
   if (!product) redirect("/products");
 
-  const usedByLead = db.orders.some((o) => o.product_id === productId);
-  if (usedByLead) {
+  // One indexed lookup that stops at the first hit, rather than scanning
+  // every order this request would otherwise have had to load.
+  if (await productIsInUse(productId)) {
     redirect(`/products?error=${encodeURIComponent("This product is used in existing leads and can only be deactivated.")}`);
   }
 
