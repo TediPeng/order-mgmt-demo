@@ -657,11 +657,22 @@ export interface DbShape {
    * inferred, so writeDb() can only remove what an action actually asked it
    * to. */
   pending_deletes: PendingDelete[];
+  /** Ids of orders changed by this request — see the note above. */
+  dirty_orders: string[];
 }
 
-/** One row an action has asked to be deleted. Table names are the literal
- * Postgres ones; `key` is the primary key column, which is not `id` on
- * order_sequences. */
+/** The ids of orders this request actually changed.
+ *
+ * writeDb() used to upsert the ENTIRE orders table on every save — at 57,000
+ * leads a single status change rewrote all 57,000 rows. Like pending_deletes,
+ * this is stated rather than inferred: an action that changes an order says
+ * so with markOrderDirty(), and nothing else is written.
+ *
+ * The trade is deliberate. Inferring the change set means either diffing every
+ * row (which needs a second copy of the table in memory) or writing all of
+ * them (which is what this replaces). Stating it costs one call at each
+ * mutation site, and a missed call is a change that silently does not persist
+ * — so the sites are few and all of them live in lib/actions. */
 export interface PendingDelete {
   table: string;
   id: string;

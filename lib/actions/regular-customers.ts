@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { writeDb } from "@/lib/db";
+import { writeDb, markOrderDirty } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { orderInScope } from "@/lib/order-access";
@@ -88,6 +88,7 @@ export async function createRegularCustomerAction(formData: FormData) {
       o.is_regular_customer = true;
       o.regular_customer_since = o.regular_customer_since || customer.regular_since;
       o.customer_id = customer.id;
+      markOrderDirty(db, o.id);
       moved++;
     }
   }
@@ -156,6 +157,7 @@ export async function tagRegularCustomerAction(orderId: string) {
     o.is_regular_customer = true;
     o.regular_customer_since = o.regular_customer_since || now;
     o.customer_id = customer.id;
+    markOrderDirty(db, o.id);
     moved++;
   }
 
@@ -198,6 +200,7 @@ export async function untagRegularCustomerAction(customerId: string) {
     if (o.customer_id === customerId) {
       o.is_regular_customer = false;
       o.regular_customer_since = null;
+      markOrderDirty(db, o.id);
     }
   }
 

@@ -385,6 +385,7 @@ function seedDb(): DbShape {
     order_seq: { [ymd(today)]: 4 },
     performance_thresholds: { top_performer_min_ratio: 1.2, needs_improvement_max_ratio: 0.8, rts_warning_threshold_pct: 15 },
     pending_deletes: [],
+    dirty_orders: [],
     operations: { allow_status_import: false, min_call_seconds: 0 },
     work_schedule: DEFAULT_WORK_SCHEDULE,
   };
@@ -608,6 +609,7 @@ async function readDbUncached(withOrders: boolean): Promise<DbShape> {
     // Empty on read, like activity_log: it carries only what this request asks
     // to delete.
     pending_deletes: [],
+    dirty_orders: [],
   };
 
   return shape;
@@ -620,6 +622,17 @@ async function readDbUncached(withOrders: boolean): Promise<DbShape> {
  * Both steps are needed. Neither is inferred from the other any more. */
 export function queueDelete(db: DbShape, table: string, id: string, key = "id"): void {
   db.pending_deletes.push({ table, id, key });
+}
+
+/** Says that this order changed and must be written.
+ *
+ * writeDb() used to upsert every order it held, so a single status change
+ * rewrote the whole table — 57,000 rows through 116 requests for one edit.
+ * It now writes only what is marked here. Call this wherever a field on an
+ * order is assigned, or a new order is pushed into db.orders; an unmarked
+ * change does not reach the database. */
+export function markOrderDirty(db: DbShape, orderId: string): void {
+  if (!db.dirty_orders.includes(orderId)) db.dirty_orders.push(orderId);
 }
 
 export async function writeDb(db: DbShape): Promise<void> {
@@ -637,7 +650,14 @@ export async function writeDb(db: DbShape): Promise<void> {
     upsertTable("products", db.products as unknown as Row[]),
     upsertTable("role_permissions", db.role_permissions as unknown as Row[]),
   ]);
-  await upsertTable("orders", db.orders as unknown as Row[]);
+  // Only the orders this request changed. See markOrderDirty().
+  if (db.dirty_orders.length > 0) {
+    const dirty = new Set(db.dirty_orders);
+    const rows = db.orders.filter((o) => dirty.has(o.id)) as unknown as Row[];
+    await upsertTable("orders", rows);
+    // Drained, so a second writeDb() in the same request does not rewrite them.
+    db.dirty_orders = [];
+  }
   await Promise.all([
     upsertTable("attendance", db.attendance as unknown as Row[]),
     upsertTable("call_logs", db.call_logs as unknown as Row[]),

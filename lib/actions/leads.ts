@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { writeDb, uuid, nowIso, nextOrderNumber, queueDelete } from "@/lib/db";
+import { writeDb, uuid, nowIso, nextOrderNumber, queueDelete, markOrderDirty } from "@/lib/db";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
@@ -261,6 +261,7 @@ export async function createLeadAction(formData: FormData) {
   }
 
   db.orders.push(order);
+  markOrderDirty(db, order.id);
   const info = await getRequestInfo();
   logActivity(db, user.id, "LEAD_CREATED", "order", order.id, { order_number: order.order_number }, {
     module: "orders",
@@ -635,6 +636,9 @@ export async function applyLeadUpdate(
   }
   order.updated_by = user.id;
   order.updated_at = nowIso();
+  // Every field write in this function is covered by this one mark: it is the
+  // last thing the update does before returning.
+  markOrderDirty(db, order.id);
 
   // An Administrator unlock covers exactly one save; consuming it here means the
   // order relocks the moment those edits land.
@@ -807,6 +811,7 @@ export async function unlockOrderForEditingAction(orderId: string, formData: For
   }
 
   order!.manual_unlock_active = true;
+  markOrderDirty(db, order!.id);
   order!.manual_unlock_reason = reason;
   order!.manual_unlock_by = user.id;
   order!.manual_unlock_at = nowIso();
