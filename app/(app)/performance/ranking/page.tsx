@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { scopeAgentsForRanking, computeDailyAgentStats, totalsByAgent, resolveDateRange, type AgentTotals } from "@/lib/performance";
+import { agentDailyOrderStats } from "@/lib/performance-query";
 import { countCompletedSessions } from "@/lib/call-sessions";
 import { formatCurrency } from "@/lib/utils";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
@@ -36,14 +37,20 @@ export default async function RankingPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
 
   if (!can(user.role, "ranking", "view", db.role_permissions)) redirect("/dashboard");
 
   const scopedAgents = scopeAgentsForRanking(db, user);
   const agentIds = scopedAgents.map((a) => a.id);
   const range = resolveDateRange(sp.range, sp.from, sp.to);
-  const daily = computeDailyAgentStats(db, agentIds, range.from, range.to, await countCompletedSessions(agentIds, range.from, range.to, db.operations.min_call_seconds));
+  // Sessions and sales both come from the database; the merge and every rate
+  // still happen in lib/performance.ts.
+  const [sessionCounts, orderStats] = await Promise.all([
+    countCompletedSessions(agentIds, range.from, range.to, db.operations.min_call_seconds),
+    agentDailyOrderStats(agentIds, range.from, range.to),
+  ]);
+  const daily = computeDailyAgentStats(db, agentIds, range.from, range.to, sessionCounts, orderStats);
   const totals = totalsByAgent(daily);
   const profileById = new Map(db.profiles.map((p) => [p.id, p]));
 

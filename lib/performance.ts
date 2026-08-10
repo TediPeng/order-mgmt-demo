@@ -1,9 +1,12 @@
 import type { DbShape, Order, Profile } from "./types";
 import { todayInTz, dateInTz } from "./utils";
 import { isFullAccess } from "./permissions";
-import { SALE_STATUSES, FULFILLMENT_STATUSES } from "./validation";
+import { FULFILLMENT_STATUSES } from "./validation";
+import type { DailyOrderStat } from "./performance-query";
 
-const SALE_STATUS_SET: ReadonlySet<string> = new Set(SALE_STATUSES);
+// The sale-status filter moved into agent_daily_order_stats(), which is handed
+// SALE_STATUSES by lib/performance-query.ts rather than keeping a copy of the
+// list. lib/validation.ts is still the only place the rule is written down.
 
 export type Granularity = "daily" | "weekly" | "monthly";
 
@@ -71,7 +74,12 @@ export function computeDailyAgentStats(
   /** Completed sessions keyed `agentId|YYYY-MM-DD`, from lib/call-sessions.
    * Passed in because sessions live outside DbShape; omitted, Calls Made is 0
    * rather than silently falling back to uploaded logs. */
-  sessionCounts?: Map<string, number>
+  sessionCounts?: Map<string, number>,
+  /** Sales keyed the same way, from lib/performance-query.ts. Passed in for
+   * the same reason and with the same consequence: omitted, this reads as "no
+   * orders" rather than falling back to a scan of db.orders — which is what it
+   * used to do, on four pages, over every order in the system. */
+  orderStats?: Map<string, DailyOrderStat>
 ): AgentDailyRow[] {
   const rowMap = new Map<string, AgentDailyRow>();
   const key = (agentId: string, date: string) => `${agentId}|${date}`;
@@ -123,34 +131,33 @@ export function computeDailyAgentStats(
     }
   }
 
-  for (const order of db.orders) {
-    if (!agentIdSet.has(order.agent_id)) continue;
-    // Performance dates key off order_date (the Ready-to-Ship date) — a lead
-    // that never became a sale has no order_date and doesn't appear here.
-    if (!order.order_date) continue;
-    const date = order.order_date;
-    if (date < from || date > to) continue;
-    const k = key(order.agent_id, date);
-    const row = rowMap.get(k) || {
-      agent_id: order.agent_id,
-      date,
-      calls: 0,
-      uploaded_call_logs: 0,
-      orders: 0,
-      quantity: 0,
-      amount: 0,
-      returned: 0,
-      time_in: null,
-      time_out: null,
-      total_hours: null,
-    };
-    if (SALE_STATUS_SET.has(order.status)) {
-      row.orders++;
-      row.quantity += order.quantity;
-      row.amount += order.total_amount;
+  // Performance dates key off order_date (the Ready-to-Ship date) — a lead
+  // that never became a sale has no order_date and doesn't appear here. The
+  // grouping, the sale-status filter and the returned count all happen in
+  // agent_daily_order_stats(); what arrives is already one figure per day.
+  if (orderStats) {
+    for (const [k, stat] of orderStats) {
+      const [agentId, date] = k.split("|");
+      if (!agentIdSet.has(agentId) || date < from || date > to) continue;
+      const row = rowMap.get(k) || {
+        agent_id: agentId,
+        date,
+        calls: 0,
+        uploaded_call_logs: 0,
+        orders: 0,
+        quantity: 0,
+        amount: 0,
+        returned: 0,
+        time_in: null,
+        time_out: null,
+        total_hours: null,
+      };
+      row.orders = stat.orders;
+      row.quantity = stat.quantity;
+      row.amount = stat.amount;
+      row.returned = stat.returned;
+      rowMap.set(k, row);
     }
-    if (order.status === "returned") row.returned++;
-    rowMap.set(k, row);
   }
 
   for (const att of db.attendance) {
