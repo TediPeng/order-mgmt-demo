@@ -14,7 +14,7 @@ import {
   UserCheck,
   UserPlus,
 } from "lucide-react";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { recentActivity as fetchRecentActivity } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
@@ -26,19 +26,11 @@ import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/Button";
 import { RankingBars, type RankingRow } from "@/components/RankingBars";
-import {
-  scopeAgentsForUser,
-  scopeAgentsForRanking,
-  computeDailyAgentStats,
-  totalsByAgent,
-  computeAgentDashboardStats,
-  computeManagementKpiStats,
-  computeFulfillmentBreakdown,
-  resolveDateRange,
-} from "@/lib/performance";
+import { scopeAgentsForUser, scopeAgentsForRanking, resolveDateRange } from "@/lib/performance";
+import { leadScopeFor } from "@/lib/leads-query";
+import { agentKpis, managementKpis, fulfillmentCounts, agentOrderTotals } from "@/lib/dashboard-query";
 import { countCompletedSessions } from "@/lib/call-sessions";
-import { LEAD_STATUS_LABELS } from "@/lib/validation";
-import { scopeOrders } from "@/lib/order-access";
+import { LEAD_STATUS_LABELS, FULFILLMENT_STATUSES } from "@/lib/validation";
 import { formatCurrency, todayInTz } from "@/lib/utils";
 
 export default async function DashboardPage({
@@ -48,10 +40,13 @@ export default async function DashboardPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  // Lite: every figure below is counted by the database. Fetching all 57,000
+  // orders to produce eight numbers is what made this page take twenty
+  // seconds.
+  const db = await readDbLite();
 
   const isAgent = user.role === "agent";
-  const orders = scopeOrders(user, db.orders, db);
+  const scope = leadScopeFor(user, db);
 
   const canImport = can(user.role, "orders", "upload", db.role_permissions);
   const canViewCallLogs = !isAgent && can(user.role, "call_logs", "view", db.role_permissions);
@@ -61,9 +56,14 @@ export default async function DashboardPage({
   const canViewPerformance = can(user.role, "performance", "view", db.role_permissions);
 
   const dashboardRange = resolveDateRange(sp.range, sp.from, sp.to);
-  const agentStats = isAgent ? computeAgentDashboardStats(db, user.id, dashboardRange.from, dashboardRange.to) : null;
-  const kpiStats = !isAgent ? computeManagementKpiStats(orders, dashboardRange.from, dashboardRange.to) : null;
-  const fulfillmentBreakdown = computeFulfillmentBreakdown(orders, dashboardRange.from, dashboardRange.to);
+  // Delivered and Returned have cards of their own, so the In Fulfillment card
+  // shows the stages between.
+  const inFulfilmentStatuses = FULFILLMENT_STATUSES.filter((s) => s !== "delivered" && s !== "returned");
+  const [agentStats, kpiStats, fulfillmentBreakdown] = await Promise.all([
+    isAgent ? agentKpis(user.id, dashboardRange.from, dashboardRange.to) : Promise.resolve(null),
+    !isAgent ? managementKpis(scope, dashboardRange.from, dashboardRange.to) : Promise.resolve(null),
+    fulfillmentCounts(scope, dashboardRange.from, dashboardRange.to, inFulfilmentStatuses),
+  ]);
   const fulfillmentTotal = fulfillmentBreakdown.reduce((s, r) => s + r.count, 0);
   const rtsWarn = (pct: number | null) => pct !== null && pct > db.performance_thresholds.rts_warning_threshold_pct;
 
@@ -72,19 +72,33 @@ export default async function DashboardPage({
   if (canViewRanking) {
     const rankedAgentIds = scopeAgentsForRanking(db, user).map((a) => a.id);
     const profileById = new Map(db.profiles.map((p) => [p.id, p]));
-    const rankedTotals = totalsByAgent(computeDailyAgentStats(db, rankedAgentIds, dashboardRange.from, dashboardRange.to, await countCompletedSessions(rankedAgentIds, dashboardRange.from, dashboardRange.to, db.operations.min_call_seconds)))
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, 5);
+    const [totals, sessions] = await Promise.all([
+      agentOrderTotals(rankedAgentIds, dashboardRange.from, dashboardRange.to),
+      countCompletedSessions(rankedAgentIds, dashboardRange.from, dashboardRange.to, db.operations.min_call_seconds),
+    ]);
+    // Calls are keyed agentId|date by the session query; the ranking wants one
+    // number per agent for the whole range.
+    const callsByAgent = new Map<string, number>();
+    for (const [key, count] of sessions) {
+      const agentId = key.split("|")[0];
+      callsByAgent.set(agentId, (callsByAgent.get(agentId) ?? 0) + count);
+    }
+    const rankedTotals = [...totals].sort((a, b) => b.amount - a.amount).slice(0, 5);
     rankingWidget = {
-      rows: rankedTotals.map((t) => ({
-        agent_id: t.agent_id,
-        full_name: profileById.get(t.agent_id)?.full_name || "Unknown",
-        avatar_url: profileById.get(t.agent_id)?.avatar_url ?? null,
-        amount: t.amount,
-        orders: t.orders,
-        conversion_rate: t.conversion_rate,
-        barValue: t.amount,
-      })),
+      rows: rankedTotals.map((t) => {
+        const calls = callsByAgent.get(t.agent_id) ?? 0;
+        return {
+          agent_id: t.agent_id,
+          full_name: profileById.get(t.agent_id)?.full_name || "Unknown",
+          avatar_url: profileById.get(t.agent_id)?.avatar_url ?? null,
+          amount: t.amount,
+          orders: t.orders,
+          // Same definition as totalsByAgent(): orders over calls made, and
+          // null rather than a division by zero when nobody called.
+          conversion_rate: calls > 0 ? Math.round((t.orders / calls) * 10000) / 100 : null,
+          barValue: t.amount,
+        };
+      }),
       topValue: rankedTotals[0]?.amount ?? 0,
     };
   }
@@ -93,12 +107,25 @@ export default async function DashboardPage({
   if (!isAgent && canViewPerformance) {
     const today = todayInTz();
     const scoped = scopeAgentsForUser(db, user).map((a) => a.id);
-    const totals = totalsByAgent(computeDailyAgentStats(db, scoped, today, today, await countCompletedSessions(scoped, today, today, db.operations.min_call_seconds)));
+    const [totals, sessions] = await Promise.all([
+      agentOrderTotals(scoped, today, today),
+      countCompletedSessions(scoped, today, today, db.operations.min_call_seconds),
+    ]);
+    const callsByAgent = new Map<string, number>();
+    for (const [key, count] of sessions) {
+      const agentId = key.split("|")[0];
+      callsByAgent.set(agentId, (callsByAgent.get(agentId) ?? 0) + count);
+    }
+    // An agent counts as active on either measure, so the set is the union of
+    // "made a call" and "took an order" — not just those with an order row.
+    const active = new Set<string>();
+    for (const [agentId, calls] of callsByAgent) if (calls > 0) active.add(agentId);
+    for (const t of totals) if (t.orders > 0) active.add(t.agent_id);
     teamToday = {
-      calls: totals.reduce((s, t) => s + t.calls, 0),
+      calls: Array.from(callsByAgent.values()).reduce((s, c) => s + c, 0),
       orders: totals.reduce((s, t) => s + t.orders, 0),
       amount: totals.reduce((s, t) => s + t.amount, 0),
-      activeAgents: totals.filter((t) => t.calls > 0 || t.orders > 0).length,
+      activeAgents: active.size,
     };
   }
 
@@ -110,11 +137,12 @@ export default async function DashboardPage({
   let myToday: { calls: number; orders: number; amount: number } | null = null;
   if (isAgent) {
     const today = todayInTz();
-    const totals = totalsByAgent(
-      computeDailyAgentStats(db, [user.id], today, today, await countCompletedSessions([user.id], today, today, db.operations.min_call_seconds))
-    );
+    const [totals, sessions] = await Promise.all([
+      agentOrderTotals([user.id], today, today),
+      countCompletedSessions([user.id], today, today, db.operations.min_call_seconds),
+    ]);
     myToday = {
-      calls: totals.reduce((s, t) => s + t.calls, 0),
+      calls: Array.from(sessions.values()).reduce((s, c) => s + c, 0),
       orders: totals.reduce((s, t) => s + t.orders, 0),
       amount: totals.reduce((s, t) => s + t.amount, 0),
     };

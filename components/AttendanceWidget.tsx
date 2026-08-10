@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { AnalogClock } from "@/components/AnalogClock";
 import { formatTime, todayInTz } from "@/lib/utils";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import type { Profile } from "@/lib/types";
 import { timeInAction, timeOutAction } from "@/lib/actions/attendance";
 
@@ -16,7 +16,10 @@ export async function AttendanceWidget({
   redirectTo?: string;
   showClock?: boolean;
 }) {
-  const db = await readDb();
+  // Lite: this widget reads one attendance row. Through the full read it was
+  // pulling every order in the system into the render of a clock — the single
+  // biggest cost left on the dashboard once the cards were moved to SQL.
+  const db = await readDbLite();
   const today = todayInTz();
   const record = db.attendance.find((a) => a.user_id === user.id && a.work_date === today);
 
