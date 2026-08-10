@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
-import { listOpenDuplicates } from "@/lib/customers";
+import { listOpenDuplicates, scanDuplicateCustomers } from "@/lib/customers";
 import { formatDateTime } from "@/lib/utils";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
@@ -44,7 +44,7 @@ export default async function DuplicatesPage({
   if (!allowed) redirect("/forbidden?from=regular-customers-duplicates");
 
   const canDecide = isFullAccess(user.role) || can(user.role, "regular_customers", "manage", db.role_permissions);
-  const matches = await listOpenDuplicates();
+  const [matches, scanned] = await Promise.all([listOpenDuplicates(), scanDuplicateCustomers()]);
   const nameById = new Map(db.profiles.map((p) => [p.id, p.full_name]));
 
   return (
@@ -63,6 +63,63 @@ export default async function DuplicatesPage({
         Nothing is ever merged automatically. These are findings for you to judge — confirming a duplicate records the
         decision and the reasoning trail; it does not combine the records.
       </Alert>
+
+      {/* Standing scan. The queue below it is what detection recorded when each
+          customer was created; this is what is true right now, so a record
+          edited into a collision afterwards still turns up. */}
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-section-title text-slate-900">Detected now</h2>
+          <p className="text-xs text-slate-400">
+            Every regular customer sharing a number, or a name and address, with another — checked as this page loaded.
+          </p>
+        </div>
+
+        {scanned.length === 0 ? (
+          <Card>
+            <CardContent className="py-8 text-center text-sm text-slate-400">
+              No regular customer shares a number or an address with another.
+            </CardContent>
+          </Card>
+        ) : (
+          scanned.map((group) => (
+            <Card key={`${group.match_type}:${group.group_key}`}>
+              <CardHeader className="flex flex-wrap items-center justify-between gap-2">
+                <CardTitle>
+                  {group.match_type === "phone" ? "Same phone number" : "Same name and address"}
+                </CardTitle>
+                <Badge className="bg-amber-100 text-amber-800">{group.group_size} customers</Badge>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {group.customers.map((c) => (
+                    <div key={c.id} className="rounded-lg border border-slate-200 p-3 text-sm">
+                      <Link
+                        href={`/regular-customers/${c.id}`}
+                        className="font-medium text-[var(--brand-primary)] hover:underline"
+                      >
+                        {c.full_name}
+                      </Link>
+                      <p className="text-slate-600">{c.phone_raw || "—"}</p>
+                      <p className="text-slate-500">{c.address || "—"}</p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        Agent: {nameById.get(c.owner_agent_id) || "—"} · {c.total_orders} order
+                        {c.total_orders === 1 ? "" : "s"} · since{" "}
+                        {c.regular_since ? formatDateTime(c.regular_since) : "—"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </section>
+
+      <div className="flex flex-wrap items-baseline justify-between gap-2 pt-2">
+        <h2 className="text-section-title text-slate-900">Recorded for review</h2>
+        <p className="text-xs text-slate-400">Found when a customer was created or tagged, and still undecided.</p>
+      </div>
 
       {matches.length === 0 && (
         <Card>

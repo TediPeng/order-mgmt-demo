@@ -187,6 +187,44 @@ export interface DuplicateFinding {
  * decreasing certainty. A phone match is treated as high confidence because a
  * mobile number identifies a person; name-only agreement is deliberately not
  * reported at all, since common names would flood the queue with noise. */
+export interface DuplicateCustomerGroup {
+  /** "phone" or "name_address" — which rule put these together. */
+  match_type: string;
+  group_key: string;
+  group_size: number;
+  customers: {
+    id: string;
+    full_name: string;
+    phone_raw: string;
+    phone_normalized: string;
+    address: string;
+    owner_agent_id: string;
+    regular_since: string | null;
+    total_orders: number;
+    customer_status: string;
+  }[];
+}
+
+/**
+ * Every regular customer that shares a number, or a name and address, with
+ * another — scanned now rather than remembered from when they were created.
+ *
+ * findDuplicates() below runs once, at the moment a customer is created or
+ * tagged, and records what it saw. Nothing re-checks afterwards: a customer
+ * edited into a collision, or a pair that predates the detection, is never
+ * looked at again. This is the standing view, and it is what the Duplicate
+ * Leads page is for orders.
+ *
+ * The fuzzy last-7-digits rule is deliberately absent. It earns its place as a
+ * warning when one customer is being created; in a permanent list it would be
+ * mostly noise.
+ */
+export async function scanDuplicateCustomers(): Promise<DuplicateCustomerGroup[]> {
+  const { data, error } = await supabaseAdmin.rpc("customer_duplicate_scan");
+  if (error) throw new Error(`Duplicate customer scan failed: ${error.message}`);
+  return (data || []) as DuplicateCustomerGroup[];
+}
+
 export async function findDuplicates(candidate: {
   id?: string;
   full_name: string;
