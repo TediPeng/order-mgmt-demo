@@ -1,14 +1,15 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { writeDb, uuid, nowIso, nextOrderNumber, queueDelete, markOrderDirty } from "@/lib/db";
+import { writeDb, uuid, nowIso, nextOrderNumber, queueDelete, markOrderDirty, loadOrderInto } from "@/lib/db";
+import { previousOrderForPhone, customerOrderCount } from "@/lib/orders-lookup";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { orderInScope, allowedAssigneeIds } from "@/lib/order-access";
 import { getActiveSessionForOrder, endSession } from "@/lib/call-sessions";
 import { isFullAccess } from "@/lib/permissions";
-import { requireUser, requirePermission, requireAdministrator } from "./guards";
+import { requireUser, requireUserLite, requirePermission, requireAdministrator } from "./guards";
 import { describeParseFailure } from "@/lib/zod-error";
 import { leadFormSchema, leadImportRowSchema, normalizePreviousStatus, parseOrderItemFields, type OrderItemFields, PACKAGING_STATUS, PRE_SALE_STATUSES } from "@/lib/validation";
 import { listItems, replaceItems, summarizeItems, totalsFor } from "@/lib/order-items";
@@ -20,7 +21,6 @@ import {
   restrictedStatusBlockReason,
   pipelineBlockReason,
   computeOrderDate,
-  findPreviousOrderInfo,
   buildPreviousOrderIndex,
   previousOrderFor,
   fulfillmentOverrideBlockReason,
@@ -83,7 +83,11 @@ function buildLeadFieldErrors(formData: FormData): Record<string, unknown> {
 }
 
 export async function createLeadAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  // Nothing here reads an existing order: the new one is pushed into the empty
+  // array, marked dirty, and writeDb() upserts that row alone. The two
+  // questions that did need the table — the customer's previous order and
+  // their order count — are asked of the database in lib/orders-lookup.ts.
+  const { user, db } = await requireUserLite();
   requirePermission(user, "orders", "create", db, "/leads/new");
 
   // Creating a lead requires being timed in (Section 2). Adding a regular
@@ -173,7 +177,9 @@ export async function createLeadAction(formData: FormData) {
     data.previous_order_amount != null ||
     data.previous_order_note ||
     data.previous_order_status;
-  const previousInfo = hasProvidedPreviousInfo ? null : findPreviousOrderInfo(db, data.customer_phone || "");
+  const previousInfo = hasProvidedPreviousInfo
+    ? null
+    : await previousOrderForPhone(data.customer_phone || "");
 
   const order: Order = {
     id: uuid(),
@@ -287,7 +293,9 @@ export async function createLeadAction(formData: FormData) {
   // Order count on the customer row, kept in step outside the whole-database
   // write (the customers table is not part of DbShape).
   if (regular) {
-    const total = db.orders.filter((o) => o.customer_id === regular.id).length;
+    // Counted in the database. The in-memory filter was right only while this
+    // request held every order; it now holds the one it just created.
+    const total = await customerOrderCount(regular.id);
     try {
       await recordCustomerOrder(regular.id, total);
     } catch (e) {
@@ -355,7 +363,9 @@ export async function applyLeadUpdate(
    * Callers that never post lines (the JSON API) pass nothing. */
   postedItems: OrderItemFields[] | null = null
 ): Promise<ApplyLeadUpdateResult> {
-  const order = db.orders.find((o) => o.id === orderId);
+  // Loads the one order when the caller read the shape without any. A caller
+  // that already holds it — the import — gets the copy it is working on.
+  const order = await loadOrderInto(db, orderId);
   if (!order) return { ok: false, code: "not_found", error: "Lead not found." };
   if (!orderInScope(user, order, db)) {
     return { ok: false, code: "forbidden", error: "You do not have access to that lead." };
@@ -773,7 +783,7 @@ export async function afterLeadUpdatePersisted(
 }
 
 export async function updateLeadAction(orderId: string, formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "orders", "edit", db, `/leads/${orderId}`);
 
   const raw = buildLeadFieldErrors(formData);
@@ -796,10 +806,10 @@ export async function updateLeadAction(orderId: string, formData: FormData) {
  * next save.
  */
 export async function unlockOrderForEditingAction(orderId: string, formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requireAdministrator(user, `/leads/${orderId}`);
 
-  const order = db.orders.find((o) => o.id === orderId);
+  const order = await loadOrderInto(db, orderId);
   if (!order) redirect("/leads");
 
   const reason = String(formData.get("unlock_reason") || "").trim();
@@ -832,10 +842,10 @@ export async function unlockOrderForEditingAction(orderId: string, formData: For
 
 export async function deleteLeadAction(orderId: string) {
   "use server";
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "orders", "delete", db, "/leads");
 
-  const order = db.orders.find((o) => o.id === orderId);
+  const order = await loadOrderInto(db, orderId);
   if (!order) redirect("/leads");
   if (!orderInScope(user, order!, db)) {
     redirect(`/leads?error=${encodeURIComponent("You do not have access to that lead.")}`);

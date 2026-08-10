@@ -178,29 +178,25 @@ function describePrevious(db: DbShape, best: Order): PreviousOrderInfo {
   };
 }
 
-export function findPreviousOrderInfo(db: DbShape, phone: string): PreviousOrderInfo | null {
-  const target = normalizePhone(phone);
-  if (!target) return null;
-  let best: Order | null = null;
-  for (const o of db.orders) {
-    if (!o.order_date || normalizePhone(o.customer_phone) !== target) continue;
-    if (!best || (o.order_date as string) > (best.order_date as string)) best = o;
-  }
-  return best ? describePrevious(db, best) : null;
-}
-
 /**
- * The same answer for every phone number at once.
+ * The previous-order answer for every phone number at once.
  *
- * findPreviousOrderInfo() walks all orders per call, which one lead form can
- * afford and a two-thousand-row import cannot: called per row against an array
- * that the import is itself growing, it is quadratic, and an import that used
- * to take a few seconds took minutes and then died on the function timeout
- * with the page still saying "Importing…".
+ * This is the definition of record for the rule — only orders that reached
+ * Packaging count, matching is on the canonical phone, the latest date wins —
+ * and previous_order_for_phone() in SQL is a transcription of it. Change them
+ * together.
  *
- * Built once before the loop. Rows created BY the import never belong in it
- * anyway — they have no order_date until they reach Packaging — so a snapshot
- * taken up front is not merely a shortcut, it is the same result.
+ * The single-lead form asks the database (previousOrderForPhone in
+ * lib/orders-lookup.ts). The index stays for the import, which holds every
+ * order in memory for its own dedupe anyway and would otherwise pay a round
+ * trip per row. It is built once before the loop: doing it per row walked
+ * every order for every line of the file, against an array the loop was
+ * growing — quadratic, and the reason a two-thousand-row import ran past the
+ * function timeout with the page still saying "Importing…".
+ *
+ * Rows created BY the import never belong in it anyway — they have no
+ * order_date until they reach Packaging — so a snapshot taken up front is not
+ * merely a shortcut, it is the same result.
  */
 export function buildPreviousOrderIndex(db: DbShape): Map<string, PreviousOrderInfo> {
   const bestByPhone = new Map<string, Order>();

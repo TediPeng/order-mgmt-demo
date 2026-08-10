@@ -5,7 +5,7 @@ import { LeadForm } from "@/components/LeadForm";
 import { createLeadAction } from "@/lib/actions/leads";
 import { allowedAssigneeIds } from "@/lib/order-access";
 import { getCurrentUser } from "@/lib/auth";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { can, isFullAccess } from "@/lib/permissions";
 import { displayUserName } from "@/lib/types";
 import { creatableStatuses } from "@/lib/validation";
@@ -20,7 +20,7 @@ export default async function NewLeadPage({
 }) {
   const { error, time_in_required, customer: customerId } = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
 
   if (!can(user.role, "orders", "create", db.role_permissions)) {
     return <Alert kind="error">You do not have permission to create leads.</Alert>;

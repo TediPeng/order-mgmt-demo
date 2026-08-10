@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { readDb, writeDb } from "@/lib/db";
+import { readDbLite, writeDb } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { applyLeadUpdate, afterLeadUpdatePersisted } from "@/lib/actions/leads";
 import { getOrderRow } from "@/lib/pancake/store";
@@ -19,7 +19,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
-  const db = await readDb();
+  // applyLeadUpdate() loads the one order it is about; nothing else here
+  // touches the table.
+  const db = await readDbLite();
   if (!can(user.role, "orders", "edit", db.role_permissions)) {
     return NextResponse.json({ ok: false, error: "You do not have permission to perform this action." }, { status: 403 });
   }

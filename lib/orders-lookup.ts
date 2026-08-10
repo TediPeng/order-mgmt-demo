@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import type { PreviousOrderInfo } from "@/lib/lead-workflow";
 
 /**
  * The small questions about orders that pages outside Leads need answered.
@@ -45,6 +46,41 @@ export async function orderNumbersByIds(ids: string[]): Promise<Map<string, stri
   const { data, error } = await supabaseAdmin.from("orders").select("id,order_number").in("id", unique);
   if (error) throw new Error(`Order number lookup failed: ${error.message}`);
   return new Map((data || []).map((o) => [o.id as string, o.order_number as string]));
+}
+
+/**
+ * The customer's most recent completed order, for the previous-order fields
+ * the lead form fills in by itself.
+ *
+ * findPreviousOrderInfo() in lib/lead-workflow.ts is the definition of record;
+ * previous_order_for_phone() in SQL is a transcription of it and must change
+ * with it. The walk stays for the import, which holds every order in memory
+ * for its own reasons and would otherwise pay a round trip per row.
+ */
+export async function previousOrderForPhone(phone: string): Promise<PreviousOrderInfo | null> {
+  if (!phone.trim()) return null;
+  const { data, error } = await supabaseAdmin.rpc("previous_order_for_phone", { p_phone: phone });
+  if (error) throw new Error(`Previous order lookup failed: ${error.message}`);
+  if (!data) return null;
+  const row = data as { date: string; product: string; amount: number | string; note: string; status: string };
+  return {
+    date: row.date,
+    product: row.product,
+    amount: Number(row.amount),
+    note: row.note,
+    status: row.status,
+  };
+}
+
+/** How many orders belong to a regular customer's record. Indexed on
+ * orders.customer_id, and only the count comes back. */
+export async function customerOrderCount(customerId: string): Promise<number> {
+  const { count, error } = await supabaseAdmin
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .eq("customer_id", customerId);
+  if (error) throw new Error(`Customer order count failed: ${error.message}`);
+  return count ?? 0;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

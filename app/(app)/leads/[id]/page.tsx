@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { readDb } from "@/lib/db";
+import { readDbLite, loadOrderInto } from "@/lib/db";
 import { auditForEntity } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
@@ -37,8 +37,10 @@ export default async function LeadDetailPage({
 }) {
   const { id } = await params;
   const { error, created, updated, unlocked } = await searchParams;
-  const db = await readDb();
-  const order = db.orders.find((o) => o.id === id);
+  // The one lead this page is about, not the table it lives in. Opened on
+  // every call, this was the busiest full read in the app.
+  const db = await readDbLite();
+  const order = await loadOrderInto(db, id);
   if (!order) notFound();
 
   const user = (await getCurrentUser())!;

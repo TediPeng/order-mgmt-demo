@@ -1,7 +1,7 @@
 ﻿import { cache } from "react";
 import bcrypt from "bcryptjs";
 import { v4 as uuid } from "uuid";
-import type { DbShape, Profile, RolePermission, RoleDef, WorkSchedule } from "./types";
+import type { DbShape, Order, Profile, RolePermission, RoleDef, WorkSchedule } from "./types";
 import { ORDER_PANCAKE_DEFAULTS } from "./types";
 import { buildDefaultRows } from "./permissions";
 import { randomTempPassword } from "./passwords";
@@ -572,17 +572,7 @@ async function readDbUncached(withOrders: boolean): Promise<DbShape> {
     attendance_sweep_cursor: settings.attendance_sweep_cursor,
     profiles: (profilesRes.data || []) as unknown as DbShape["profiles"],
     roles: (rolesRes.data || []) as unknown as DbShape["roles"],
-    orders: (ordersRes.data || []).map((o) => ({
-      ...o,
-      previous_order_amount: numOrNull(o.previous_order_amount),
-      unit_price: numOrNull(o.unit_price),
-      total_amount: num(o.total_amount),
-      shipping_fee: numOrNull(o.shipping_fee),
-      discount: num(o.discount ?? 0),
-      // Must match the column exactly: writeDb upserts these objects back, so
-      // a key that is not a real column fails the whole write.
-      pancake_retry_count: num(o.pancake_retry_count ?? 0),
-    })) as unknown as DbShape["orders"],
+    orders: (ordersRes.data || []).map(mapOrderRow) as unknown as DbShape["orders"],
     products: (productsRes.data || []) as unknown as DbShape["products"],
     attendance: (attendanceRes.data || []).map((a) => ({
       ...a,
@@ -629,6 +619,49 @@ async function readDbUncached(withOrders: boolean): Promise<DbShape> {
   };
 
   return shape;
+}
+
+/** One order row as DbShape holds it.
+ *
+ * The numeric columns arrive as strings and the app does arithmetic on them.
+ * Every key here must be a real column: writeDb() upserts these objects back,
+ * so an invented one fails the whole write, and TypeScript cannot catch it
+ * because the rows are `as`-cast. */
+function mapOrderRow(o: Row): Row {
+  return {
+    ...o,
+    previous_order_amount: numOrNull(o.previous_order_amount),
+    unit_price: numOrNull(o.unit_price),
+    total_amount: num(o.total_amount),
+    shipping_fee: numOrNull(o.shipping_fee),
+    discount: num(o.discount ?? 0),
+    pancake_retry_count: num(o.pancake_retry_count ?? 0),
+  };
+}
+
+/**
+ * Puts ONE order into a shape that was read without any, and returns it.
+ *
+ * This is how a readDbLite() caller works on a single lead. Everything
+ * downstream — orderInScope(), applyLeadUpdate(), markOrderDirty(),
+ * queueDelete(), writeDb() — keeps operating on db.orders exactly as before;
+ * the only change is that the array holds the one order the request is about
+ * instead of all fifty thousand it is not.
+ *
+ * Returns null when there is no such order, which callers report as a 404
+ * rather than treating as an empty edit.
+ */
+export async function loadOrderInto(db: DbShape, orderId: string): Promise<Order | null> {
+  const existing = db.orders.find((o) => o.id === orderId);
+  if (existing) return existing;
+
+  const { data, error } = await supabaseAdmin.from("orders").select("*").eq("id", orderId).maybeSingle();
+  if (error) throw new Error(`Supabase read failed for order ${orderId}: ${error.message}`);
+  if (!data) return null;
+
+  const order = mapOrderRow(data as Row) as unknown as Order;
+  db.orders.push(order);
+  return order;
 }
 
 /** Marks a row for deletion. Call it wherever a row is spliced out of one of
