@@ -311,6 +311,19 @@ export function OrderDetailsModal({
   // The first priced line stands in for the order wherever a single figure is
   // still wanted — the Pancake pre-check below asks for one unit price.
   const draftUnitPrice = Number(draftLines[0]?.unit_price) || 0;
+  // Whether a price has actually been entered. This used to read
+  // form.unit_price — the order-level field the line editor never writes — so
+  // a lead priced on its line was told "Unit price is required" while the
+  // total beside it read ₱300.00. Imported leads have no order-level price at
+  // all, which made Packaging unreachable for them.
+  //
+  // The order-level field is still the answer for an order with no lines,
+  // which is what the single-product form used to produce.
+  const checkUnitPrice = draftLines.length > 0 ? draftUnitPrice : Number(form.unit_price) || 0;
+  // Greater than zero, matching the server's packaging gate — "a free order is
+  // not a sale". Offering Packaging for a blank or zero price would only mean
+  // the save comes back refused.
+  const unitPriceEntered = checkUnitPrice > 0;
 
   // Review step: exactly what the server will check before sending. With
   // several lines the check still asks for one product name, so it gets the
@@ -331,7 +344,7 @@ export function OrderDetailsModal({
     province: form.province,
     product_name: selectedProductName,
     quantity: draftQuantity,
-    unit_price: form.unit_price.trim() === "" ? null : draftUnitPrice,
+    unit_price: unitPriceEntered ? checkUnitPrice : null,
     discount: draftDiscount,
     shipping_fee: form.shipping_fee.trim() === "" ? null : draftShipping,
   });
@@ -705,7 +718,7 @@ export function OrderDetailsModal({
                       ["Landmark", form.landmark],
                       ["Product", [selectedProductName, form.variant].filter(Boolean).join(" — ")],
                       ["Quantity", String(draftQuantity || "")],
-                      ["Unit price", form.unit_price === "" ? "" : formatCurrency(draftUnitPrice)],
+                      ["Unit price", unitPriceEntered ? formatCurrency(checkUnitPrice) : ""],
                       ["Discount", formatCurrency(draftDiscount)],
                       ["Shipping fee", form.shipping_fee === "" ? "" : formatCurrency(draftShipping)],
                       ["Total amount", formatCurrency(grandTotal)],

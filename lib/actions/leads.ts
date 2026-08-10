@@ -458,7 +458,22 @@ export async function applyLeadUpdate(
     const packagingQuantity = postedItems
       ? postedItems.reduce((sum, line) => sum + line.quantity, 0)
       : quantity;
-    const missing = validatePackaging({ ...data, product_id: packagingProductId, quantity: packagingQuantity });
+    // The same reasoning as the product and the quantity, and it was the one
+    // field still missing it: the multi-line editor posts no order-level unit
+    // price, and an imported lead has none stored either, so both gates below
+    // read null and refused an order that was plainly priced — "Unit Price is
+    // required" beside a total of ₱300. Take it from the line that is about to
+    // become the order's own unit price (see pendingItems).
+    const packagingFirstLine = postedItems ? postedItems[0] ?? null : null;
+    const packagingUnitPrice = postedItems
+      ? packagingFirstLine?.unit_price ?? null
+      : data.unit_price ?? order.unit_price ?? null;
+    const missing = validatePackaging({
+      ...data,
+      product_id: packagingProductId,
+      quantity: packagingQuantity,
+      unit_price: packagingUnitPrice,
+    });
     if (missing.length > 0) {
       return {
         ok: false,
@@ -486,17 +501,37 @@ export async function applyLeadUpdate(
     // Second gate: Pancake's own requirements. Checking here means a status
     // change that would fail at the API is refused up front, so the order is
     // never left mid-sync with a fixable field missing.
-    const candidateProduct = data.product_id ? db.products.find((p) => p.id === data.product_id) : undefined;
+    // Read from the lines when the editor is in use, exactly as the packaging
+    // gate above already does. This check was still reading the order-level
+    // product, quantity, price and discount — the fields the multi-line editor
+    // stopped posting — so an order priced on its line was refused for a unit
+    // price it plainly had. An imported lead carries no order-level unit price
+    // at all, which made it every imported lead: the modal greyed Packaging
+    // out with "Unit Price: Unit price is required" beside a total of ₱300.
+    //
+    // The figures below are the ones about to be stored (see pendingItems), so
+    // the gate and the row can no longer disagree.
+    const candidateProduct = packagingProductId
+      ? db.products.find((p) => p.id === packagingProductId)
+      : undefined;
     const pancakeCheck = validateForPancake({
       customer_name: data.customer_name,
       customer_phone: data.customer_phone || "",
       barangay: data.barangay || "",
       city: data.city || "",
       province: data.province || "",
-      product_name: candidateProduct?.name || order.product_name,
-      quantity,
-      unit_price: data.unit_price ?? null,
-      discount: data.discount ?? 0,
+      product_name: postedItems
+        ? summarizeItems(
+            postedItems
+              .filter((line) => line.product_id)
+              .map((line) => ({ product_name: db.products.find((p) => p.id === line.product_id)?.name || "" }))
+          )
+        : candidateProduct?.name || order.product_name,
+      quantity: packagingQuantity,
+      unit_price: packagingUnitPrice,
+      discount: postedItems
+        ? postedItems.reduce((sum, line) => sum + line.discount, 0)
+        : data.discount ?? 0,
       shipping_fee: data.shipping_fee ?? null,
     });
     if (!pancakeCheck.ok) {
