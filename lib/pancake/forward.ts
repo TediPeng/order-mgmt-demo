@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import type { Order, PancakeSyncSource } from "@/lib/types";
-import { buildForwardPayload } from "./types";
+import { buildForwardPayload, type ForwardItem } from "./types";
+import { listItems } from "@/lib/order-items";
 import { createOrder } from "./createOrder";
 import { CREATE_STATUS_PACKAGING_LABEL } from "./config";
 import { validateForPancake } from "./validate";
@@ -173,20 +174,61 @@ export async function forwardOrderToPancake(
     return { ok: false, skipped: false, message: reason };
   }
 
-  // --- Product line ---------------------------------------------------------
-  const { data: product } = await supabaseAdmin
-    .from("products")
-    .select("name, pancake_variation_id")
-    .eq("id", order.product_id || "")
-    .maybeSingle();
-  const variationId = (product?.pancake_variation_id || "").trim();
-  const oneTimeProduct = !variationId && account.use_one_time_products;
+  // --- Product lines --------------------------------------------------------
+  // Every line of the order becomes its own Pancake item, and every line is
+  // mapped on its own. This used to resolve one product — the order's first —
+  // and send the order's TOTAL quantity under it, so the rest of a multi-product
+  // order silently became extra units of the first product.
+  const lines = await listItems(order.id);
+  const productIds = Array.from(new Set(lines.map((l) => l.product_id).filter((id): id is string => Boolean(id))));
+  if (!productIds.includes(order.product_id || "") && order.product_id) productIds.push(order.product_id);
 
-  if (!variationId && !oneTimeProduct) {
-    const reason = `Product "${product?.name || order.product_name}" has no Pancake variation ID. Map it under Products, or enable quick-add products on the ${account.account_name} account.`;
+  const { data: productRows } = await supabaseAdmin
+    .from("products")
+    .select("id, name, pancake_variation_id")
+    .in("id", productIds.length > 0 ? productIds : ["00000000-0000-0000-0000-000000000000"]);
+  const productById = new Map(
+    (productRows || []).map((p) => [p.id as string, p as { id: string; name: string; pancake_variation_id: string | null }])
+  );
+
+  const resolveLine = (productId: string | null, fallbackName: string) => {
+    const product = productId ? productById.get(productId) : undefined;
+    const variationId = (product?.pancake_variation_id || "").trim();
+    return {
+      name: product?.name || fallbackName,
+      variationId,
+      oneTimeProduct: !variationId && account.use_one_time_products,
+    };
+  };
+
+  // An unmapped product is refused rather than quietly folded in — unless the
+  // account is deliberately set to send quick-add products, which is a switch
+  // somebody turned on. The message names the product so it is clear which one
+  // needs mapping.
+  const unmappable = (lines.length > 0 ? lines : [{ product_id: order.product_id, product_name: order.product_name }])
+    .map((l) => resolveLine(l.product_id ?? null, l.product_name || ""))
+    .find((r) => !r.variationId && !r.oneTimeProduct);
+  if (unmappable) {
+    const reason = `Product "${unmappable.name}" has no Pancake variation ID. Map it under Products, or enable quick-add products on the ${account.account_name} account.`;
     await failSync(order, reason, opts, { accountId: account.id });
     return { ok: false, skipped: false, message: reason };
   }
+
+  const orderLevel = resolveLine(order.product_id ?? null, order.product_name);
+  const variationId = orderLevel.variationId;
+  const oneTimeProduct = orderLevel.oneTimeProduct;
+  const forwardItems: ForwardItem[] = lines.map((line) => {
+    const resolved = resolveLine(line.product_id ?? null, line.product_name);
+    return {
+      product_name: resolved.name,
+      variant: line.variant,
+      variation_id: resolved.variationId,
+      one_time_product: resolved.oneTimeProduct,
+      quantity: line.quantity,
+      unit_price: line.unit_price,
+      discount: line.discount,
+    };
+  });
 
   // --- Address verification -------------------------------------------------
   // Last check before submitting: the three Pancake address IDs must still
@@ -327,7 +369,8 @@ export async function forwardOrderToPancake(
     (agentProfile?.username as string) || order.assigned_agent_email,
     variationId,
     oneTimeProduct,
-    { orderSourceId: matchedSource.id, careStaffId: matchedStaff.id }
+    { orderSourceId: matchedSource.id, careStaffId: matchedStaff.id },
+    forwardItems
   );
   const result = await createOrder(account, payload);
   const responseAt = new Date().toISOString();

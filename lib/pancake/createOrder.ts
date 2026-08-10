@@ -20,8 +20,6 @@ import { pancakeFetch, resolvePath, unwrapData } from "./client";
  * variation_id; an unmapped product is sent as a "quick add" one-time product
  * instead (name + price only, no Pancake inventory movement). */
 export function buildCreateOrderBody(payload: ForwardPayload): Record<string, unknown> {
-  const productLabel = [payload.product, payload.variant].filter(Boolean).join(" — ");
-
   return {
     // `custom_id` is deliberately NOT sent. Pancake adopts whatever custom_id it
     // is given AS the order's own id, which is why its screens were showing our
@@ -69,21 +67,24 @@ export function buildCreateOrderBody(payload: ForwardPayload): Record<string, un
       district_name: payload.city,
       commnue_name: payload.barangay, // (sic) misspelled in Pancake's own schema
     },
-    items: [
-      {
-        ...(payload.one_time_product ? {} : { variation_id: payload.variation_id }),
-        one_time_product: payload.one_time_product,
-        quantity: payload.quantity,
-        discount_each_product: 0,
-        is_bonus_product: false,
-        is_discount_percent: false,
-        is_wholesale: false,
-        variation_info: {
-          name: productLabel || "Item",
-          retail_price: payload.unit_price ?? 0,
-        },
+    // One Pancake item per line. This used to be a single item carrying the
+    // order's TOTAL quantity under the summarised product name, so a
+    // two-product order arrived as one line of quantity 2 priced at the first
+    // product's price, and the second product never arrived at all.
+    items: payload.items.map((line) => ({
+      ...(line.one_time_product ? {} : { variation_id: line.variation_id }),
+      one_time_product: line.one_time_product,
+      quantity: line.quantity,
+      discount_each_product: line.discount,
+      is_bonus_product: false,
+      is_discount_percent: false,
+      is_wholesale: false,
+      variation_info: {
+        name: [line.product_name, line.variant].filter(Boolean).join(" — ") || "Item",
+        // A freebie is a line at zero, which is what the agent entered.
+        retail_price: line.unit_price,
       },
-    ],
+    })),
   };
 }
 

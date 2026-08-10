@@ -2,6 +2,28 @@ import type { Order, PancakeAccount } from "@/lib/types";
 
 /** Internal, adapter-agnostic forward payload. createOrder.ts maps this onto
  * the real Pancake field names from config.ts. */
+/**
+ * One line of the order as Pancake receives it.
+ *
+ * There is one of these per order_items row. There used to be exactly one item
+ * built from the order's summary fields, which folded a two-product order into
+ * a single Pancake line: "4 AVOCADO COFFEE +1 more", quantity 2, at the FIRST
+ * line's price. The second product was never sent, and Pancake's arithmetic
+ * doubled the first one. Five real orders went out that way on 2026-08-10.
+ */
+export interface ForwardItem {
+  product_name: string;
+  variant: string | null;
+  /** Pancake variation ID or SKU. Empty only when one_time_product is set. */
+  variation_id: string;
+  one_time_product: boolean;
+  quantity: number;
+  /** Per-unit price for THIS line. A freebie is a line at zero, not a silent
+   * addition to somebody else's quantity. */
+  unit_price: number;
+  discount: number;
+}
+
 export interface ForwardPayload {
   internal_order_id: string;
   /** Stable external reference / idempotency key sent to Pancake. */
@@ -39,6 +61,10 @@ export interface ForwardPayload {
   quantity: number;
   unit_price: number | null;
   discount: number;
+  /** The order's lines, one Pancake item each. Never empty: an order with no
+   * order_items falls back to a single item built from the fields above, which
+   * is the shape the single-product form used to produce. */
+  items: ForwardItem[];
   total_amount: number;
   shipping_fee: number | null;
   courier: string | null;
@@ -114,8 +140,26 @@ export function buildForwardPayload(
   agentAccount: string,
   variationId: string,
   oneTimeProduct = false,
-  resolved: { orderSourceId?: string | null; careStaffId?: string | null } = {}
+  resolved: { orderSourceId?: string | null; careStaffId?: string | null } = {},
+  /** One per order_items row, already resolved against the Pancake catalogue.
+   * Omitted or empty, the order's own summary fields stand in — an order
+   * saved before the line editor existed has no rows to map. */
+  items: ForwardItem[] = []
 ): ForwardPayload {
+  const lines: ForwardItem[] =
+    items.length > 0
+      ? items
+      : [
+          {
+            product_name: order.product_name,
+            variant: order.variant,
+            variation_id: variationId,
+            one_time_product: oneTimeProduct,
+            quantity: order.quantity,
+            unit_price: order.unit_price ?? 0,
+            discount: order.discount ?? 0,
+          },
+        ];
   return {
     internal_order_id: order.id,
     system_order_id: order.system_order_id || order.order_number,
@@ -144,6 +188,7 @@ export function buildForwardPayload(
     quantity: order.quantity,
     unit_price: order.unit_price,
     discount: order.discount ?? 0,
+    items: lines,
     total_amount: order.total_amount,
     shipping_fee: order.shipping_fee,
     courier: order.courier,
