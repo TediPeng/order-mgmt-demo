@@ -35,6 +35,19 @@ import { insertSyncLog } from "@/lib/pancake/store";
 import type { DbShape, Order, Profile } from "@/lib/types";
 import { ORDER_PANCAKE_DEFAULTS } from "@/lib/types";
 
+/**
+ * The unit price the Packaging gate asks about, from a set of posted lines.
+ *
+ * The first line that carries a price, falling back to the first line — which
+ * is the rule LeadForm shows the agent while they type. Both gates use it so
+ * that a form saying the order is ready and a server refusing it cannot
+ * disagree. They did, and every lead priced on its line was stuck.
+ */
+function pricedLineAmount(lines: { unit_price: number }[]): number | null {
+  const priced = lines.find((line) => line.unit_price > 0);
+  return priced ? priced.unit_price : lines[0]?.unit_price ?? null;
+}
+
 function buildLeadFieldErrors(formData: FormData): Record<string, unknown> {
   // FormData.get() answers `null` for a field the form does not contain, and
   // Zod's .optional()/.default() only substitute for `undefined` — a null makes
@@ -165,6 +178,14 @@ export async function createLeadAction(formData: FormData) {
       ...data,
       product_id: firstLine?.product_id ?? (data.product_id || null),
       quantity: items.length > 0 ? totals.quantity : data.quantity,
+      // The price comes from the line for the same reason the product and the
+      // quantity do: the multi-line editor posts no order-level unit_price, so
+      // checking that field refused every priced order on the way in.
+      //
+      // The FIRST PRICED line, which is the rule LeadForm shows the agent — a
+      // form that says the order is ready and a server that refuses it is
+      // worse than either answer on its own.
+      unit_price: items.length > 0 ? pricedLineAmount(items) : data.unit_price ?? null,
     });
     if (missing.length > 0) {
       redirect(`/leads/new?error=${encodeURIComponent(`Missing required fields for Packaging: ${missing.join(", ")}`)}`);
@@ -464,9 +485,10 @@ export async function applyLeadUpdate(
     // read null and refused an order that was plainly priced — "Unit Price is
     // required" beside a total of ₱300. Take it from the line that is about to
     // become the order's own unit price (see pendingItems).
-    const packagingFirstLine = postedItems ? postedItems[0] ?? null : null;
     const packagingUnitPrice = postedItems
-      ? packagingFirstLine?.unit_price ?? null
+      ? postedItems.length > 0
+        ? pricedLineAmount(postedItems)
+        : null
       : data.unit_price ?? order.unit_price ?? null;
     const missing = validatePackaging({
       ...data,
