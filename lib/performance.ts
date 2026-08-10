@@ -41,16 +41,27 @@ function callEffectiveDate(callDate: string, uploadedAt: string): string {
   return uploadedAt.slice(0, 10);
 }
 
-/** Every account whose work is measured. Excludes full-access roles, who do
- * not carry leads, and test accounts, whose orders are not the floor's. */
+/** Every account that carries leads. Full-access roles do not. */
 export function eligibleAgents(db: DbShape): Profile[] {
-  return db.profiles.filter((p) => !isFullAccess(p.role) && !p.is_test_account);
+  return db.profiles.filter((p) => !isFullAccess(p.role));
+}
+
+/**
+ * The agents whose work counts, as seen by this viewer.
+ *
+ * A test account is left out of everybody else's numbers — its orders are not
+ * the floor's work — but it still sees its own. The whole point of the account
+ * is testing the live system, and a performance page that renders empty for
+ * the person testing it proves nothing.
+ */
+function measurableAgents(db: DbShape, user: Profile): Profile[] {
+  return eligibleAgents(db).filter((p) => !p.is_test_account || p.id === user.id);
 }
 
 /** Restricts the visible agent set based on the viewer's role: management/administrator
  * sees all, team leads see their assigned agents plus themselves, everyone else sees only themselves. */
 export function scopeAgentsForUser(db: DbShape, user: Profile): Profile[] {
-  const all = eligibleAgents(db);
+  const all = measurableAgents(db, user);
   if (isFullAccess(user.role)) return all;
   if (user.role === "team_lead") return all.filter((a) => a.id === user.id || a.team_lead_id === user.id);
   return all.filter((a) => a.id === user.id);
@@ -61,7 +72,7 @@ export function scopeAgentsForUser(db: DbShape, user: Profile): Profile[] {
  * group, not just themselves, so the ranking chart is meaningful. Every other
  * view keeps using scopeAgentsForUser's strict per-agent scoping. */
 export function scopeAgentsForRanking(db: DbShape, user: Profile): Profile[] {
-  const all = eligibleAgents(db);
+  const all = measurableAgents(db, user);
   if (isFullAccess(user.role)) return all;
   if (user.role === "team_lead") return all.filter((a) => a.id === user.id || a.team_lead_id === user.id);
   return all.filter((a) => a.id === user.id || (user.team_lead_id && a.team_lead_id === user.team_lead_id));

@@ -34,17 +34,19 @@ export function leadScopeFor(user: Profile, db: DbShape): AgentScope {
     // Null still means "no restriction", and is still what is returned when
     // there is nothing to leave out — naming every agent would otherwise
     // change the shape of every query for no reason.
-    if (!db.profiles.some((p) => p.is_test_account)) return null;
-    return db.profiles.filter((p) => !p.is_test_account).map((p) => p.id);
+    if (!db.profiles.some((p) => p.is_test_account && p.id !== user.id)) return null;
+    return db.profiles.filter((p) => !p.is_test_account || p.id === user.id).map((p) => p.id);
   }
   if (user.role === "team_lead") {
     return [
       user.id,
-      ...db.profiles.filter((p) => p.team_lead_id === user.id && !p.is_test_account).map((p) => p.id),
+      ...db.profiles
+        .filter((p) => p.team_lead_id === user.id && (!p.is_test_account || p.id === user.id))
+        .map((p) => p.id),
     ];
   }
   // The test account itself still sees its own leads — it is somebody's
-  // account, and they are testing with it.
+  // account, and they are testing the live system with it.
   return [user.id];
 }
 
