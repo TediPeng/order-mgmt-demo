@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { readDb, writeDb } from "@/lib/db";
+import { readDbLite, writeDb, loadOrderInto } from "@/lib/db";
 import { orderInScope } from "@/lib/order-access";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
@@ -29,8 +29,10 @@ export async function POST(req: NextRequest) {
   const orderId = String(body.orderId || "");
   if (!orderId) return NextResponse.json({ ok: false, error: "orderId is required." }, { status: 400 });
 
-  const db = await readDb();
-  const order = db.orders.find((o) => o.id === orderId);
+  // The lead being called, not the table it lives in — this runs at the start
+  // of every call.
+  const db = await readDbLite();
+  const order = await loadOrderInto(db, orderId);
   if (!order) return NextResponse.json({ ok: false, error: "Lead not found." }, { status: 404 });
   if (!orderInScope(user, order, db)) {
     return NextResponse.json({ ok: false, error: "You do not have access to that lead." }, { status: 403 });
@@ -56,7 +58,7 @@ export async function POST(req: NextRequest) {
 
   const result = await startSession(user.id, orderId);
   if (!result.ok) {
-    const activeOrder = db.orders.find((o) => o.id === result.session.order_id);
+    const activeOrder = await loadOrderInto(db, result.session.order_id);
     return NextResponse.json(
       {
         ok: false,
@@ -91,8 +93,8 @@ export async function DELETE() {
 
   await endSession(active.id, { previousStatus: null, newStatus: null, remarks: "Ended without a status update" });
 
-  const db = await readDb();
-  const order = db.orders.find((o) => o.id === active.order_id);
+  const db = await readDbLite();
+  const order = await loadOrderInto(db, active.order_id);
   logActivity(db, user.id, "CALL_SESSION_ENDED", "order", active.order_id, {
     order_number: order?.order_number,
     without_update: true,

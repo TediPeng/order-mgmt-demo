@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
+import { orderNumbersByIds } from "@/lib/orders-lookup";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { todayInTz } from "@/lib/utils";
@@ -20,7 +21,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function AgentMonitorPage() {
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
 
   if (!can(user.role, "attendance", "view", db.role_permissions)) redirect("/dashboard");
   // Monitoring other people is a supervisory act, so an agent who happens to
@@ -43,7 +44,13 @@ export default async function AgentMonitorPage() {
     bioBreakTotalsForDay(agentIds, today),
   ]);
 
-  const orderNumberById = new Map(db.orders.map((o) => [o.id, o.order_number]));
+  // Order numbers for the calls actually in progress — at most one per agent,
+  // usually a handful. This board refreshes every twenty seconds, and it used
+  // to build the map from every order in the system: three full reads of
+  // 51,000 rows per minute, per open tab, to label a dozen cells.
+  const orderNumberById = await orderNumbersByIds(
+    Array.from(activeCalls.values()).map((c) => c.order_id)
+  );
   const leadNameById = new Map(db.profiles.map((p) => [p.id, displayUserName(p)]));
   const generatedAt = new Date().toISOString();
 
