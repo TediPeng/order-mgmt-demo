@@ -81,7 +81,8 @@ export const LEAD_STATUS_STYLES: Record<OrderStatus, LeadStatusStyle> = {
     rowHover: "hover:bg-emerald-100",
     header: "bg-emerald-600",
   },
-  // Return path: rose then a heavier orange, both distinct from CBR's orange.
+  // Return path: rose then a heavier orange, both distinct from the orange on
+  // Cannot Be Reached.
   returning: { badge: "bg-rose-100 text-rose-700", row: "bg-rose-50", rowHover: "hover:bg-rose-100", header: "bg-rose-500" },
   partial_return: {
     badge: "bg-orange-200 text-orange-950",

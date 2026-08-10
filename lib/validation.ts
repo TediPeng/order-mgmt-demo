@@ -55,7 +55,10 @@ export const LEAD_STATUS_LABELS: Record<(typeof LEAD_STATUSES)[number], string> 
   new: "New",
   ringing: "Ringing",
   hung_up: "Hung Up",
-  cbr: "CBR",
+  // CBR is "Cannot Be Reached" — not a call-back request, which is what the
+  // abbreviation reads like from outside. The enum value stays `cbr`; only the
+  // wording the floor sees changed.
+  cbr: "Cannot Be Reached",
   rsrv: "RSRV",
   inc: "INC #",
   call_back: "Call Back",
