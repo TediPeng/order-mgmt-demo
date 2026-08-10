@@ -1,22 +1,19 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { LEAD_STATUS_LABELS } from "@/lib/validation";
+import { LEAD_STATUS_LABELS, LEAD_STATUSES } from "@/lib/validation";
 import { LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import type { OrderStatus } from "@/lib/types";
 
-/** The statuses an agent works with day to day, in call-then-outcome order.
- * Deliberately a short list rather than all 21 — these are the buckets an
- * agent actually triages, and the counts come from one grouped query. */
-export const QUICK_FILTER_STATUSES = [
-  "new",
-  "ringing",
-  "hung_up",
-  "cbr",
-  "rsrv",
-  "delivered",
-  "returned",
-  "returning",
-] as const;
+/**
+ * Every status, in pipeline order: the call outcomes first, then fulfillment
+ * as Pancake runs it.
+ *
+ * This was a hand-picked eight, which meant a lead that had moved into any
+ * other status was counted in All Leads and nowhere else — the number was
+ * there but nothing said where it had gone. Derived from LEAD_STATUSES now, so
+ * a status added there appears here without a second edit.
+ */
+export const QUICK_FILTER_STATUSES = LEAD_STATUSES;
 
 export interface StatusCount {
   status: OrderStatus;
