@@ -30,9 +30,36 @@ export async function getCustomer(id: string): Promise<Customer | null> {
   return data ? mapCustomer(data) : null;
 }
 
-export async function listCustomers(filter: { ownerAgentIds?: string[] } = {}): Promise<Customer[]> {
+export async function listCustomers(
+  filter: { ownerAgentIds?: string[]; q?: string } = {}
+): Promise<Customer[]> {
   let query = supabaseAdmin.from("customers").select("*").eq("is_regular_customer", true);
   if (filter.ownerAgentIds) query = query.in("owner_agent_id", filter.ownerAgentIds);
+
+  // One box, matched against everything the row shows: the name, the number as
+  // typed and as stored, and each part of the address. A number is searched by
+  // its digits, so 0927…, +63927… and 927… all find the same customer — the
+  // stored form varies, and an agent should not have to guess which one it is.
+  const term = (filter.q || "").trim();
+  if (term) {
+    const safe = term.replace(/[(),*]/g, " ").trim();
+    const digits = normalizePhone(safe);
+    const conditions = [
+      `full_name.ilike.*${safe}*`,
+      `purok.ilike.*${safe}*`,
+      `barangay.ilike.*${safe}*`,
+      `city.ilike.*${safe}*`,
+      `province.ilike.*${safe}*`,
+      `landmark.ilike.*${safe}*`,
+    ];
+    if (digits) {
+      conditions.push(`phone_raw.ilike.*${digits}*`, `phone_normalized.ilike.*${digits}*`);
+    } else {
+      conditions.push(`phone_raw.ilike.*${safe}*`);
+    }
+    query = query.or(conditions.join(","));
+  }
+
   const { data, error } = await query.order("regular_since", { ascending: false });
   if (error) throw new Error(`customers read failed: ${error.message}`);
   return (data || []).map(mapCustomer);

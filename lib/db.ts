@@ -664,6 +664,30 @@ export async function loadOrderInto(db: DbShape, orderId: string): Promise<Order
   return order;
 }
 
+/**
+ * Puts a fetched SET of orders into a shape read without any, and returns
+ * them. loadOrderInto() for the cases that act on more than one row — tagging
+ * a regular customer moves every order on their number, and untagging moves
+ * them back.
+ *
+ * Rows already present are returned as they are rather than replaced: the
+ * request may already be holding an edited copy.
+ */
+export function adoptOrders(db: DbShape, rows: Record<string, unknown>[]): Order[] {
+  const adopted: Order[] = [];
+  for (const row of rows) {
+    const existing = db.orders.find((o) => o.id === row.id);
+    if (existing) {
+      adopted.push(existing);
+      continue;
+    }
+    const order = mapOrderRow(row as Row) as unknown as Order;
+    db.orders.push(order);
+    adopted.push(order);
+  }
+  return adopted;
+}
+
 /** Marks a row for deletion. Call it wherever a row is spliced out of one of
  * the DbShape arrays — removing it from the array keeps the rest of this
  * request consistent, and this is what makes the removal reach the database.

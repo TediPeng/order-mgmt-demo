@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
+import { ordersForCustomers } from "@/lib/orders-lookup";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { listCustomers, ordersForCustomer } from "@/lib/customers";
@@ -31,7 +32,7 @@ export default async function CreateOrderFromRegularCustomerPage({
 }) {
   const { q } = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
 
   if (!can(user.role, "regular_customers", "view", db.role_permissions)) redirect("/dashboard");
   if (!can(user.role, "orders", "create", db.role_permissions)) {
@@ -62,9 +63,12 @@ export default async function CreateOrderFromRegularCustomerPage({
         return c.full_name.toLowerCase().includes(nameTerm);
       });
 
+  // One query for the matches on this page, rather than every order in the
+  // system handed to ordersForCustomer() once per customer.
+  const customerOrders = await ordersForCustomers(matches);
   const rows = await Promise.all(
     matches.map(async (c) => {
-      const orders = await ordersForCustomer(c, db.orders);
+      const orders = await ordersForCustomer(c, customerOrders);
       return { customer: c, orders, latest: orders[0] || null };
     })
   );

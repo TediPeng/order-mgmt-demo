@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import type { PreviousOrderInfo } from "@/lib/lead-workflow";
+import type { Order } from "@/lib/types";
 
 /**
  * The small questions about orders that pages outside Leads need answered.
@@ -70,6 +71,49 @@ export async function previousOrderForPhone(phone: string): Promise<PreviousOrde
     note: row.note,
     status: row.status,
   };
+}
+
+/**
+ * Every order behind a set of regular customers, in one query.
+ *
+ * The caller groups them with ordersForCustomer() in lib/customers.ts, which
+ * is unchanged and still the definition of record — it is simply handed these
+ * rows instead of every order in the system.
+ */
+export async function ordersForCustomers(
+  customers: { id: string; phone_normalized: string }[]
+): Promise<Order[]> {
+  if (customers.length === 0) return [];
+  const { data, error } = await supabaseAdmin.rpc("orders_for_customers", {
+    p_customer_ids: customers.map((c) => c.id),
+    p_phones: customers.map((c) => c.phone_normalized).filter(Boolean),
+  });
+  if (error) throw new Error(`Customer orders lookup failed: ${error.message}`);
+  return (data || []) as Order[];
+}
+
+/** Every order one agent holds on a phone number — the set that moves out of
+ * the Leads list when that customer is tagged as a regular. Raw rows, for
+ * adoptOrders() to put into the shape so they can be edited and written. */
+export async function orderRowsForPhoneAndAgent(
+  phone: string,
+  agentId: string
+): Promise<Record<string, unknown>[]> {
+  if (!phone.trim()) return [];
+  const { data, error } = await supabaseAdmin.rpc("orders_for_phone_and_agent", {
+    p_phone: phone,
+    p_agent_id: agentId,
+  });
+  if (error) throw new Error(`Customer order lookup failed: ${error.message}`);
+  return (data || []) as Record<string, unknown>[];
+}
+
+/** Every order linked to a customer record — the set that moves back to the
+ * Leads list when the customer is untagged. */
+export async function orderRowsForCustomer(customerId: string): Promise<Record<string, unknown>[]> {
+  const { data, error } = await supabaseAdmin.from("orders").select("*").eq("customer_id", customerId);
+  if (error) throw new Error(`Customer order lookup failed: ${error.message}`);
+  return (data || []) as Record<string, unknown>[];
 }
 
 /** How many orders belong to a regular customer's record. Indexed on

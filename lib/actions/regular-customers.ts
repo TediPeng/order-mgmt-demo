@@ -2,12 +2,12 @@
 
 import { redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { writeDb, markOrderDirty } from "@/lib/db";
+import { writeDb, markOrderDirty, loadOrderInto, adoptOrders } from "@/lib/db";
+import { orderRowsForPhoneAndAgent, orderRowsForCustomer } from "@/lib/orders-lookup";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { orderInScope } from "@/lib/order-access";
 import { can, isFullAccess } from "@/lib/permissions";
-import { canonicalPhone } from "@/lib/utils";
 import {
   createRegularCustomer,
   findDuplicates,
@@ -18,7 +18,7 @@ import {
 import { allowedAssigneeIds } from "@/lib/order-access";
 import { regularCustomerFormSchema } from "@/lib/validation";
 import { describeParseFailure } from "@/lib/zod-error";
-import { requireUser } from "./guards";
+import { requireUserLite } from "./guards";
 import type { DuplicateStatus } from "@/lib/types";
 
 const PATH = "/regular-customers";
@@ -35,7 +35,7 @@ const NEW_PATH = "/regular-customers/new";
  * is what decides that — the same rule Leads uses, so ownership cannot be
  * widened here by posting a different agent_id. */
 export async function createRegularCustomerAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   if (!can(user.role, "regular_customers", "create", db.role_permissions)) {
     redirect(`${PATH}?error=${encodeURIComponent("You do not have permission to add regular customers.")}`);
   }
@@ -80,17 +80,15 @@ export async function createRegularCustomerAction(formData: FormData) {
   // Orders this agent already holds for the same number belong to the customer
   // record now, and therefore leave the active Leads list — the same move
   // tagging performs, so both routes in end in the same state.
-  const target = canonicalPhone(data.phone);
+  // Asked of the database rather than filtered out of every order in memory —
+  // this is at most a handful of rows on one number.
   let moved = 0;
-  if (target) {
-    for (const o of db.orders) {
-      if (canonicalPhone(o.customer_phone) !== target || o.agent_id !== ownerAgentId) continue;
-      o.is_regular_customer = true;
-      o.regular_customer_since = o.regular_customer_since || customer.regular_since;
-      o.customer_id = customer.id;
-      markOrderDirty(db, o.id);
-      moved++;
-    }
+  for (const o of adoptOrders(db, await orderRowsForPhoneAndAgent(data.phone, ownerAgentId))) {
+    o.is_regular_customer = true;
+    o.regular_customer_since = o.regular_customer_since || customer.regular_since;
+    o.customer_id = customer.id;
+    markOrderDirty(db, o.id);
+    moved++;
   }
   if (moved > 0) await supabaseAdmin.from("customers").update({ total_orders: moved }).eq("id", customer.id);
 
@@ -129,14 +127,14 @@ export async function createRegularCustomerAction(formData: FormData) {
  * told a match exists, because that would turn the warning into a way to
  * discover another agent's customers. */
 export async function tagRegularCustomerAction(orderId: string) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   // Same grant as the Add Regular Customer button: both create a regular
   // customer, they only differ in whether a lead already exists.
   if (!can(user.role, "regular_customers", "create", db.role_permissions)) {
     redirect(`/leads?error=${encodeURIComponent("You do not have permission to add regular customers.")}`);
   }
 
-  const order = db.orders.find((o) => o.id === orderId);
+  const order = await loadOrderInto(db, orderId);
   if (!order) redirect(`/leads?error=${encodeURIComponent("Lead not found.")}`);
   if (!orderInScope(user, order!, db)) {
     redirect(`/leads?error=${encodeURIComponent("You do not have access to that lead.")}`);
@@ -150,10 +148,8 @@ export async function tagRegularCustomerAction(orderId: string) {
 
   // Flag every order for this customer, so the whole history moves together
   // rather than leaving earlier orders behind in the Leads list.
-  const target = canonicalPhone(order!.customer_phone);
   let moved = 0;
-  for (const o of db.orders) {
-    if (canonicalPhone(o.customer_phone) !== target || o.agent_id !== order!.agent_id) continue;
+  for (const o of adoptOrders(db, await orderRowsForPhoneAndAgent(order!.customer_phone, order!.agent_id))) {
     o.is_regular_customer = true;
     o.regular_customer_since = o.regular_customer_since || now;
     o.customer_id = customer.id;
@@ -187,7 +183,7 @@ export async function tagRegularCustomerAction(orderId: string) {
 
 /** Returns a customer to the active Leads list. */
 export async function untagRegularCustomerAction(customerId: string) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   if (!can(user.role, "regular_customers", "manage", db.role_permissions)) {
     redirect(`${PATH}?error=${encodeURIComponent("You do not have permission to do that.")}`);
   }
@@ -196,12 +192,10 @@ export async function untagRegularCustomerAction(customerId: string) {
   if (!customer) redirect(`${PATH}?error=${encodeURIComponent("Customer not found.")}`);
 
   await supabaseAdmin.from("customers").update({ is_regular_customer: false, updated_at: new Date().toISOString() }).eq("id", customerId);
-  for (const o of db.orders) {
-    if (o.customer_id === customerId) {
-      o.is_regular_customer = false;
-      o.regular_customer_since = null;
-      markOrderDirty(db, o.id);
-    }
+  for (const o of adoptOrders(db, await orderRowsForCustomer(customerId))) {
+    o.is_regular_customer = false;
+    o.regular_customer_since = null;
+    markOrderDirty(db, o.id);
   }
 
   const info = await getRequestInfo();
@@ -216,7 +210,7 @@ export async function untagRegularCustomerAction(customerId: string) {
 /** Records a decision on a potential duplicate. Nothing merges automatically;
  * this is the human judgement the detector deliberately defers to. */
 export async function reviewDuplicateAction(matchId: string, decision: DuplicateStatus) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   // Deciding on duplicates is a Management/Team Lead action — the same reason
   // Agents never see the warning at all.
   if (!isFullAccess(user.role) && !can(user.role, "regular_customers", "manage", db.role_permissions)) {

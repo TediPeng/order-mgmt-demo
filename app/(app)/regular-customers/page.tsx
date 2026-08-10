@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
+import { ordersForCustomers } from "@/lib/orders-lookup";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { listCustomers, ordersForCustomer, listOpenDuplicates } from "@/lib/customers";
@@ -8,17 +9,18 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
-import { LinkButton } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Field";
+import { Button, LinkButton } from "@/components/ui/Button";
 import { untagRegularCustomerAction } from "@/lib/actions/regular-customers";
 
 export default async function RegularCustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tagged?: string; untagged?: string; created?: string; error?: string }>;
+  searchParams: Promise<{ tagged?: string; untagged?: string; created?: string; error?: string; q?: string }>;
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
 
   if (!can(user.role, "regular_customers", "view", db.role_permissions)) redirect("/dashboard");
   const canManage = can(user.role, "regular_customers", "manage", db.role_permissions);
@@ -40,7 +42,8 @@ export default async function RegularCustomersPage({
         : [user.id];
   }
 
-  const customers = await listCustomers({ ownerAgentIds });
+  const query = (sp.q || "").trim();
+  const customers = await listCustomers({ ownerAgentIds, q: query });
   const nameById = new Map(db.profiles.map((p) => [p.id, p.full_name]));
 
   // The duplicate queue is a Management/Team Lead concern only — an agent is
@@ -48,9 +51,12 @@ export default async function RegularCustomersPage({
   const canSeeDuplicates = isFullAccess(user.role) || user.role === "team_lead";
   const openDuplicates = canSeeDuplicates ? await listOpenDuplicates() : [];
 
+  // The orders behind the customers on this page, in one query. This used to
+  // hand ordersForCustomer() every order in the system, once per customer.
+  const customerOrders = await ordersForCustomers(customers);
   const rows = await Promise.all(
     customers.map(async (c) => {
-      const orders = await ordersForCustomer(c, db.orders);
+      const orders = await ordersForCustomer(c, customerOrders);
       const latest = orders[0] || null;
       const previous = orders[1] || null;
       return { customer: c, orders, latest, previous };
@@ -84,6 +90,31 @@ export default async function RegularCustomersPage({
       {sp.untagged && <Alert kind="success" className="mb-4">Customer returned to the active Leads list.</Alert>}
       {sp.error && <Alert kind="error" className="mb-4">{sp.error}</Alert>}
 
+      {/* One box, matched against the name, the number and the address. A
+          number is searched by its digits, so the stored form — 0927…, +63927…
+          or 927… — does not have to be guessed. */}
+      <form className="mb-4 flex flex-wrap items-center gap-2">
+        <Input
+          name="q"
+          defaultValue={query}
+          placeholder="Search name, phone number or address"
+          className="w-full sm:w-96"
+        />
+        <Button type="submit" variant="outline" size="sm">
+          Search
+        </Button>
+        {query && (
+          <LinkButton href="/regular-customers" variant="outline" size="sm">
+            Clear
+          </LinkButton>
+        )}
+        {query && (
+          <span className="text-sm text-slate-500">
+            {customers.length} match{customers.length === 1 ? "" : "es"} for &ldquo;{query}&rdquo;
+          </span>
+        )}
+      </form>
+
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full min-w-[1500px] text-left text-table">
           <thead className="sticky top-0 bg-slate-50 text-table font-medium uppercase tracking-wide text-slate-500">
@@ -97,7 +128,7 @@ export default async function RegularCustomersPage({
               <th className="px-4 py-3">Total Orders</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Regular Since</th>
-              {(canOrder || canManage) && <th className="px-4 py-3">Actions</th>}
+              <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -142,9 +173,16 @@ export default async function RegularCustomersPage({
                   </Badge>
                 </td>
                 <td className="px-4 py-3 text-slate-600">{customer.regular_since ? formatDate(customer.regular_since) : "—"}</td>
-                {(canOrder || canManage) && (
+                {(
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap items-center gap-2">
+                      {/* Their record and every order on it. The table shows
+                          two orders and a count; this is where the rest of it
+                          lives, and it is reachable even for a customer who
+                          has no orders at all. */}
+                      <LinkButton href={`/regular-customers/${customer.id}`} variant="outline" size="sm">
+                        Details
+                      </LinkButton>
                       {/* Starts the order form with this customer's details
                           already filled in — no retyping, and the order is
                           recorded against their record. */}
@@ -167,11 +205,17 @@ export default async function RegularCustomersPage({
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={canOrder || canManage ? 10 : 9} className="px-4 py-10 text-center text-slate-400">
-                  No regular customers yet.{" "}
-                  {canCreate
-                    ? "Use Add Regular Customer, or tag one from a lead's details popup."
-                    : "They are added from a lead's details popup."}
+                <td colSpan={10} className="px-4 py-10 text-center text-slate-400">
+                  {query ? (
+                    <>No regular customer matches &ldquo;{query}&rdquo;.</>
+                  ) : (
+                    <>
+                      No regular customers yet.{" "}
+                      {canCreate
+                        ? "Use Add Regular Customer, or tag one from a lead's details popup."
+                        : "They are added from a lead's details popup."}
+                    </>
+                  )}
                 </td>
               </tr>
             )}

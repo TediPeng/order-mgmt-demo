@@ -4,7 +4,7 @@ import { RegularCustomerForm } from "@/components/RegularCustomerForm";
 import { createRegularCustomerAction } from "@/lib/actions/regular-customers";
 import { allowedAssigneeIds } from "@/lib/order-access";
 import { getCurrentUser } from "@/lib/auth";
-import { readDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { can, isFullAccess } from "@/lib/permissions";
 import { displayUserName } from "@/lib/types";
 
@@ -27,7 +27,7 @@ export default async function NewRegularCustomerPage({
 }) {
   const { error } = await searchParams;
   const user = (await getCurrentUser())!;
-  const db = await readDb();
+  const db = await readDbLite();
 
   if (!can(user.role, "regular_customers", "create", db.role_permissions)) {
     return <Alert kind="error">You do not have permission to add regular customers.</Alert>;

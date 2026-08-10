@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { readDb, writeDb } from "@/lib/db";
+import { readDbLite, writeDb } from "@/lib/db";
 import { createSession, destroySession, getCurrentUser, hashPassword, setThemeCookie, verifyPassword } from "@/lib/auth";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
@@ -27,7 +27,7 @@ export async function loginAction(formData: FormData) {
     redirect(`/login?error=${encodeURIComponent("Please enter your username and password.")}`);
   }
 
-  const db = await readDb();
+  const db = await readDbLite();
   const user = db.profiles.find((p) => p.username.toLowerCase() === username.toLowerCase());
 
   if (!user || !verifyPassword(password, user.password_hash)) {
@@ -67,7 +67,7 @@ export async function loginAction(formData: FormData) {
 export async function logoutAction() {
   const user = await getCurrentUser();
   if (user) {
-    const db = await readDb();
+    const db = await readDbLite();
     const info = await getRequestInfo();
     logActivity(db, user.id, "LOGOUT", "auth", user.id, { username: user.username }, { module: "settings", ...info });
     await writeDb(db);
@@ -78,7 +78,7 @@ export async function logoutAction() {
 
 export async function requestPasswordResetAction(formData: FormData) {
   const email = String(formData.get("email") || "").trim();
-  const db = await readDb();
+  const db = await readDbLite();
   const user = db.profiles.find((p) => p.email.toLowerCase() === email.toLowerCase());
 
   // Deactivated and deleted accounts are treated as absent. A reset link is a
@@ -134,7 +134,7 @@ export async function resetPasswordWithTokenAction(formData: FormData) {
   const check = await checkResetToken(token);
   if (!check.ok) redirect(`/reset-password?invalid=${check.reason}`);
 
-  const db = await readDb();
+  const db = await readDbLite();
   const profile = db.profiles.find((p) => p.id === check.userId);
   if (!profile || !profile.is_active || profile.is_deleted) {
     redirect(`/reset-password?invalid=unknown`);
@@ -178,7 +178,7 @@ export async function changeOwnPasswordAction(formData: FormData) {
     redirect(`/settings/password?error=${encodeURIComponent(msg)}`);
   }
 
-  const db = await readDb();
+  const db = await readDbLite();
   const profile = db.profiles.find((p) => p.id === user!.id)!;
 
   if (!verifyPassword(parsed.data.current_password, profile.password_hash)) {
