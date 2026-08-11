@@ -51,35 +51,51 @@ export const FULFILLMENT_STATUSES = [
 
 export const LEAD_STATUSES = [...PRE_SALE_STATUSES, ...FULFILLMENT_STATUSES] as const;
 
+/**
+ * How a status is written wherever a person reads it.
+ *
+ * Capitals throughout, on the floor's instruction: these are the taggings, the
+ * word the floor uses for what a call ended as, and they are spoken and written
+ * that way. RSRV, INC # and ODZ were already shouting; the rest were in title
+ * case, so a row could read "REJECT OFFER" in one place and "Reject offer" in
+ * another depending on which of them it was.
+ *
+ * Written out rather than uppercased at render time, so this stays the one
+ * place the wording lives and grepping for what is on screen finds it. Every
+ * surface takes its text from here — the badges, the dropdowns, the status
+ * cards, the CSV export, the Pancake status map — so they cannot drift apart.
+ * normalizePreviousStatus() matches these case-insensitively, so an import
+ * written in title case still resolves.
+ */
 export const LEAD_STATUS_LABELS: Record<(typeof LEAD_STATUSES)[number], string> = {
-  new: "New",
-  ringing: "Ringing",
-  hung_up: "Hung Up",
+  new: "NEW",
+  ringing: "RINGING",
+  hung_up: "HUNG UP",
   // CBR is "Cannot Be Reached" — not a call-back request, which is what the
   // abbreviation reads like from outside. The enum value stays `cbr`; only the
   // wording the floor sees changed.
-  cbr: "Cannot Be Reached",
+  cbr: "CANNOT BE REACHED",
   rsrv: "RSRV",
   inc: "INC #",
-  call_back: "Call Back",
-  reject_offer: "Reject Offer",
-  cancel: "Cancel",
-  waiting_confirmation: "Waiting for Confirmation",
-  confirmed: "Confirmed",
-  restocking: "Restocking",
-  purchased: "Purchased",
-  wait_for_printing: "Waiting for Printing",
-  printed: "Printed",
-  packaging: "Packaging",
-  waiting_pickup: "Waiting for Pick Up",
-  shipped: "Shipped",
-  delivered: "Delivered",
-  collected_money: "Collected Money",
-  returning: "Returning",
-  partial_return: "Partial Return",
-  returned: "Returned",
-  cancelled: "Cancelled",
-  deleted: "Deleted in Pancake",
+  call_back: "CALL BACK",
+  reject_offer: "REJECT OFFER",
+  cancel: "CANCEL",
+  waiting_confirmation: "WAITING FOR CONFIRMATION",
+  confirmed: "CONFIRMED",
+  restocking: "RESTOCKING",
+  purchased: "PURCHASED",
+  wait_for_printing: "WAITING FOR PRINTING",
+  printed: "PRINTED",
+  packaging: "PACKAGING",
+  waiting_pickup: "WAITING FOR PICK UP",
+  shipped: "SHIPPED",
+  delivered: "DELIVERED",
+  collected_money: "COLLECTED MONEY",
+  returning: "RETURNING",
+  partial_return: "PARTIAL RETURN",
+  returned: "RETURNED",
+  cancelled: "CANCELLED",
+  deleted: "DELETED IN PANCAKE",
   odz: "ODZ",
 };
 
