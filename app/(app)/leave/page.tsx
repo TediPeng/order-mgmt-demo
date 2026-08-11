@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Paperclip } from "lucide-react";
 import { readDbLite } from "@/lib/db";
@@ -28,6 +29,10 @@ export default async function LeavePage({
     status?: string;
     type?: string;
     agent?: string;
+    /** "dates" orders the queue by when the leave starts, not when it was filed. */
+    sort?: string;
+    /** YYYY-MM-DD — narrows the queue to everyone off on that day. */
+    on?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -48,13 +53,59 @@ export default async function LeavePage({
 
   const resubmitTarget = sp.resubmit ? myRequests.find((r) => r.id === sp.resubmit && r.status === "returned_for_revision") : null;
 
-  let queue = canApprove
+  const scopedQueue = canApprove
     ? db.leave_requests.filter((r) => isFullAccess(user.role) || r.supervisor_id === user.id)
     : [];
+
+  /**
+   * Who else is away on the same days.
+   *
+   * The queue arrives newest-filed first, so six people asking for the same
+   * Tuesday appear scattered down the list in the order they happened to file —
+   * and the one thing an approver has to know before saying yes is how many
+   * others already have that day. Counted here, per row.
+   *
+   * Deliberately counted against the WHOLE scoped queue, not the filtered view:
+   * a clash you cannot see because you filtered by agent is still a clash. And
+   * only against requests that would actually take somebody off the floor —
+   * a cancelled or rejected one is not a clash, it is a row.
+   */
+  const CLASHABLE = new Set(["pending", "approved"]);
+  const clashPool = scopedQueue.filter((r) => CLASHABLE.has(r.status));
+  // Inclusive ranges, compared as YYYY-MM-DD strings — the same ordering as
+  // dates, without constructing one per comparison.
+  const overlaps = (a: { leave_start: string; leave_end: string }, b: { leave_start: string; leave_end: string }) =>
+    a.leave_start <= b.leave_end && b.leave_start <= a.leave_end;
+  const clashesFor = (r: (typeof scopedQueue)[number]) =>
+    clashPool.filter((other) => other.id !== r.id && overlaps(other, r));
+
+  let queue = [...scopedQueue];
   if (sp.status) queue = queue.filter((r) => r.status === sp.status);
   if (sp.type) queue = queue.filter((r) => r.leave_type === sp.type);
   if (sp.agent) queue = queue.filter((r) => r.agent_id === sp.agent);
-  queue.sort((a, b) => b.created_at.localeCompare(a.created_at));
+  // "Who is off on this day" — the question the clash badge asks in one click.
+  if (sp.on) queue = queue.filter((r) => r.leave_start <= sp.on! && sp.on! <= r.leave_end);
+
+  // Filed order is right for working a backlog; leave-date order is right for
+  // seeing a week's cover, because it puts everyone asking for the same day
+  // next to each other.
+  const sortByDates = sp.sort === "dates";
+  queue.sort((a, b) =>
+    sortByDates
+      ? a.leave_start.localeCompare(b.leave_start) || a.leave_end.localeCompare(b.leave_end)
+      : b.created_at.localeCompare(a.created_at)
+  );
+
+  /** Keeps the other filters when one control changes. */
+  const queueHref = (overrides: Record<string, string | undefined>) => {
+    const params = new URLSearchParams();
+    const merged = { status: sp.status, type: sp.type, agent: sp.agent, sort: sp.sort, on: sp.on, ...overrides };
+    Object.entries(merged).forEach(([k, v]) => {
+      if (v) params.set(k, v);
+    });
+    const qs = params.toString();
+    return qs ? `?${qs}` : "?";
+  };
 
   const queueAgents = canApprove
     ? db.profiles.filter((p) => (isFullAccess(user.role) ? true : p.team_lead_id === user.id))
@@ -216,7 +267,10 @@ export default async function LeavePage({
             <CardTitle>Review Queue</CardTitle>
           </CardHeader>
           <CardContent>
-            <form className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-4">
+            <form className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-5">
+              {/* Carried through the filter form so changing a Select does not
+                  quietly drop the day being looked at. */}
+              {sp.on && <input type="hidden" name="on" value={sp.on} />}
               <Select name="status" defaultValue={sp.status || ""}>
                 <option value="">All statuses</option>
                 <option value="pending">Pending</option>
@@ -239,10 +293,32 @@ export default async function LeavePage({
                   </option>
                 ))}
               </Select>
+              {/* Filed order works a backlog; leave-date order shows a week's
+                  cover, because everyone asking for the same day lands together. */}
+              <Select name="sort" defaultValue={sp.sort || ""}>
+                <option value="">Sort: newest filed</option>
+                <option value="dates">Sort: leave date</option>
+              </Select>
               <Button type="submit" variant="secondary">
                 Filter
               </Button>
             </form>
+
+            {sp.on && (
+              <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-slate-500">
+                  Showing everyone off on <span className="font-medium text-slate-800">{formatDate(sp.on)}</span> —{" "}
+                  <span className="font-medium text-slate-800">{queue.length}</span> request
+                  {queue.length === 1 ? "" : "s"}.
+                </span>
+                <Link
+                  href={queueHref({ on: undefined })}
+                  className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  Show all dates
+                </Link>
+              </div>
+            )}
 
             <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200">
               <table className="w-full min-w-[900px] text-left text-sm">
@@ -258,7 +334,9 @@ export default async function LeavePage({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {queue.map((r) => (
+                  {queue.map((r) => {
+                    const clashes = clashesFor(r);
+                    return (
                     <tr key={r.id}>
                       <td className="px-4 py-2">
                         {byId.get(r.agent_id) || "—"}
@@ -267,6 +345,27 @@ export default async function LeavePage({
                       <td className="px-4 py-2 text-slate-500">{formatDateTime(r.created_at)}</td>
                       <td className="px-4 py-2">
                         {formatDate(r.leave_start)} – {formatDate(r.leave_end)} ({r.leave_days}d)
+                        {/* How many others are already off across these days.
+                            The names are on the tooltip for a glance; the link
+                            narrows the queue to that day for the whole answer.
+                            Only on rows that could still be decided — telling
+                            somebody a cancelled request clashes is noise. */}
+                        {clashes.length > 0 && CLASHABLE.has(r.status) && (
+                          <Link
+                            href={queueHref({ on: r.leave_start, status: undefined })}
+                            title={clashes
+                              .map(
+                                (c) =>
+                                  `${byId.get(c.agent_id) || "—"}: ${formatDate(c.leave_start)} – ${formatDate(
+                                    c.leave_end
+                                  )} (${c.status})`
+                              )
+                              .join("\n")}
+                            className="ml-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-200"
+                          >
+                            +{clashes.length} same day{clashes.length === 1 ? "" : "s"}
+                          </Link>
+                        )}
                       </td>
                       <td className="px-4 py-2 capitalize">{r.leave_type}</td>
                       <td className="px-4 py-2 max-w-[220px] truncate text-slate-500" title={r.reason}>
@@ -323,7 +422,8 @@ export default async function LeavePage({
                         )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   {queue.length === 0 && (
                     <tr>
                       <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
