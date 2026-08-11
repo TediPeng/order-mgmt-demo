@@ -3,7 +3,7 @@ import type { Order, PancakeSyncSource } from "@/lib/types";
 import { buildForwardPayload, type ForwardItem } from "./types";
 import { listItems } from "@/lib/order-items";
 import { createOrder } from "./createOrder";
-import { CREATE_STATUS_PACKAGING_LABEL } from "./config";
+import { CREATE_STATUS_PACKAGING_LABEL, LOOKUP_REFRESH_ON_MISS_AFTER_MS } from "./config";
 import { validateForPancake } from "./validate";
 import { verifyAddressIds } from "./address";
 import { findRecentOrderForRetry } from "./findExisting";
@@ -15,6 +15,7 @@ import {
   matchStaffByEmail,
   noOrderSourceMessage,
   noStaffMessage,
+  type LookupResult,
 } from "./lookups";
 import { PACKAGING_STATUS } from "@/lib/validation";
 import {
@@ -50,6 +51,34 @@ export interface ForwardResult {
 /** Records a terminal failure: internal status stays Packaging, only the
  * sync state moves. Shared by every failure path so none of them can leave an
  * order stranded in `syncing`. */
+/**
+ * Matches against a lookup list, re-reading it once if the list is stale.
+ *
+ * A miss is the one moment the cached list is worth doubting, and it is nearly
+ * always the same story: the agent was added to Pancake after we last read it,
+ * so the order kept failing on a day-old list until an Administrator thought to
+ * press Refresh on the mappings page. Retry Sync did not help — it read the same
+ * cache. Now the failure re-reads it itself, and an order recovers on its own
+ * once the person exists on the Pancake side.
+ *
+ * A list read moments ago is not re-read: the first miss in a sweep refreshes
+ * it, and the rest of that sweep is matching against something already current.
+ * A refetch that fails leaves the original miss standing, which is the right
+ * answer — we could not prove the value exists, so the order is not sent.
+ */
+async function matchOrRefetch<T>(
+  first: LookupResult<T>,
+  target: string | null,
+  match: (items: T[], target: string | null) => T | null,
+  refetch: (opts: { force: true }) => Promise<LookupResult<T>>
+): Promise<T | null> {
+  const hit = match(first.items, target);
+  if (hit || first.ageMs <= LOOKUP_REFRESH_ON_MISS_AFTER_MS) return hit;
+
+  const again = await refetch({ force: true });
+  return again.ok ? match(again.items, target) : null;
+}
+
 async function failSync(
   order: Order,
   reason: string,
@@ -259,7 +288,9 @@ export async function forwardOrderToPancake(
     await failSync(order, reason, opts, { accountId: account.id });
     return { ok: false, skipped: false, message: reason };
   }
-  const matchedSource = matchOrderSource(sources.items, agentCallName);
+  const matchedSource = await matchOrRefetch(sources, agentCallName, matchOrderSource, (o) =>
+    fetchOrderSources(account, o)
+  );
   if (!matchedSource) {
     const reason = noOrderSourceMessage(agentCallName);
     await failSync(order, reason, opts, { accountId: account.id });
@@ -272,7 +303,7 @@ export async function forwardOrderToPancake(
     await failSync(order, reason, opts, { accountId: account.id });
     return { ok: false, skipped: false, message: reason };
   }
-  const matchedStaff = matchStaffByEmail(staff.items, agentEmail);
+  const matchedStaff = await matchOrRefetch(staff, agentEmail, matchStaffByEmail, (o) => fetchStaffList(account, o));
   if (!matchedStaff) {
     const reason = noStaffMessage(agentEmail);
     await failSync(order, reason, opts, { accountId: account.id });

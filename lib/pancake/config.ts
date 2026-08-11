@@ -58,6 +58,20 @@ export const PH_COUNTRY_CODE = "63";
  * request on every order. */
 export const LOOKUP_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
+/** How old a cached lookup list must be before a failed match is allowed to
+ * re-read it from Pancake.
+ *
+ * A miss is the one moment the cache is worth doubting: the whole reason an
+ * agent is missing from the Staff list is usually that they were added to
+ * Pancake after we last read it, and a day-long TTL meant the order kept
+ * failing until an Administrator thought to press Refresh on the mappings page.
+ *
+ * The threshold is what stops a sweep of unmatched orders from re-reading the
+ * list once per order: the first miss refreshes it, and every miss for the next
+ * minute is looking at a list that was just read, so there is nothing to gain
+ * by reading it again. */
+export const LOOKUP_REFRESH_ON_MISS_AFTER_MS = 60 * 1000;
+
 /** Pancake-side status every order must land in on creation. Pancake's create
  * -order body takes an integer `status`, and 8 = "Packaging" (Đang đóng hàng)
  * per the spec's own enum — so it is set at creation, no follow-up call. The

@@ -41,10 +41,16 @@ const orderSourceCache = new Map<string, CacheEntry<PancakeOrderSource[]>>();
 const staffCache = new Map<string, CacheEntry<PancakeStaff[]>>();
 const partnerCache = new Map<string, CacheEntry<PancakePartner[]>>();
 
-function fresh<T>(cache: Map<string, CacheEntry<T>>, key: string): T | null {
+/** A live entry and how old it is, or null when there is none worth using.
+ *
+ * The age is returned because a caller that fails to find what it is looking
+ * for needs to know whether it was looking at a list read a second ago or one
+ * read yesterday — the second is worth re-reading, the first is not. */
+function fresh<T>(cache: Map<string, CacheEntry<T>>, key: string): { value: T; ageMs: number } | null {
   const hit = cache.get(key);
   if (!hit) return null;
-  return Date.now() - hit.fetchedAt < LOOKUP_CACHE_TTL_MS ? hit.value : null;
+  const ageMs = Date.now() - hit.fetchedAt;
+  return ageMs < LOOKUP_CACHE_TTL_MS ? { value: hit.value, ageMs } : null;
 }
 
 /** Drops every cached list for one account — backs the Settings Refresh button. */
@@ -67,6 +73,10 @@ export interface LookupResult<T> {
   ok: boolean;
   items: T[];
   error: string | null;
+  /** How old the list is: 0 when it was just read from Pancake, otherwise the
+   * age of the cache entry it came from. A caller that cannot find its value in
+   * the list uses this to decide whether re-reading could change the answer. */
+  ageMs: number;
 }
 
 /** `GET /shops/{SHOP_ID}/order_source` -> `data[]: { id, name, ... }` */
@@ -76,25 +86,27 @@ export async function fetchOrderSources(
 ): Promise<LookupResult<PancakeOrderSource>> {
   if (!opts.force) {
     const hit = fresh(orderSourceCache, account.id);
-    if (hit) return { ok: true, items: hit, error: null };
+    if (hit) return { ok: true, items: hit.value, error: null, ageMs: hit.ageMs };
   }
   if (mockMode() === "success") {
     const items = [{ id: "mock-source-1", name: "JAMIE" }];
     orderSourceCache.set(account.id, { value: items, fetchedAt: Date.now() });
-    return { ok: true, items, error: null };
+    return { ok: true, items, error: null, ageMs: 0 };
   }
   if (mockMode() === "fail") {
-    return { ok: false, items: [], error: "MOCK_MODE=fail: simulated Order Sources failure" };
+    return { ok: false, items: [], error: "MOCK_MODE=fail: simulated Order Sources failure", ageMs: 0 };
   }
 
   const res = await pancakeFetch(account, resolvePath(ORDER_SOURCES_PATH, account), { method: "GET" });
-  if (!res.ok) return { ok: false, items: [], error: res.error || "Could not read Order Sources from Pancake POS." };
+  if (!res.ok) {
+    return { ok: false, items: [], error: res.error || "Could not read Order Sources from Pancake POS.", ageMs: 0 };
+  }
 
   const items = rows(res.body)
     .map((r) => ({ id: str(r.id), name: str(r.name) }))
     .filter((r) => r.id && r.name);
   orderSourceCache.set(account.id, { value: items, fetchedAt: Date.now() });
-  return { ok: true, items, error: null };
+  return { ok: true, items, error: null, ageMs: 0 };
 }
 
 /** `GET /shops/{SHOP_ID}/users` -> `data[]: { user_id, user: { id, email, name } }` */
@@ -104,19 +116,21 @@ export async function fetchStaffList(
 ): Promise<LookupResult<PancakeStaff>> {
   if (!opts.force) {
     const hit = fresh(staffCache, account.id);
-    if (hit) return { ok: true, items: hit, error: null };
+    if (hit) return { ok: true, items: hit.value, error: null, ageMs: hit.ageMs };
   }
   if (mockMode() === "success") {
     const items = [{ id: "mock-staff-1", email: "employee@demo.local", name: "Jamie Santos" }];
     staffCache.set(account.id, { value: items, fetchedAt: Date.now() });
-    return { ok: true, items, error: null };
+    return { ok: true, items, error: null, ageMs: 0 };
   }
   if (mockMode() === "fail") {
-    return { ok: false, items: [], error: "MOCK_MODE=fail: simulated Staff list failure" };
+    return { ok: false, items: [], error: "MOCK_MODE=fail: simulated Staff list failure", ageMs: 0 };
   }
 
   const res = await pancakeFetch(account, resolvePath(STAFF_PATH, account), { method: "GET" });
-  if (!res.ok) return { ok: false, items: [], error: res.error || "Could not read the Staff list from Pancake POS." };
+  if (!res.ok) {
+    return { ok: false, items: [], error: res.error || "Could not read the Staff list from Pancake POS.", ageMs: 0 };
+  }
 
   const items = rows(res.body)
     .map((r) => {
@@ -131,7 +145,7 @@ export async function fetchStaffList(
     })
     .filter((r) => r.id);
   staffCache.set(account.id, { value: items, fetchedAt: Date.now() });
-  return { ok: true, items, error: null };
+  return { ok: true, items, error: null, ageMs: 0 };
 }
 
 /** `GET /shops/{SHOP_ID}/partners` — courier accounts connected to the shop. */
@@ -141,18 +155,20 @@ export async function fetchPartners(
 ): Promise<LookupResult<PancakePartner>> {
   if (!opts.force) {
     const hit = fresh(partnerCache, account.id);
-    if (hit) return { ok: true, items: hit, error: null };
+    if (hit) return { ok: true, items: hit.value, error: null, ageMs: hit.ageMs };
   }
-  if (mockMode() !== "off") return { ok: true, items: [], error: null };
+  if (mockMode() !== "off") return { ok: true, items: [], error: null, ageMs: 0 };
 
   const res = await pancakeFetch(account, resolvePath(PARTNERS_PATH, account), { method: "GET" });
-  if (!res.ok) return { ok: false, items: [], error: res.error || "Could not read partners from Pancake POS." };
+  if (!res.ok) {
+    return { ok: false, items: [], error: res.error || "Could not read partners from Pancake POS.", ageMs: 0 };
+  }
 
   const items = rows(res.body)
     .map((r) => ({ id: Number(r.id), name: str(r.name) }))
     .filter((r) => Number.isFinite(r.id));
   partnerCache.set(account.id, { value: items, fetchedAt: Date.now() });
-  return { ok: true, items, error: null };
+  return { ok: true, items, error: null, ageMs: 0 };
 }
 
 // --- matching -------------------------------------------------------------
