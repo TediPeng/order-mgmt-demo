@@ -108,9 +108,7 @@ export function LeadsTable({
               <th className="px-4 py-3">City</th>
               <th className="px-4 py-3">Province</th>
               <th className="px-4 py-3">Landmark</th>
-              <th className="px-4 py-3">Previous Order Date</th>
-              <th className="px-4 py-3">Previous Order Product</th>
-              <th className="px-4 py-3">Previous Order Amount</th>
+              <th className="px-4 py-3">Notes</th>
               <th className="px-4 py-3">New Product Order</th>
               <th className="px-4 py-3">Unit Price</th>
               <th className="px-4 py-3">Status</th>
@@ -145,10 +143,8 @@ export function LeadsTable({
                   <td className="px-4 py-3 text-slate-600">{o.city || "—"}</td>
                   <td className="px-4 py-3 text-slate-600">{o.province || "—"}</td>
                   <td className="px-4 py-3 text-slate-600">{o.landmark || "—"}</td>
-                  <td className="px-4 py-3 text-slate-600">{o.previous_order_date ? formatDate(o.previous_order_date) : "—"}</td>
-                  <td className="px-4 py-3 text-slate-600">{o.previous_order_product || "—"}</td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {o.previous_order_amount != null ? formatCurrency(o.previous_order_amount) : "—"}
+                  <td className="px-4 py-3 text-slate-600" title={o.notes || undefined}>
+                    <span className="block max-w-[22rem] truncate">{o.notes || "—"}</span>
                   </td>
                   <td className="px-4 py-3 text-slate-600">{o.product_name || "—"}</td>
                   <td className="px-4 py-3 text-slate-600">{o.unit_price != null ? formatCurrency(o.unit_price) : "—"}</td>
