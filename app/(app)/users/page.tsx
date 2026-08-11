@@ -13,8 +13,9 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
-import { toggleActiveAction, adminResetPasswordAction } from "@/lib/actions/users";
+import { toggleActiveAction, adminResetPasswordAction, updateUserProfileAction } from "@/lib/actions/users";
 import { CreateUserForm } from "@/components/CreateUserForm";
+import { EditUserButton } from "@/components/EditUserButton";
 import { RoleSelect } from "@/components/RoleSelect";
 import { TeamLeadSelect } from "@/components/TeamLeadSelect";
 
@@ -409,6 +410,10 @@ export default async function UsersPage({
                 "use server";
                 await adminResetPasswordAction(u.id);
               };
+              const boundEdit = async (formData: FormData) => {
+                "use server";
+                await updateUserProfileAction(u.id, formData);
+              };
               const lastTimeIn = lastTimeInByUser.get(u.id);
               // The row carries an OPAQUE background so the two frozen columns
               // can inherit it. A translucent one would let the scrolling
@@ -478,6 +483,21 @@ export default async function UsersPage({
                   </td>
                   <td className="whitespace-nowrap px-4 py-3">
                     <div className="flex justify-end gap-2">
+                      {canEdit && !u.is_deleted && (
+                        <EditUserButton
+                          action={boundEdit}
+                          user={{
+                            id: u.id,
+                            full_name: u.full_name,
+                            username: u.username,
+                            email: u.email,
+                            call_name: u.call_name,
+                            contact_number: u.contact_number,
+                            permission_profile: u.permission_profile,
+                            role: u.role,
+                          }}
+                        />
+                      )}
                       {canEdit && !u.is_deleted && (
                         <ConfirmButton
                           action={boundReset}

@@ -125,6 +125,93 @@ export async function createUserAction(formData: FormData) {
   );
 }
 
+/**
+ * The details an account is identified by: name, username, email, Call Name,
+ * contact, permission profile.
+ *
+ * Everything else on the Users row already has its own control — Role and Team
+ * Lead are inline selects, Status is a toggle, the password has Reset — and
+ * these six had none at all. A typo in an email or a Call Name could only be
+ * fixed by deleting the account and making another one, which is not something
+ * anybody would do to a live agent, so it simply stayed wrong. It is not
+ * cosmetic either: the Call Name is matched to a Pancake Order Source and the
+ * email to a Pancake staff member, and an order will not forward without both.
+ *
+ * Role and team lead are deliberately absent from this form and read from the
+ * database instead, so there is exactly one control for each of them and the
+ * schema's "agents must have a Call Name" rule is still checked against the role
+ * the account actually holds.
+ */
+export async function updateUserProfileAction(userId: string, formData: FormData) {
+  const { user, db } = await requireUser();
+  requirePermission(user, "users", "edit", db, "/users");
+
+  const target = db.profiles.find((p) => p.id === userId);
+  if (!target) redirect("/users");
+  // A deleted account is an anonymized tombstone kept so history still resolves.
+  // Editing it would put the PII back that deletion existed to remove.
+  if (target!.is_deleted) {
+    redirect(`/users?error=${encodeURIComponent("A deleted account cannot be edited.")}`);
+  }
+
+  const field = (name: string): unknown => formData.get(name) ?? undefined;
+  const parsed = userFormSchema.safeParse({
+    username: field("username"),
+    full_name: field("full_name"),
+    email: field("email"),
+    // From the database, not the form: this form does not offer them, and the
+    // Call Name rule must be judged against the role the account really has.
+    role: target!.role,
+    team_lead_id: target!.team_lead_id ?? "",
+    call_name: field("call_name"),
+    contact_number: field("contact_number"),
+    permission_profile: field("permission_profile"),
+  });
+  if (!parsed.success) {
+    redirect(`/users?error=${encodeURIComponent(describeParseFailure(parsed.error))}`);
+  }
+
+  const data = parsed.data;
+  if (
+    db.profiles.some((p) => p.id !== userId && p.username.toLowerCase() === data.username.toLowerCase())
+  ) {
+    redirect(`/users?error=${encodeURIComponent("That username is already taken.")}`);
+  }
+
+  const before = {
+    username: target!.username,
+    full_name: target!.full_name,
+    email: target!.email,
+    call_name: target!.call_name,
+    contact_number: target!.contact_number,
+    permission_profile: target!.permission_profile,
+  };
+  const after = {
+    username: data.username,
+    full_name: data.full_name,
+    email: data.email,
+    call_name: data.call_name || null,
+    contact_number: data.contact_number || null,
+    permission_profile: data.permission_profile || null,
+  };
+
+  // Opening the form and closing it again is not a change, and an audit trail
+  // that records it makes the entries that matter harder to find.
+  const changed = (Object.keys(after) as (keyof typeof after)[]).filter((k) => before[k] !== after[k]);
+  if (changed.length === 0) redirect("/users");
+
+  Object.assign(target!, after);
+  const info = await getRequestInfo();
+  logActivity(db, user.id, "USER_UPDATED", "user", userId, { fields: changed, username: after.username }, {
+    module: "users",
+    previous_value: Object.fromEntries(changed.map((k) => [k, before[k]])),
+    updated_value: Object.fromEntries(changed.map((k) => [k, after[k]])),
+    ...info,
+  });
+  await writeDb(db);
+  redirect("/users?updated=1");
+}
+
 export async function updateUserRoleAction(userId: string, role: string) {
   "use server";
   const { user, db } = await requireUser();
