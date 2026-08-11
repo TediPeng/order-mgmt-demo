@@ -116,9 +116,9 @@ export default async function AgentActivityReportPage({
         </p>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full min-w-[900px] text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+          <thead className="sticky top-0 z-20 bg-slate-50 shadow-sm text-xs uppercase text-slate-500">
             <tr className="whitespace-nowrap">
               <th className="sticky left-0 z-10 bg-slate-50 px-4 py-2">Agent</th>
               <th className="px-3 py-2 text-right">Days</th>

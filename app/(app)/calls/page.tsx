@@ -130,9 +130,9 @@ export default async function CallsPage({
         .
       </p>
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full min-w-[900px] text-left text-table">
-          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+          <thead className="sticky top-0 z-20 bg-slate-50 shadow-sm text-xs uppercase tracking-wide text-slate-500">
             <tr className="whitespace-nowrap">
               <th className="px-2.5 py-2">Time</th>
               {seesOthers && <th className="px-2.5 py-2">Agent</th>}

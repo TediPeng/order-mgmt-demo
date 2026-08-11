@@ -132,6 +132,9 @@ export default async function LeavePage({
             <CardTitle>My Requests</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
+            {/* Not sticky: this table has no scroll box of its own, so a sticky
+                header would pin itself to the page and float over whatever came
+                after the card. */}
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
@@ -241,9 +244,9 @@ export default async function LeavePage({
               </Button>
             </form>
 
-            <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200">
               <table className="w-full min-w-[900px] text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                <thead className="sticky top-0 z-20 bg-slate-50 shadow-sm text-xs uppercase text-slate-500">
                   <tr>
                     <th className="px-4 py-2">Agent</th>
                     <th className="px-4 py-2">Filed</th>

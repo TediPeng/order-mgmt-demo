@@ -194,9 +194,9 @@ export default async function AttendancePage({
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
         <div className="lg:col-span-3">
           {isTableView ? (
-            <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+            <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
               <table className="w-full min-w-[1000px] text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                <thead className="sticky top-0 z-20 bg-slate-50 shadow-sm text-xs uppercase text-slate-500">
                   <tr>
                     <th className="px-4 py-3">Date</th>
                     <th className="px-4 py-3">Time In</th>

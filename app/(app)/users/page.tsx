@@ -347,9 +347,9 @@ export default async function UsersPage({
           ))}
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full min-w-[1500px] text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+          <thead className="sticky top-0 z-20 bg-slate-50 shadow-sm text-xs uppercase text-slate-500">
             {/* Headers stay on one line. Squeezed into an even share of the
                 table they otherwise stack ("Call" / "Name"), which reads as a
                 different set of columns than it is. */}
@@ -380,7 +380,9 @@ export default async function UsersPage({
                     "px-4 py-3",
                     // The header's own opaque background, so scrolled columns
                     // pass underneath rather than through.
-                    FROZEN_COLUMN[key as keyof typeof FROZEN_COLUMN] && "z-20 bg-slate-50",
+                    // Above the body's own frozen columns (z-10) at the corner
+                    // where the sticky header and the sticky column cross.
+                    FROZEN_COLUMN[key as keyof typeof FROZEN_COLUMN] && "z-30 bg-slate-50",
                     FROZEN_COLUMN[key as keyof typeof FROZEN_COLUMN],
                     key === "username" && "border-r border-slate-200"
                   )}

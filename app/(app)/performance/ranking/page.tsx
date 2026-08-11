@@ -136,9 +136,9 @@ export default async function RankingPage({
       </form>
 
       {isTableView ? (
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
           <table className="w-full min-w-[900px] text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+            <thead className="sticky top-0 z-20 bg-slate-50 shadow-sm text-xs uppercase text-slate-500">
               <tr>
                 <th className="px-4 py-3">Rank</th>
                 <th className="px-4 py-3">Agent Name</th>
