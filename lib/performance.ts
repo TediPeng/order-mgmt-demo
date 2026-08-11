@@ -345,11 +345,17 @@ export function computeRtsPercentage(deliveredOrders: number, returnedOrders: nu
  * date range (inclusive, YYYY-MM-DD). Total Leads/New/Ringing bucket by
  * created_at — the only date a lead has before Packaging. Total Orders, Sales,
  * Delivered and Returned bucket by order_date, the Packaging date, which later
- * status changes never rewrite. */
+ * status changes never rewrite.
+ *
+ * The lead cohort excludes regular customers, because the Leads list does and a
+ * card that disagrees with the list beneath it is worse than either answer. The
+ * order-dated figures deliberately keep them: a regular customer's order is a
+ * real sale, and dropping it would understate the month to fix a lead count. */
 export function computeAgentDashboardStats(db: DbShape, agentId: string, from: string, to: string): AgentDashboardStats {
   const own = db.orders.filter((o) => o.agent_id === agentId);
 
   const cohort = own.filter((o) => {
+    if (o.is_regular_customer) return false;
     const d = dateInTz(new Date(o.created_at));
     return d >= from && d <= to;
   });
@@ -414,6 +420,7 @@ export interface ManagementKpiStats {
  * Returned still counts as a sale. */
 export function computeManagementKpiStats(orders: Order[], from: string, to: string): ManagementKpiStats {
   const cohort = orders.filter((o) => {
+    if (o.is_regular_customer) return false;
     const d = dateInTz(new Date(o.created_at));
     return d >= from && d <= to;
   });

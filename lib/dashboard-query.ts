@@ -14,6 +14,11 @@ import type { Order } from "@/lib/types";
  * app's timezone, sales and fulfillment bucket by order_date, and RTS is
  * Returned over Delivered on an order-count basis.
  *
+ * The lead counts (total/new/ringing) exclude regular customers, matching
+ * lead_status_counts() and the Leads list; the order-dated figures include
+ * them, because those orders are sales. Both halves of that rule live in
+ * dashboard_kpis and in computeManagementKpiStats, and must change together.
+ *
  * computeManagementKpiStats / computeAgentDashboardStats remain in
  * lib/performance.ts: they are still the definition of record, still used
  * where a list of orders is already in hand, and they are what these results
