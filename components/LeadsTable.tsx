@@ -7,6 +7,7 @@ import { OrderDetailsModal } from "@/components/OrderDetailsModal";
 import { TrackingCell } from "@/components/TrackingCell";
 import type { EditorLine } from "@/components/OrderItemsEditor";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
+import { listItemNames } from "@/lib/order-totals";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 import type { CallSession, Order, OrderStatus } from "@/lib/types";
 import { displayOrderId, isPendingOrderId } from "@/lib/types";
@@ -158,7 +159,11 @@ export function LeadsTable({
                   <td className={cell} title={o.notes || undefined}>
                     <span className="block max-w-[14rem] truncate">{o.notes || "—"}</span>
                   </td>
-                  <td className={cell}>{o.product_name || "—"}</td>
+                  {/* The cell names the first product and counts the rest; the
+                      tooltip names them all. */}
+                  <td className={cell} title={listItemNames(linesByOrder[o.id] || []) || undefined}>
+                    {o.product_name || "—"}
+                  </td>
                   <td className={cell}>{o.unit_price != null ? formatCurrency(o.unit_price) : "—"}</td>
                   <td className={cell}>{o.courier || "—"}</td>
                   <td className={cell}>

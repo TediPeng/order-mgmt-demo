@@ -54,3 +54,26 @@ export function summarizeItems(items: { product_name: string }[]): string {
   if (items.length === 1) return items[0].product_name;
   return `${items[0].product_name} +${items.length - 1} more`;
 }
+
+/**
+ * Every line named, one per row — what hovering the summary reveals.
+ *
+ * "+2 more" is the right width for a list column but it is the only thing said
+ * about two of the three things the customer is buying, and finding out what
+ * they are meant opening the order. The rows are already on the page.
+ *
+ * Empty for a single line, because the cell beneath already says it, and an
+ * empty string becomes no tooltip at all rather than one repeating the text
+ * under the cursor.
+ */
+export function listItemNames(items: { product_name: string; quantity?: string | number }[]): string {
+  if (items.length < 2) return "";
+  return items
+    .map((item) => {
+      // Pack size lives in the product name here ("6 CLOVES COFFEE"), so a line
+      // quantity of one is the normal case and saying "×1" would only be noise.
+      const quantity = Number(item.quantity ?? 1);
+      return quantity > 1 ? `${item.product_name} ×${quantity}` : item.product_name;
+    })
+    .join("\n");
+}
