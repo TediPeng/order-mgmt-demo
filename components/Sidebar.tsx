@@ -8,6 +8,7 @@ import {
   ShoppingCart,
   Package,
   PhoneCall,
+  PhoneOutgoing,
   UploadCloud,
   Users2,
   UserCheck,
@@ -84,6 +85,10 @@ export function Sidebar({
       title: "Sales",
       items: [
         { href: "/leads", label: "Leads", icon: ShoppingCart, show: access.orders },
+        // Beside Leads, not under Files: this is the day's calls against those
+        // leads, not an uploaded recording. Same gate as Leads because it shows
+        // the same rows, scoped the same way — an agent sees their own.
+        { href: "/calls", label: "Numbers Called", icon: PhoneOutgoing, show: access.orders },
         { href: "/regular-customers", label: "Regular Customers", icon: UserCheck, show: access.regular_customers },
         { href: "/products", label: "Products", icon: Package, show: access.products },
       ],
