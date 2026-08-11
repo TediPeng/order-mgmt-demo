@@ -23,6 +23,7 @@ import {
   getOrderRow,
   hasSuccessfulForward,
   listAccounts,
+  markSyncFailed,
   resolveAccount,
   updateOrderSyncFields,
   insertSyncLog,
@@ -93,12 +94,19 @@ async function failSync(
     notify?: boolean;
   } = {}
 ): Promise<void> {
-  await updateOrderSyncFields(order.id, {
+  // Refused when the order has since succeeded. The checks that reject an order
+  // run before the claim, so a rejection can still be on its way while a forward
+  // that already worked lands — and this write used to overwrite it, leaving a
+  // live Pancake ID under a red "Sync Failed" and putting an order that exists
+  // back in the retry queue. The predicate travels with the update, so there is
+  // no window between deciding and writing.
+  const recorded = await markSyncFailed(order.id, {
     pancake_sync_status: "sync_failed",
     pancake_sync_error: reason,
     ...(extra.requestPayload !== undefined ? { pancake_request_payload: extra.requestPayload } : {}),
     ...(extra.responsePayload !== undefined ? { pancake_response_payload: extra.responsePayload } : {}),
   });
+
   await insertSyncLog({
     order_id: order.id,
     pancake_account_id: extra.accountId ?? null,
@@ -111,9 +119,16 @@ async function failSync(
     error_message: reason,
     triggered_by: opts.triggeredBy ?? null,
     source: opts.source,
-    payload_summary: { order_number: order.order_number, system_order_id: order.system_order_id },
+    payload_summary: {
+      order_number: order.order_number,
+      system_order_id: order.system_order_id,
+      // The attempt did fail and the log says so — but if the order was already
+      // in Pancake by the time this landed, the failure is a race, not a state.
+      ...(recorded ? {} : { superseded_by_a_successful_sync: true }),
+    },
   });
-  if (extra.notify !== false) {
+  // Nothing to tell anyone about an order that is already in Pancake.
+  if (recorded && extra.notify !== false) {
     await notifyAdministrators(
       "pancake_sync_failed",
       `Pancake sync failed: ${order.order_number}`,

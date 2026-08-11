@@ -318,6 +318,37 @@ export async function hasSuccessfulForward(orderId: string): Promise<boolean> {
   return (data || []).length > 0;
 }
 
+/**
+ * Records a failure, but only against an order that has not already succeeded.
+ *
+ * A failure and a success can be in flight at once — the lookups that reject an
+ * order run BEFORE the claim, deliberately, so an unmatched Call Name fails
+ * cheaply without burning a retry slot, and nothing about that path is
+ * serialised against a forward that is already away. On 2026-08-11 that flipped
+ * ORD-20260810-0043 back to `sync_failed` twice after it had been created in
+ * Pancake as order 23229: the popup showed "Sync Failed" and a stale staff
+ * error above a live Pancake ID, and the sweep put an order that already exists
+ * back in the retry queue — which is how a second parcel gets shipped.
+ *
+ * The predicate travels with the write, so two callers cannot interleave
+ * between the check and the update. Returns false when the write was refused,
+ * which the caller reads as "this order is fine, say nothing".
+ */
+export async function markSyncFailed(
+  id: string,
+  fields: Partial<Pick<Order, "pancake_sync_status" | "pancake_sync_error" | "pancake_request_payload" | "pancake_response_payload">>
+): Promise<boolean> {
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .update(fields)
+    .eq("id", id)
+    .is("pancake_order_id", null)
+    .neq("pancake_sync_status", "synced")
+    .select("id");
+  if (error) throw new Error(`orders update failed: ${error.message}`);
+  return (data || []).length > 0;
+}
+
 /** Targeted update of sync/fulfillment fields only — never touches notes,
  * agent assignment, or any other internally-owned column (Section 6). */
 export async function updateOrderSyncFields(
