@@ -101,11 +101,19 @@ export function LeadsTable({
 
   return (
     <>
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      {/* Capped height, so the table scrolls inside its own box rather than
+          making the page longer. That is what keeps the sideways scrollbar
+          reachable: it sits at the bottom edge of what you can see instead of
+          below twenty-five rows, and seventeen columns of a 2200px table were
+          otherwise only reachable by scrolling to the end of the page first.
+          The agent table has worked this way all along. */}
+      <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full min-w-[2200px] text-left text-table">
-          <thead className="bg-slate-50 text-table font-medium uppercase tracking-wide text-slate-500">
+          <thead className="sticky top-0 z-20 bg-slate-50 text-table font-medium uppercase tracking-wide text-slate-500 shadow-sm">
             <tr>
-              <th className="sticky left-0 z-10 whitespace-nowrap bg-slate-50 px-2.5 py-2">Order ID</th>
+              {/* Above the body's own sticky column (z-10), so the two do not
+                  cross at the corner where both are pinned. */}
+              <th className="sticky left-0 z-30 whitespace-nowrap bg-slate-50 px-2.5 py-2">Order ID</th>
               <th className="px-2.5 py-2">Order Date</th>
               <th className="px-2.5 py-2">Agent</th>
               <th className="px-2.5 py-2">Customer Name</th>
