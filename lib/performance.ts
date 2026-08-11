@@ -484,6 +484,11 @@ export interface DateRange {
   label: string;
 }
 
+/** The "All Time" lower bound. A date rather than null so every caller — the
+ * KPI RPCs, the exports, the ranking — keeps taking two dates and needs no
+ * open-ended branch of its own. */
+const EPOCH = "1970-01-01";
+
 export function resolveDateRange(preset: string | undefined, customFrom?: string, customTo?: string): DateRange {
   const today = todayInTz();
   if (preset === "custom" && customFrom && customTo) {
@@ -507,6 +512,13 @@ export function resolveDateRange(preset: string | undefined, customFrom?: string
     const d = new Date(today + "T00:00:00Z");
     const first = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
     return { from: first.toISOString().slice(0, 10), to: today, label: "This Month" };
+  }
+  // Every lead the floor has ever taken, for the question the presets could not
+  // ask. The Leads page counts the whole table and the Dashboard counted one
+  // day, so the two disagreed by fifty thousand rows and the Dashboard read as
+  // broken. A date range still applies — it just starts before the system did.
+  if (preset === "all") {
+    return { from: EPOCH, to: today, label: "All Time" };
   }
   // default "today"
   return { from: today, to: today, label: "Today" };

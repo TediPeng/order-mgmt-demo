@@ -11,6 +11,7 @@ const PRESETS: { key: string; label: string }[] = [
   { key: "yesterday", label: "Yesterday" },
   { key: "this_week", label: "This Week" },
   { key: "this_month", label: "This Month" },
+  { key: "all", label: "All Time" },
   { key: "custom", label: "Custom Range" },
 ];
 

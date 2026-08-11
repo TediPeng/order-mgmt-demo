@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { StatusBadge, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { OrderDetailsModal } from "@/components/OrderDetailsModal";
+import { TrackingCell } from "@/components/TrackingCell";
 import type { EditorLine } from "@/components/OrderItemsEditor";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import type { CallSession, Order } from "@/lib/types";
@@ -12,37 +13,6 @@ import { displayOrderId, isPendingOrderId } from "@/lib/types";
 export interface CareStaff {
   name: string;
   email: string;
-}
-
-/** Pancake reports tracking as `tracking_link` — a full courier URL, often 200+
- * characters. Printed raw it stretched the row far past the viewport and pushed
- * every other column out of reach. A URL renders as a short link instead; a
- * plain code (some couriers send one via `partner.extend_code`) still shows as
- * text. The full value stays available via the title attribute either way. */
-function TrackingCell({ value }: { value: string | null }) {
-  if (!value) return <span className="text-slate-400">Not Available</span>;
-
-  const isUrl = /^https?:\/\//i.test(value);
-  if (!isUrl) {
-    return (
-      <span title={value} className="block max-w-[16rem] truncate">
-        {value}
-      </span>
-    );
-  }
-
-  return (
-    <a
-      href={value}
-      target="_blank"
-      rel="noopener noreferrer"
-      title={value}
-      onClick={(e) => e.stopPropagation()}
-      className="text-[var(--brand-primary)] hover:underline"
-    >
-      Track parcel ↗
-    </a>
-  );
 }
 
 /** The agent leads table: exactly the columns an agent is allowed to see, in
@@ -117,7 +87,11 @@ export function AgentLeadsTable({
     router.refresh();
   }
 
-  const cell = "px-3 py-2.5 text-slate-600 whitespace-nowrap";
+  // One row per lead, one line per row. Every cell keeps its content on a single
+  // line: an agent scans this table down the customer-name column, and a row
+  // that grows to three lines because one address wrapped costs more than the
+  // truncation does.
+  const cell = "px-2.5 py-1.5 text-slate-600 whitespace-nowrap";
 
   return (
     <>
@@ -125,23 +99,23 @@ export function AgentLeadsTable({
         <table className="w-full min-w-[2250px] text-left text-table">
           <thead className="sticky top-0 z-20 bg-slate-50 text-table font-medium uppercase tracking-wide text-slate-500 shadow-sm">
             <tr>
-              <th className="sticky left-0 z-30 bg-slate-50 px-3 py-3">Order ID</th>
-              <th className="px-3 py-3">Order Date</th>
-              <th className="px-3 py-3">Order Source</th>
-              <th className="px-3 py-3">Customer Name</th>
-              <th className="px-3 py-3">Phone Number</th>
-              <th className="px-3 py-3">Address (Purok)</th>
-              <th className="px-3 py-3">Province</th>
-              <th className="px-3 py-3">City / Municipality</th>
-              <th className="px-3 py-3">Barangay</th>
-              <th className="px-3 py-3">Landmark</th>
-              <th className="px-3 py-3">Notes</th>
-              <th className="px-3 py-3">New Product Order</th>
-              <th className="px-3 py-3">Unit Price</th>
-              <th className="px-3 py-3">Tag</th>
-              <th className="px-3 py-3">Courier</th>
-              <th className="px-3 py-3">Tracking Number</th>
-              <th className="px-3 py-3">Status</th>
+              <th className="sticky left-0 z-30 whitespace-nowrap bg-slate-50 px-2.5 py-2">Order ID</th>
+              <th className="px-2.5 py-2">Order Date</th>
+              <th className="px-2.5 py-2">Order Source</th>
+              <th className="px-2.5 py-2">Customer Name</th>
+              <th className="px-2.5 py-2">Phone Number</th>
+              <th className="px-2.5 py-2">Address (Purok)</th>
+              <th className="px-2.5 py-2">Province</th>
+              <th className="px-2.5 py-2">City / Municipality</th>
+              <th className="px-2.5 py-2">Barangay</th>
+              <th className="px-2.5 py-2">Landmark</th>
+              <th className="px-2.5 py-2">Notes</th>
+              <th className="px-2.5 py-2">New Product Order</th>
+              <th className="px-2.5 py-2">Unit Price</th>
+              <th className="px-2.5 py-2">Tag</th>
+              <th className="px-2.5 py-2">Courier</th>
+              <th className="px-2.5 py-2">Tracking Number</th>
+              <th className="px-2.5 py-2">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -152,7 +126,7 @@ export function AgentLeadsTable({
                   {/* Order ID doubles as the row control. Once an order syncs
                       this is Pancake's own generated id — the reference both
                       systems share — so it leads the row. */}
-                  <td className={cn("sticky left-0 z-10 px-3 py-2.5", style.row)}>
+                  <td className={cn("sticky left-0 z-10 whitespace-nowrap px-2.5 py-1.5", style.row)}>
                     <button
                       type="button"
                       onClick={() => setOpenId(o.id)}
@@ -182,7 +156,7 @@ export function AgentLeadsTable({
                   <td className={cell}>{o.barangay || "—"}</td>
                   <td className={cell}>{o.landmark || "—"}</td>
                   <td className={cell} title={o.notes || undefined}>
-                    <span className="block max-w-[22rem] truncate">{o.notes || "—"}</span>
+                    <span className="block max-w-[14rem] truncate">{o.notes || "—"}</span>
                   </td>
                   <td className={cell}>{productNameByOrderId[o.id] || o.product_name || "—"}</td>
                   <td className={cell}>{o.unit_price != null ? formatCurrency(o.unit_price) : "—"}</td>
@@ -191,7 +165,7 @@ export function AgentLeadsTable({
                   <td className={cell}>
                     <TrackingCell value={o.tracking_number} />
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-2.5 py-1.5">
                     <StatusBadge status={o.status} />
                   </td>
                 </tr>

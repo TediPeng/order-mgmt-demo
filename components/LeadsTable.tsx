@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { OrderDetailsModal } from "@/components/OrderDetailsModal";
+import { TrackingCell } from "@/components/TrackingCell";
 import type { EditorLine } from "@/components/OrderItemsEditor";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
@@ -92,27 +93,38 @@ export function LeadsTable({
     router.refresh();
   }
 
+  // Matches the agent table: one line per row, truncation over wrapping. A
+  // supervisor reads down a column here, and a row that grows to three lines
+  // because one landmark wrapped costs more than the truncation does.
+  const cell = "px-2.5 py-1.5 text-slate-600 whitespace-nowrap";
+
   return (
     <>
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full min-w-[2200px] text-left text-table">
           <thead className="bg-slate-50 text-table font-medium uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3">Order ID</th>
-              <th className="px-4 py-3">Order Date</th>
-              <th className="px-4 py-3">Agent</th>
-              <th className="px-4 py-3">Customer Name</th>
-              <th className="px-4 py-3">Phone Number</th>
-              <th className="px-4 py-3">Purok</th>
-              <th className="px-4 py-3">Barangay</th>
-              <th className="px-4 py-3">City</th>
-              <th className="px-4 py-3">Province</th>
-              <th className="px-4 py-3">Landmark</th>
-              <th className="px-4 py-3">Notes</th>
-              <th className="px-4 py-3">New Product Order</th>
-              <th className="px-4 py-3">Unit Price</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Pancake Sync</th>
+              <th className="sticky left-0 z-10 whitespace-nowrap bg-slate-50 px-2.5 py-2">Order ID</th>
+              <th className="px-2.5 py-2">Order Date</th>
+              <th className="px-2.5 py-2">Agent</th>
+              <th className="px-2.5 py-2">Customer Name</th>
+              <th className="px-2.5 py-2">Phone Number</th>
+              <th className="px-2.5 py-2">Purok</th>
+              <th className="px-2.5 py-2">Barangay</th>
+              <th className="px-2.5 py-2">City</th>
+              <th className="px-2.5 py-2">Province</th>
+              <th className="px-2.5 py-2">Landmark</th>
+              <th className="px-2.5 py-2">Notes</th>
+              <th className="px-2.5 py-2">New Product Order</th>
+              <th className="px-2.5 py-2">Unit Price</th>
+              {/* The two columns this table was missing. A supervisor chasing a
+                  parcel had to open each order to find out who is carrying it
+                  and under what number — the agents' own table has shown both
+                  all along. */}
+              <th className="px-2.5 py-2">Courier</th>
+              <th className="px-2.5 py-2">Tracking Number</th>
+              <th className="px-2.5 py-2">Status</th>
+              <th className="px-2.5 py-2">Pancake Sync</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -120,7 +132,7 @@ export function LeadsTable({
               const style = LEAD_STATUS_STYLES[o.status];
               return (
                 <tr key={o.id} className={cn(style.row, style.rowHover)}>
-                  <td className={cn("sticky left-0 z-10 px-4 py-3", style.row)}>
+                  <td className={cn("sticky left-0 z-10 whitespace-nowrap px-2.5 py-1.5", style.row)}>
                     <button
                       type="button"
                       onClick={() => setOpenId(o.id)}
@@ -134,24 +146,28 @@ export function LeadsTable({
                       {isPendingOrderId(o) && <span className="ml-1 text-xs font-normal">(pending sync)</span>}
                     </button>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{o.order_date ? formatDate(o.order_date) : "—"}</td>
-                  <td className="px-4 py-3 text-slate-600">{agentUsernameById[o.agent_id] || "—"}</td>
-                  <td className="px-4 py-3 text-slate-600">{o.customer_name}</td>
-                  <td className="px-4 py-3 text-slate-600">{o.customer_phone || "—"}</td>
-                  <td className="px-4 py-3 text-slate-600">{o.purok || "—"}</td>
-                  <td className="px-4 py-3 text-slate-600">{o.barangay || "—"}</td>
-                  <td className="px-4 py-3 text-slate-600">{o.city || "—"}</td>
-                  <td className="px-4 py-3 text-slate-600">{o.province || "—"}</td>
-                  <td className="px-4 py-3 text-slate-600">{o.landmark || "—"}</td>
-                  <td className="px-4 py-3 text-slate-600" title={o.notes || undefined}>
-                    <span className="block max-w-[22rem] truncate">{o.notes || "—"}</span>
+                  <td className={cell}>{o.order_date ? formatDate(o.order_date) : "—"}</td>
+                  <td className={cell}>{agentUsernameById[o.agent_id] || "—"}</td>
+                  <td className={cell}>{o.customer_name}</td>
+                  <td className={cell}>{o.customer_phone || "—"}</td>
+                  <td className={cell}>{o.purok || "—"}</td>
+                  <td className={cell}>{o.barangay || "—"}</td>
+                  <td className={cell}>{o.city || "—"}</td>
+                  <td className={cell}>{o.province || "—"}</td>
+                  <td className={cell}>{o.landmark || "—"}</td>
+                  <td className={cell} title={o.notes || undefined}>
+                    <span className="block max-w-[14rem] truncate">{o.notes || "—"}</span>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{o.product_name || "—"}</td>
-                  <td className="px-4 py-3 text-slate-600">{o.unit_price != null ? formatCurrency(o.unit_price) : "—"}</td>
-                  <td className="px-4 py-3">
+                  <td className={cell}>{o.product_name || "—"}</td>
+                  <td className={cell}>{o.unit_price != null ? formatCurrency(o.unit_price) : "—"}</td>
+                  <td className={cell}>{o.courier || "—"}</td>
+                  <td className={cell}>
+                    <TrackingCell value={o.tracking_number} />
+                  </td>
+                  <td className="px-2.5 py-1.5">
                     <StatusBadge status={o.status} />
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-2.5 py-1.5">
                     <SyncStatusChip
                       status={o.pancake_sync_status}
                       needsReview={o.pancake_sync_status === "sync_failed" && o.pancake_retry_count >= MAX_ATTEMPTS}
