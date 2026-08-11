@@ -94,6 +94,17 @@ export async function deleteDuplicateOrderAction(orderId: string) {
   const reason = protectedReason(order!);
   if (reason) back(`${order!.order_number} cannot be deleted here — ${reason}.`);
 
+  // protectedReason() judges one row on its own, so it cannot see the two things
+  // that are true only of a group: that this row is a duplicate at all, and who
+  // holds the lead being kept. Both live in lead_duplicate_rows(), so the single
+  // Delete button asks the same question the sweep asks rather than a weaker one
+  // — otherwise the row a "Delete all" now refuses to touch could still be
+  // removed one click at a time.
+  const group = await duplicateRemovable(leadScopeFor(user, db), phoneKeyOf(order!.customer_phone));
+  if (!group.ids.includes(orderId)) {
+    back(`${order!.order_number} cannot be deleted here — it is not a removable duplicate.`);
+  }
+
   const deleted = await deleteOrders(db, user, [orderId], "single");
   redirect(`${PATH}?deleted=${deleted}`);
 }

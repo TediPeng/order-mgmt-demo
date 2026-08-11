@@ -24,7 +24,13 @@ import type { Order } from "@/lib/types";
  *
  * This is the definition of record. lead_protected_reason() in SQL is a
  * transcription of it and must be changed with it — the page and the sweep ask
- * the database, and this function guards the single-row delete. */
+ * the database, and this function guards the single-row delete.
+ *
+ * One protection deliberately does NOT live here: a lead whose group is kept by
+ * a DIFFERENT agent. That is a fact about the group, not about the order, so it
+ * can only be decided where the grouping happens — lead_duplicate_rows() adds it
+ * on top of this reason. Callers must therefore ask duplicateRemovable() rather
+ * than treat a null from this function as permission. */
 export function protectedReason(order: Order): string | null {
   if (order.pancake_order_id || order.forwarded_to_pancake_at) return "Sent to Pancake POS";
   if (order.order_date) return "Reached Packaging (counts as a sale)";

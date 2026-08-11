@@ -122,7 +122,9 @@ export default async function DuplicateLeadsPage({
         <Alert kind="info" className="mb-4">
           {summary.protectedRows} duplicate{summary.protectedRows === 1 ? " is" : "s are"} protected from deletion here:
           an order already sent to Pancake POS, or one that reached Packaging, is a sale in another system&apos;s hands
-          — those are reconciled by a person, not swept up.
+          — those are reconciled by a person, not swept up. So is a lead whose number is kept by a different agent:
+          removing it would hand that customer to someone else rather than tidy a list, and a newly imported batch is
+          always the newest row, so it would always be the one to go.
         </Alert>
       )}
 
