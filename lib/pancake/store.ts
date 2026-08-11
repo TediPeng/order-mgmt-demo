@@ -244,6 +244,18 @@ export async function listOrdersForPolling(): Promise<Order[]> {
   return (data || []).map(mapOrder);
 }
 
+/** How many orders are waiting in the Sync Failed queue, for the badge that
+ * says so before anyone opens it. A head count rather than the rows: the number
+ * is wanted on a page that does not otherwise read orders at all. */
+export async function countOrdersWithFailedSync(): Promise<number> {
+  const { count, error } = await supabaseAdmin
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .eq("pancake_sync_status", "sync_failed");
+  if (error) throw new Error(`orders count failed: ${error.message}`);
+  return count ?? 0;
+}
+
 export async function listOrdersWithFailedSync(): Promise<Order[]> {
   const { data, error } = await supabaseAdmin.from("orders").select("*").eq("pancake_sync_status", "sync_failed");
   if (error) throw new Error(`orders read failed: ${error.message}`);

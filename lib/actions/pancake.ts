@@ -27,6 +27,7 @@ import { LEAD_STATUSES } from "@/lib/validation";
 import type { PancakeAccount, Profile } from "@/lib/types";
 
 const SETTINGS_PATH = "/settings/integrations";
+const FAILED_PATH = "/settings/integrations/failed";
 
 // All integration management is Management-only ("integrations" module in the
 // roles matrix; full-access roles bypass, nothing is granted by default).
@@ -233,6 +234,40 @@ export async function deleteStatusMapEntryAction(id: string) {
 }
 
 // --- Per-order manual sync (used by the API route behind the popup buttons) --
+
+/** Orders re-sent by one press of Retry All.
+ *
+ * Each forward is several calls to Pancake, one of which can sit for fifteen
+ * seconds before timing out, and the whole batch runs inside one request. The
+ * cap is what keeps a queue of failures from running past the function's time
+ * limit and being killed halfway — leaving some orders retried, some not, and
+ * nothing on screen to say which. What was left over is reported instead, and
+ * pressing the button again takes the next batch. */
+const RETRY_BATCH = 20;
+
+/** Re-sends a set of failed orders — the Sync Failed queue's Retry All.
+ *
+ * Serial, like the sweep: these are calls to somebody else's API and a burst of
+ * twenty parallel forwards is how a rate limit gets found. */
+export async function retryFailedSyncsAction(orderIds: string[]) {
+  const { user, db } = await requireUserLite();
+  requirePermission(user, "integrations", "manage", db, FAILED_PATH);
+
+  const batch = orderIds.slice(0, RETRY_BATCH);
+  let fixed = 0;
+  for (const id of batch) {
+    const result = await forwardOrderToPancake(id, {
+      source: "manual_sync",
+      triggeredBy: user.id,
+      allowRetry: true,
+    });
+    if (result.ok) fixed++;
+  }
+
+  redirect(
+    `${FAILED_PATH}?retried=${batch.length}&fixed=${fixed}&left=${Math.max(0, orderIds.length - batch.length)}`
+  );
+}
 
 export async function manualRetrySync(user: Profile, orderId: string): Promise<{ ok: boolean; message: string }> {
   const result = await forwardOrderToPancake(orderId, { source: "manual_sync", triggeredBy: user.id, allowRetry: true });

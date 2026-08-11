@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
-import { listAccounts } from "@/lib/pancake/store";
+import { listAccounts, countOrdersWithFailedSync } from "@/lib/pancake/store";
 import { listVariations } from "@/lib/pancake/listVariations";
 import { listShops } from "@/lib/pancake/listShops";
 import { maskStoredSecret } from "@/lib/pancake/crypto";
@@ -47,7 +47,7 @@ export default async function IntegrationsSettingsPage({
   if (!can(user.role, "integrations", "view", db.role_permissions)) redirect("/dashboard");
   const canManage = can(user.role, "integrations", "manage", db.role_permissions);
 
-  const accounts = await listAccounts();
+  const [accounts, failedCount] = await Promise.all([listAccounts(), countOrdersWithFailedSync()]);
   const hasActiveDefault = accounts.some((a) => a.is_active && a.is_default);
   const encryptionConfigured = Boolean(process.env.ENCRYPTION_KEY && process.env.ENCRYPTION_KEY.length >= 16);
   // Shown verbatim so it can be pasted straight into Pancake's Webhook URL field.
@@ -191,6 +191,19 @@ export default async function IntegrationsSettingsPage({
           </Link>
           <Link href="/settings/integrations/logs" className="font-medium text-[var(--brand-primary)] hover:underline">
             Sync Logs
+          </Link>
+          {/* Carries its count, so a queue of failures is visible from here
+              rather than only to whoever thinks to look for it. */}
+          <Link
+            href="/settings/integrations/failed"
+            className="font-medium text-[var(--brand-primary)] hover:underline"
+          >
+            Sync Failed
+            {failedCount > 0 && (
+              <span className="ml-1.5 rounded-full bg-red-100 px-1.5 py-0.5 text-xs font-semibold text-red-700 tabular-nums">
+                {failedCount}
+              </span>
+            )}
           </Link>
         </div>
       </div>
