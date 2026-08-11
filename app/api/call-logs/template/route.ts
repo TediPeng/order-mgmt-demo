@@ -20,7 +20,12 @@ export async function GET() {
   return new NextResponse(buf, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": 'attachment; filename="call-log-import-template.xlsx"',
+      // A new name, deliberately. The old template downloaded as
+      // call-log-import-template.xlsx and is sitting in everybody's Downloads
+      // folder; handing out a different file under the same name is how the
+      // wrong one gets filled in for the next month. Both still import — this
+      // is about which file a person picks, not which the server accepts.
+      "Content-Disposition": 'attachment; filename="call-log-template-v2.xlsx"',
     },
   });
 }

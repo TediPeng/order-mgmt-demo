@@ -108,8 +108,10 @@ export default async function CallLogsPage({
         <Card className="mb-6">
           <CardHeader className="flex items-center justify-between">
             <CardTitle>Upload a call log file</CardTitle>
+            {/* Named so the one already in someone's Downloads folder is not
+                mistaken for this one. */}
             <a href="/api/call-logs/template" className="text-xs font-medium text-[var(--brand-primary)] hover:underline">
-              Download template
+              Download template (v2 — no Agent Name)
             </a>
           </CardHeader>
           <CardContent>
