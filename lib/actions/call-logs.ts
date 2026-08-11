@@ -59,13 +59,12 @@ export async function uploadCallLogAction(formData: FormData) {
   const parsedRecords: Omit<CallLogRecord, "id" | "call_log_id">[] = [];
 
   dataRows.forEach((row, idx) => {
+    // Two columns, in the template's order. The rest of the record's fields
+    // still exist and still render for logs uploaded before this change; they
+    // are simply no longer asked for.
     const raw = {
-      caller_name: row[0] || "",
+      call_date: row[0] || "",
       phone_number: row[1] || "",
-      call_date: row[2] || "",
-      duration_seconds: row[3] === "" ? 0 : Number(row[3]),
-      call_type: row[4] || "",
-      notes: row[5] || "",
     };
     const result = callLogRowSchema.safeParse(raw);
     if (!result.success) {

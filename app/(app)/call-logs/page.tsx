@@ -111,7 +111,7 @@ export default async function CallLogsPage({
             {/* Named so the one already in someone's Downloads folder is not
                 mistaken for this one. */}
             <a href="/api/call-logs/template" className="text-xs font-medium text-[var(--brand-primary)] hover:underline">
-              Download template (v2 — no Agent Name)
+              Download template (Call Date + Phone Number)
             </a>
           </CardHeader>
           <CardContent>
@@ -130,10 +130,11 @@ export default async function CallLogsPage({
               </div>
             </form>
             <p className="mt-2 text-xs text-slate-400">
-              Accepts .xlsx or .csv, max 10 MB. Columns: Caller Name, Phone Number, Call Date, Duration (seconds),
-              Call Type, Notes. Every row is filed under <span className="font-medium text-slate-500">your</span>{" "}
-              account — upload your own file rather than somebody else&apos;s. A spreadsheet still carrying the old
-              Agent Name column is accepted; that column is ignored.
+              Accepts .xlsx or .csv, max 10 MB. Two columns only:{" "}
+              <span className="font-medium text-slate-500">Call Date</span> and{" "}
+              <span className="font-medium text-slate-500">Phone Number</span>. Every row is filed under{" "}
+              <span className="font-medium text-slate-500">your</span> account — upload your own file rather than
+              somebody else&apos;s. Files in the older layout are refused, so download the template above and use that.
             </p>
           </CardContent>
         </Card>

@@ -501,29 +501,31 @@ export function parseProductStatus(raw: string): ProductStatus | null {
 export const MAX_PRODUCT_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 /**
- * The call log template's columns.
+ * The call log template's columns: when, and what number.
  *
- * "Agent Name" was the seventh and is gone: whose log it is comes from who
- * uploaded it. Typing a name into a spreadsheet was a second place for an
- * agent's identity to live, spelled by hand, and a row whose name did not match
- * a profile failed the whole file.
+ * Everything else has been taken out. "Agent Name" went first — whose log it is
+ * comes from who uploaded it — and then Caller Name, Duration, Call Type and
+ * Notes, which were transcribed by hand from a phone's own call list and were
+ * either blank or a second, worse copy of something the system already knew.
+ * What the floor actually needs from a call log is which numbers were rung and
+ * when.
  *
- * The header check compares this list against the first columns of the file, so
- * a spreadsheet still carrying the old Agent Name column is accepted and that
- * column ignored — nobody has to go and re-save the files they already have.
+ * The record columns stay in the database. Logs uploaded before this change
+ * keep their caller names and durations, and the detail page still shows them.
+ *
+ * The header check is positional, so a file in the older layout is now refused
+ * with "the file format is incorrect" rather than silently read as something
+ * else — Caller Name sitting where Call Date is expected would otherwise import
+ * a column of names as dates.
  */
-export const CALL_LOG_HEADERS = [
-  "Caller Name",
-  "Phone Number",
-  "Call Date",
-  "Duration (seconds)",
-  "Call Type",
-  "Notes",
-];
+export const CALL_LOG_HEADERS = ["Call Date", "Phone Number"];
 
 export const callLogRowSchema = z.object({
   caller_name: z.string().trim().optional().default(""),
-  phone_number: z.string().trim().optional().default(""),
+  // Required now that it is one of only two columns: a row with no number
+  // records nothing, and a blank cell in a two-column sheet is a mistake worth
+  // naming rather than importing.
+  phone_number: z.string().trim().min(1, "Phone Number is required"),
   call_date: z.string().trim().optional().default(""),
   duration_seconds: z.number().nonnegative("Duration must be zero or more").default(0),
   call_type: z.string().trim().optional().default(""),
