@@ -20,11 +20,11 @@ export type AgentScope = string[] | null;
 
 /** Mirrors scopeOrders() in lib/order-access.ts, as a set of agent ids.
  *
- * The one difference is deliberate: the in-memory version also checks that an
- * order's assigned_agent_email matches the agent's, a data-integrity guard
- * against a row whose two agent fields disagree. That cannot be expressed
- * against another table in one query; agent_id is the column every write sets
- * and the one the app treats as authoritative. */
+ * The two now agree exactly. They did not until 2026-08-11: the in-memory
+ * version also required an order's assigned_agent_email to match the agent's,
+ * which cannot be expressed against another table in one query, so this list
+ * showed leads that every action then refused. agent_id is the column every
+ * write sets and the one both sides treat as the owner. */
 export function leadScopeFor(user: Profile, db: DbShape): AgentScope {
   if (isFullAccess(user.role)) {
     // A test account's orders are real rows but not the floor's work, so
