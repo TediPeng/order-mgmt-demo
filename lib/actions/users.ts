@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { writeDb, uuid, nowIso } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
-import { requireUser, requirePermission } from "./guards";
+import { requireUser, requireUserLite, requirePermission } from "./guards";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { hashPassword } from "@/lib/auth";
 import { randomTempPassword } from "@/lib/passwords";
 import { userFormSchema } from "@/lib/validation";
@@ -143,7 +144,10 @@ export async function createUserAction(formData: FormData) {
  * the account actually holds.
  */
 export async function updateUserProfileAction(userId: string, formData: FormData) {
-  const { user, db } = await requireUser();
+  // Lite: editing a profile has no business reading fifty thousand orders. The
+  // one thing this action does touch on the orders table is written directly,
+  // below, rather than through the in-memory copy.
+  const { user, db } = await requireUserLite();
   requirePermission(user, "users", "edit", db, "/users");
 
   const target = db.profiles.find((p) => p.id === userId);
@@ -201,13 +205,47 @@ export async function updateUserProfileAction(userId: string, formData: FormData
   if (changed.length === 0) redirect("/users");
 
   Object.assign(target!, after);
+
+  // An agent's email is denormalized onto every order they own, and
+  // orderInScope() requires the two to agree — a mismatch is read as "not your
+  // lead" and fails closed. So changing the email here, and nowhere else, took
+  // 2,283 leads away from the agent who owned them on 2026-08-11: the Leads
+  // list still showed them, because that query scopes by agent_id alone, but
+  // Calling and every edit answered "You do not have access to that lead".
+  //
+  // One statement against the orders table rather than the in-memory copy:
+  // the rows are not loaded here and there is no reason to load two thousand of
+  // them to change one column.
+  let ordersRestamped = 0;
+  if (changed.includes("email")) {
+    // The count rides on the update itself. Asking for the rows back instead
+    // would cap the answer at PostgREST's thousand and under-report an agent
+    // holding more than that — which is exactly the size this goes wrong at.
+    const { count, error } = await supabaseAdmin
+      .from("orders")
+      .update({ assigned_agent_email: after.email }, { count: "exact" })
+      .eq("agent_id", userId);
+    if (error) {
+      redirect(`/users?error=${encodeURIComponent(`Could not update this agent's leads: ${error.message}`)}`);
+    }
+    ordersRestamped = count ?? 0;
+  }
+
   const info = await getRequestInfo();
-  logActivity(db, user.id, "USER_UPDATED", "user", userId, { fields: changed, username: after.username }, {
-    module: "users",
-    previous_value: Object.fromEntries(changed.map((k) => [k, before[k]])),
-    updated_value: Object.fromEntries(changed.map((k) => [k, after[k]])),
-    ...info,
-  });
+  logActivity(
+    db,
+    user.id,
+    "USER_UPDATED",
+    "user",
+    userId,
+    { fields: changed, username: after.username, ...(ordersRestamped ? { orders_restamped: ordersRestamped } : {}) },
+    {
+      module: "users",
+      previous_value: Object.fromEntries(changed.map((k) => [k, before[k]])),
+      updated_value: Object.fromEntries(changed.map((k) => [k, after[k]])),
+      ...info,
+    }
+  );
   await writeDb(db);
   redirect("/users?updated=1");
 }
