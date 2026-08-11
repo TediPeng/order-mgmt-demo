@@ -83,6 +83,11 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
     return acc;
   }, {});
 
+  // Which tile is in force, if any. The counts above stay whole whatever is
+  // selected — a tile that zeroed the others would leave no way back.
+  const [filter, setFilter] = useState<MonitorState | null>(null);
+  const visible = filter ? rows.filter((r) => r.state === filter) : rows;
+
   return (
     <div className="space-y-4">
       {/* Same counts these were always showing, as the dashboards' widget
@@ -90,6 +95,12 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
           Derived from `rows` here in the client rather than passed down from
           the server, so they move with the 20s refresh and the live clock
           instead of going stale between polls. */}
+      {/* Each tile filters the board to its own state. "Three on call" is a
+          number you immediately want the names behind, and reading them off a
+          twenty-row table by badge colour is the slow way to get them. Clicking
+          the tile again clears it. Filtering lives in client state rather than
+          the URL because the board reloads itself every twenty seconds, and a
+          filter that survives that is the whole point. */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
         {(["on_call", "standby", "bio_break", "break", "timed_out", "not_in"] as MonitorState[]).map((s) => (
           <StatWidget
@@ -98,9 +109,27 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
             value={counts[s] || 0}
             tone={STATE_META[s].tone}
             icon={STATE_META[s].icon}
+            selected={filter === s}
+            onClick={() => setFilter(filter === s ? null : s)}
           />
         ))}
       </div>
+
+      {filter && (
+        <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
+          <span>
+            Showing <span className="font-medium text-slate-800">{visible.length}</span> of {rows.length} agent
+            {rows.length === 1 ? "" : "s"} — {STATE_META[filter].label.toLowerCase()}.
+          </span>
+          <button
+            type="button"
+            onClick={() => setFilter(null)}
+            className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+          >
+            Show all
+          </button>
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full min-w-[900px] text-left text-sm">
@@ -116,7 +145,7 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {rows.map((r) => {
+            {visible.map((r) => {
               const live = elapsedSince(r.sinceIso);
               const meta = STATE_META[r.state];
               const Icon = meta.icon;
@@ -152,10 +181,10 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
                 </tr>
               );
             })}
-            {rows.length === 0 && (
+            {visible.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
-                  No agents to monitor.
+                  {filter ? `Nobody is ${STATE_META[filter].label.toLowerCase()} right now.` : "No agents to monitor."}
                 </td>
               </tr>
             )}

@@ -116,6 +116,8 @@ export function StatWidget({
   sub,
   tone = "brand",
   icon: Icon,
+  onClick,
+  selected = false,
 }: {
   label: string;
   value: number | string;
@@ -124,13 +126,22 @@ export function StatWidget({
   sub?: React.ReactNode;
   tone?: StatTone;
   icon?: React.ElementType;
+  /** Makes the tile a button rather than a link — for a filter that lives in
+   * client state instead of the URL. Only a client component may pass it. */
+  onClick?: () => void;
+  /** Draws the tile as the one currently in force. */
+  selected?: boolean;
 }) {
+  const clickable = Boolean(href || onClick);
   const content = (
     <div
       className={cn(
-        "relative h-full overflow-hidden rounded-lg p-4 text-white transition-opacity duration-150",
+        "relative h-full overflow-hidden rounded-lg p-4 text-left text-white transition-opacity duration-150",
         WIDGET_TONE[tone],
-        href && "hover:opacity-90"
+        clickable && "hover:opacity-90",
+        // Ring rather than a border: the tile is a saturated fill, and a border
+        // would have to be drawn in a colour that fights whichever tone it is.
+        selected && "ring-2 ring-slate-900 ring-offset-2"
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -144,6 +155,18 @@ export function StatWidget({
     </div>
   );
 
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-pressed={selected}
+        className="block w-full cursor-pointer rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2"
+      >
+        {content}
+      </button>
+    );
+  }
   if (href) {
     return (
       <Link
