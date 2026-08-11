@@ -710,7 +710,6 @@ export function markOrderDirty(db: DbShape, orderId: string): void {
 }
 
 export async function writeDb(db: DbShape): Promise<void> {
-  const orderSeqRows: Row[] = Object.entries(db.order_seq).map(([seq_date, last_seq]) => ({ seq_date, last_seq }));
 
   // The outbox: everything in here was logged during this request, so all of it
   // is new. Drained below once written, so a second writeDb() in the same
@@ -753,7 +752,10 @@ export async function writeDb(db: DbShape): Promise<void> {
     upsertTable("call_log_records", db.call_log_records as unknown as Row[]),
     upsertTable("schedules", db.schedules as unknown as Row[]),
   ]);
-  await upsertTable("order_sequences", orderSeqRows, "seq_date");
+  // order_sequences is deliberately NOT written here. allocate_order_numbers()
+  // owns it, and writing a snapshot back would undo numbers another request
+  // reserved after this one read — which is the race the function exists to
+  // close.
 
   const { error: settingsError } = await supabaseAdmin
     .from("app_settings")
@@ -856,11 +858,45 @@ async function drainDeletes(db: DbShape, tables: string[]): Promise<void> {
   }
 }
 
-export function nextOrderNumber(db: DbShape, date: Date = new Date()): string {
+/**
+ * The next order numbers for the day, reserved in the database.
+ *
+ * This used to read the sequence out of the in-memory shape, add one, and let
+ * writeDb() put it back. Two agents saving a lead in the same moment both read
+ * the same last_seq, both built the same ORD-YYYYMMDD-NNNN, and the second
+ * insert died on orders_order_number_key — which reached the agent as
+ * "Application error: a server-side exception has occurred". It happened
+ * eight times in the hour it was found.
+ *
+ * allocate_order_numbers() does the increment and the read in one statement,
+ * so no two callers can be handed the same number. It is now the ONLY writer
+ * of order_sequences; writeDb() no longer touches that table.
+ *
+ * `count` reserves a block and returns them all, for the import.
+ */
+export async function reserveOrderNumbers(count = 1, date: Date = new Date()): Promise<string[]> {
   const key = date.toISOString().slice(0, 10);
-  const seq = (db.order_seq[key] ?? 0) + 1;
-  db.order_seq[key] = seq;
-  return `ORD-${key.replace(/-/g, "")}-${String(seq).padStart(4, "0")}`;
+  const { data, error } = await supabaseAdmin.rpc("allocate_order_numbers", {
+    p_seq_date: key,
+    p_count: count,
+  });
+  if (error) throw new Error(`Could not reserve an order number: ${error.message}`);
+
+  // The function returns the LAST sequence reserved; the block is the `count`
+  // numbers ending there.
+  const last = Number(data);
+  const prefix = `ORD-${key.replace(/-/g, "")}-`;
+  const numbers: string[] = [];
+  for (let seq = last - count + 1; seq <= last; seq++) {
+    numbers.push(`${prefix}${String(seq).padStart(4, "0")}`);
+  }
+  return numbers;
+}
+
+/** One number, for the one-lead case. */
+export async function nextOrderNumber(date: Date = new Date()): Promise<string> {
+  const [only] = await reserveOrderNumbers(1, date);
+  return only;
 }
 
 export { uuid, nowIso };

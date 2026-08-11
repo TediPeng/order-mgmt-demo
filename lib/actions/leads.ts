@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { writeDb, uuid, nowIso, nextOrderNumber, queueDelete, markOrderDirty, loadOrderInto } from "@/lib/db";
+import { writeDb, uuid, nowIso, nextOrderNumber, reserveOrderNumbers, queueDelete, markOrderDirty, loadOrderInto } from "@/lib/db";
 import { previousOrderForPhone, customerOrderCount } from "@/lib/orders-lookup";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { logActivity } from "@/lib/activity";
@@ -203,9 +203,14 @@ export async function createLeadAction(formData: FormData) {
     ? null
     : await previousOrderForPhone(data.customer_phone || "");
 
+  // Reserved in the database, not counted in memory: two agents saving at the
+  // same moment used to be handed the same number, and the second save died on
+  // the unique index.
+  const orderNumber = await nextOrderNumber();
+
   const order: Order = {
     id: uuid(),
-    order_number: nextOrderNumber(db),
+    order_number: orderNumber,
     customer_name: data.customer_name,
     customer_phone: data.customer_phone || "",
     purok: data.purok || "",
@@ -1041,6 +1046,12 @@ export async function importLeadsAction(
   // Same reasoning: matchAgentByCallName scans the profile list per row.
   const agentCache = new Map<string, Profile | null>();
   const newOrders: Order[] = [];
+  // One block for the whole batch. Every row that survives validation takes the
+  // next number from it; reserving them one at a time would be a round trip per
+  // row, and reserving them in memory is what let two callers collide.
+  // Over-reserving is harmless — a gap in the numbering is not a fault.
+  const reservedNumbers = await reserveOrderNumbers(rawRows.length);
+  let reservedUsed = 0;
 
   for (const { row, data: raw } of rawRows) {
     const agentName = String(raw.agent_name ?? "").trim();
@@ -1106,7 +1117,7 @@ export async function importLeadsAction(
 
     const order: Order = {
       id: uuid(),
-      order_number: nextOrderNumber(db),
+      order_number: reservedNumbers[reservedUsed++],
       customer_name: data.customer_name,
       customer_phone: restoreTrunkZero(data.customer_phone),
       purok: data.purok || "",
