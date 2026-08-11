@@ -16,6 +16,13 @@ export function needsReview(order: Pick<Order, "pancake_sync_status" | "pancake_
 export function nextRetryDueAt(order: Pick<Order, "pancake_retry_count">, lastAttemptAt: string): string | null {
   const attempts = order.pancake_retry_count;
   if (attempts >= MAX_ATTEMPTS) return null;
-  const delayMin = RETRY_DELAYS_MINUTES[Math.min(attempts - 1, RETRY_DELAYS_MINUTES.length - 1)];
-  return new Date(new Date(lastAttemptAt).getTime() + delayMin * 60_000).toISOString();
+  // Zero attempts is a real state, not an impossible one: an order that failed
+  // its pre-flight checks — no matching Pancake staff for the agent's email, no
+  // order source — never reached claimOrderForSync() and so never counted an
+  // attempt. Indexing at attempts - 1 read RETRY_DELAYS_MINUTES[-1] there,
+  // which is undefined, and new Date(NaN).toISOString() throws. The sweep
+  // catches it per order, so those orders simply never retried again and said
+  // nothing about it — six of them sat that way from 2026-08-09.
+  const step = Math.min(Math.max(attempts - 1, 0), RETRY_DELAYS_MINUTES.length - 1);
+  return new Date(new Date(lastAttemptAt).getTime() + RETRY_DELAYS_MINUTES[step] * 60_000).toISOString();
 }

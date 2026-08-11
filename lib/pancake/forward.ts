@@ -7,6 +7,7 @@ import { CREATE_STATUS_PACKAGING_LABEL } from "./config";
 import { validateForPancake } from "./validate";
 import { verifyAddressIds } from "./address";
 import { findRecentOrderForRetry } from "./findExisting";
+import { MAX_ATTEMPTS } from "./retry";
 import {
   fetchOrderSources,
   fetchStaffList,
@@ -327,8 +328,31 @@ export async function forwardOrderToPancake(
     // cannot prove a duplicate would not be created, so the order is held for a
     // human rather than risking a second shipment.
     if (existing.error) {
-      await failSync(order, `Retry held for review: ${existing.error}`, opts, { accountId: account.id });
-      return { ok: false, skipped: true, message: `Retry held for review: ${existing.error}` };
+      // A held retry must still cost an attempt. It did not: pancake_retry_count
+      // is raised only by claimOrderForSync(), which this path returns before
+      // reaching, so the count stayed at 1 for ever. The backoff is computed
+      // from the count, so it stayed on its first step, and the budget was never
+      // spent — the sweep re-ran this roughly once a minute, indefinitely. On
+      // 2026-08-11 that was 546 notifications for five orders in four hours,
+      // each one another call to the Pancake API, and it buried every other
+      // notification an administrator had.
+      //
+      // An ambiguous match is not a transient failure: retrying re-runs the same
+      // query against the same rows and gets the same answer. Only a person
+      // looking at Pancake can say which order is ours, so the budget is spent
+      // at once and the sweep surfaces it as needs-review — its own guard then
+      // notifies exactly once and leaves it alone. A lookup that merely failed
+      // (a timeout, a 500) is transient and keeps its remaining attempts.
+      const spent = existing.ambiguous ? MAX_ATTEMPTS : order.pancake_retry_count + 1;
+      await updateOrderSyncFields(order.id, { pancake_retry_count: spent });
+
+      const reason = `Retry held for review: ${existing.error}`;
+      await failSync(order, reason, opts, {
+        accountId: account.id,
+        // Only a hold that says something new is worth telling anyone about.
+        notify: (order.pancake_sync_error || "") !== reason,
+      });
+      return { ok: false, skipped: true, message: reason };
     }
   }
 
