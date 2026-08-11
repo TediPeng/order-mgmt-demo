@@ -410,6 +410,11 @@ export default async function DashboardPage({
                   <PhoneCall className="h-4 w-4" /> Upload Call Log
                 </LinkButton>
               )}
+              {/* Which numbers have already been rung today. Every other
+                  calling figure in the app is a count; this is the list. */}
+              <LinkButton href="/calls" variant="outline">
+                <PhoneCall className="h-4 w-4" /> Numbers Called
+              </LinkButton>
               <LinkButton href="/attendance" variant="outline">
                 <Clock3 className="h-4 w-4" /> View Attendance
               </LinkButton>

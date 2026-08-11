@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Phone, Coffee, Utensils, Hourglass, LogOut, Minus } from "lucide-react";
 import { StatWidget, type StatTone } from "@/components/StatCard";
@@ -171,7 +172,21 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
                   <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-600">
                     {r.sinceIso ? hms(live) : "—"}
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums text-slate-700">{r.calls}</td>
+                  {/* The count is the question; the numbers behind it are the
+                      answer. No date on the link — the board is today's. */}
+                  <td className="px-4 py-3 text-right tabular-nums text-slate-700">
+                    {r.calls > 0 ? (
+                      <Link
+                        href={`/calls?agent=${r.agentId}`}
+                        className="font-medium text-[var(--brand-primary)] hover:underline"
+                        title={`See the numbers ${r.name} called today`}
+                      >
+                        {r.calls}
+                      </Link>
+                    ) : (
+                      r.calls
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-700">{hms(talk)}</td>
                   <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-700">{hms(standby)}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-slate-700">

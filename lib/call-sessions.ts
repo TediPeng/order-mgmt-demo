@@ -131,6 +131,81 @@ export interface CallDayTotals {
   seconds: number;
 }
 
+export interface CallRecord {
+  id: string;
+  agent_id: string;
+  order_id: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number | null;
+  new_status: string | null;
+  order_number: string;
+  customer_name: string;
+  customer_phone: string;
+}
+
+/**
+ * The calls themselves for one day — who was rung, on what number, and what came
+ * of it.
+ *
+ * Everything else about calling reports a COUNT: the monitor's Calls column, the
+ * activity report, the dashboard. An agent halfway through a list of five
+ * hundred imported leads wants the other thing — which numbers they have already
+ * been through — and there was nowhere in the app that said.
+ *
+ * The customer comes from the order in the same query. Six hundred calls a day
+ * would otherwise be six hundred round trips, or one URL carrying six hundred
+ * uuids.
+ *
+ * The day window matches callTotalsForDay exactly, deliberately: a list that
+ * disagreed with the count on the tile above it would be worse than either.
+ */
+export async function listCallsForDay(
+  agentIds: string[],
+  workDate: string,
+  page: number,
+  pageSize: number
+): Promise<{ rows: CallRecord[]; total: number }> {
+  if (agentIds.length === 0) return { rows: [], total: 0 };
+
+  const from = (page - 1) * pageSize;
+  const { data, count, error } = await supabaseAdmin
+    .from("call_sessions")
+    .select(
+      "id, agent_id, order_id, started_at, ended_at, duration_seconds, new_status, orders!inner(order_number, customer_name, customer_phone)",
+      { count: "exact" }
+    )
+    .in("agent_id", agentIds)
+    .gte("started_at", `${workDate}T00:00:00Z`)
+    .lte("started_at", `${workDate}T23:59:59Z`)
+    // started_at is unique enough in practice, but id is the tie-break that
+    // keeps a row from appearing on two pages when two calls share a second.
+    .order("started_at", { ascending: false })
+    .order("id", { ascending: false })
+    .range(from, from + pageSize - 1);
+  if (error) throw new Error(`call_sessions read failed: ${error.message}`);
+
+  const rows = (data || []).map((row) => {
+    const r = row as unknown as Record<string, unknown>;
+    // PostgREST returns the embedded row as an object for a to-one relation,
+    // but types it as an array; either shape is accepted here rather than cast.
+    const embedded = (Array.isArray(r.orders) ? r.orders[0] : r.orders) as Record<string, unknown> | undefined;
+    return {
+      id: String(r.id),
+      agent_id: String(r.agent_id),
+      order_id: String(r.order_id),
+      started_at: String(r.started_at),
+      ended_at: r.ended_at ? String(r.ended_at) : null,
+      duration_seconds: r.duration_seconds == null ? null : Number(r.duration_seconds),
+      new_status: r.new_status ? String(r.new_status) : null,
+      order_number: String(embedded?.order_number ?? ""),
+      customer_name: String(embedded?.customer_name ?? ""),
+      customer_phone: String(embedded?.customer_phone ?? ""),
+    };
+  });
+  return { rows, total: count ?? 0 };
+}
+
 /** Completed call count and talk time for one day, per agent. Unlike
  * countCompletedSessions this applies no minimum-duration floor: the monitor
  * reports what actually happened, and the floor is a performance-scoring rule
