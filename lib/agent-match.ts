@@ -1,10 +1,11 @@
 import type { Profile } from "./types";
 
-export function matchAgentByName(name: string, profiles: Profile[]): Profile | undefined {
-  const q = name.trim().toLowerCase();
-  if (!q) return undefined;
-  return profiles.find((p) => p.full_name.toLowerCase() === q || p.username.toLowerCase() === q);
-}
+// matchAgentByName() lived here and matched on full name or username. Its only
+// caller was the call-log import's Agent Name column, which is gone: a call log
+// belongs to whoever uploads it. Deleted rather than left for someone to find
+// and reuse — it was the loosest of the three matchers, and the reason
+// matchAgentByCallName below refuses full names is that two people can share
+// one.
 
 /** Leads import matches strictly on registered username (case-insensitive, trimmed) — not full name. */
 export function matchAgentByUsername(username: string, profiles: Profile[]): Profile | undefined {

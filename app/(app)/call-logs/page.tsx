@@ -39,7 +39,6 @@ export default async function CallLogsPage({
   const canView = can(user.role, "call_logs", "view", db.role_permissions);
   const canUpload = can(user.role, "call_logs", "upload", db.role_permissions);
   const canDelete = can(user.role, "call_logs", "delete", db.role_permissions);
-  const agents = db.profiles.filter((p) => p.is_active);
   /** Agents as this screen labels them: Call Name is what appears in a call-log
    * file, so it is what someone scanning uploads is looking for. Anyone without
    * one still appears under their full name rather than dropping off the list. */
@@ -116,19 +115,6 @@ export default async function CallLogsPage({
           <CardContent>
             <form action={uploadCallLogAction} className="space-y-3">
               <div className="flex flex-wrap items-end gap-3">
-                <div className="min-w-[220px]">
-                  <label className="mb-1 block text-xs font-medium text-slate-600">
-                    Fallback agent (rows with no Agent Name column)
-                  </label>
-                  <Select name="fallback_agent_id" defaultValue="" className="text-sm">
-                    <option value="">— None —</option>
-                    {agents.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.full_name}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
                 <input
                   type="file"
                   name="file"
@@ -143,7 +129,9 @@ export default async function CallLogsPage({
             </form>
             <p className="mt-2 text-xs text-slate-400">
               Accepts .xlsx or .csv, max 10 MB. Columns: Caller Name, Phone Number, Call Date, Duration (seconds),
-              Call Type, Notes, Agent Name. If Agent Name is blank for a row, the fallback agent above is used.
+              Call Type, Notes. Every row is filed under <span className="font-medium text-slate-500">your</span>{" "}
+              account — upload your own file rather than somebody else&apos;s. A spreadsheet still carrying the old
+              Agent Name column is accepted; that column is ignored.
             </p>
           </CardContent>
         </Card>

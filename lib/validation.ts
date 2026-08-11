@@ -500,6 +500,18 @@ export function parseProductStatus(raw: string): ProductStatus | null {
 
 export const MAX_PRODUCT_UPLOAD_BYTES = 10 * 1024 * 1024;
 
+/**
+ * The call log template's columns.
+ *
+ * "Agent Name" was the seventh and is gone: whose log it is comes from who
+ * uploaded it. Typing a name into a spreadsheet was a second place for an
+ * agent's identity to live, spelled by hand, and a row whose name did not match
+ * a profile failed the whole file.
+ *
+ * The header check compares this list against the first columns of the file, so
+ * a spreadsheet still carrying the old Agent Name column is accepted and that
+ * column ignored — nobody has to go and re-save the files they already have.
+ */
 export const CALL_LOG_HEADERS = [
   "Caller Name",
   "Phone Number",
@@ -507,7 +519,6 @@ export const CALL_LOG_HEADERS = [
   "Duration (seconds)",
   "Call Type",
   "Notes",
-  "Agent Name",
 ];
 
 export const callLogRowSchema = z.object({
@@ -517,7 +528,6 @@ export const callLogRowSchema = z.object({
   duration_seconds: z.number().nonnegative("Duration must be zero or more").default(0),
   call_type: z.string().trim().optional().default(""),
   notes: z.string().trim().optional().default(""),
-  agent_name: z.string().trim().optional().default(""),
 });
 
 export const userFormSchema = z

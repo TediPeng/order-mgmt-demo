@@ -8,7 +8,6 @@ import { getRequestInfo } from "@/lib/request-info";
 import { requireUserLite, requirePermission } from "./guards";
 import { CALL_LOG_HEADERS, callLogRowSchema } from "@/lib/validation";
 import { parseSpreadsheetToRows } from "@/lib/call-log-parser";
-import { matchAgentByName } from "@/lib/agent-match";
 import type { CallLog, CallLogRecord } from "@/lib/types";
 
 const MAX_SIZE = 10 * 1024 * 1024;
@@ -18,7 +17,6 @@ export async function uploadCallLogAction(formData: FormData) {
   requirePermission(user, "call_logs", "upload", db, "/call-logs");
 
   const file = formData.get("file") as File | null;
-  const fallbackAgentId = String(formData.get("fallback_agent_id") || "");
 
   if (!file || file.size === 0) {
     redirect(`/call-logs?error=${encodeURIComponent("Please choose a file to upload.")}`);
@@ -68,26 +66,10 @@ export async function uploadCallLogAction(formData: FormData) {
       duration_seconds: row[3] === "" ? 0 : Number(row[3]),
       call_type: row[4] || "",
       notes: row[5] || "",
-      agent_name: row[6] || "",
     };
     const result = callLogRowSchema.safeParse(raw);
     if (!result.success) {
       errors.push(`Row ${idx + 2}: ${result.error.issues[0]?.message || "Invalid row"}`);
-      return;
-    }
-
-    let agentId: string | null = null;
-    if (result.data.agent_name) {
-      const match = matchAgentByName(result.data.agent_name, db.profiles);
-      if (!match) {
-        errors.push(`Row ${idx + 2}: Agent '${result.data.agent_name}' not found`);
-        return;
-      }
-      agentId = match.id;
-    } else if (fallbackAgentId) {
-      agentId = fallbackAgentId;
-    } else {
-      errors.push(`Row ${idx + 2}: Agent is required — select a fallback agent or add an Agent Name`);
       return;
     }
 
@@ -98,7 +80,12 @@ export async function uploadCallLogAction(formData: FormData) {
       duration_seconds: result.data.duration_seconds,
       call_type: result.data.call_type,
       notes: result.data.notes,
-      agent_id: agentId,
+      // Whose log this is comes from who is uploading it, not from a name typed
+      // into a spreadsheet. The name had to be matched against a profile, so a
+      // misspelling failed the whole file, and two people could disagree about
+      // how one agent is written. The account doing the upload cannot be
+      // misspelled and is already the thing the audit entry records.
+      agent_id: user.id,
     });
   });
 
