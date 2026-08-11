@@ -6,6 +6,7 @@ import { requireUserLite, requirePermission } from "./guards";
 import { getRequestInfo } from "@/lib/request-info";
 import { logActivity } from "@/lib/activity";
 import { writeDb } from "@/lib/db";
+import { RETRY_BATCH } from "@/lib/pancake/config";
 import { encryptSecret } from "@/lib/pancake/crypto";
 import { testConnection } from "@/lib/pancake/client";
 import { forwardOrderToPancake } from "@/lib/pancake/forward";
@@ -235,15 +236,11 @@ export async function deleteStatusMapEntryAction(id: string) {
 
 // --- Per-order manual sync (used by the API route behind the popup buttons) --
 
-/** Orders re-sent by one press of Retry All.
- *
- * Each forward is several calls to Pancake, one of which can sit for fifteen
- * seconds before timing out, and the whole batch runs inside one request. The
- * cap is what keeps a queue of failures from running past the function's time
- * limit and being killed halfway — leaving some orders retried, some not, and
- * nothing on screen to say which. What was left over is reported instead, and
- * pressing the button again takes the next batch. */
-const RETRY_BATCH = 20;
+/** A clock as well as the count, because the count alone cannot know how slow Pancake is being
+ * today. Whatever has not been started by this point is left for the next press
+ * — reported on screen, rather than discovered when the request dies. The first
+ * order always runs, so a single Retry is never a no-op. */
+const RETRY_TIME_BUDGET_MS = 40_000;
 
 /** Re-sends a set of failed orders — the Sync Failed queue's Retry All.
  *
@@ -253,19 +250,29 @@ export async function retryFailedSyncsAction(orderIds: string[]) {
   const { user, db } = await requireUserLite();
   requirePermission(user, "integrations", "manage", db, FAILED_PATH);
 
-  const batch = orderIds.slice(0, RETRY_BATCH);
+  const startedAt = Date.now();
+  let attempted = 0;
   let fixed = 0;
-  for (const id of batch) {
-    const result = await forwardOrderToPancake(id, {
-      source: "manual_sync",
-      triggeredBy: user.id,
-      allowRetry: true,
-    });
-    if (result.ok) fixed++;
+  for (const id of orderIds.slice(0, RETRY_BATCH)) {
+    if (attempted > 0 && Date.now() - startedAt > RETRY_TIME_BUDGET_MS) break;
+    attempted++;
+    try {
+      const result = await forwardOrderToPancake(id, {
+        source: "manual_sync",
+        triggeredBy: user.id,
+        allowRetry: true,
+      });
+      if (result.ok) fixed++;
+    } catch {
+      // One order that throws is one order's problem. Uncaught, it took the
+      // whole batch down and the page with it, so the orders already sent were
+      // reported as an application error. The failure is on the order's own
+      // sync log either way; here it is simply not counted as fixed.
+    }
   }
 
   redirect(
-    `${FAILED_PATH}?retried=${batch.length}&fixed=${fixed}&left=${Math.max(0, orderIds.length - batch.length)}`
+    `${FAILED_PATH}?retried=${attempted}&fixed=${fixed}&left=${Math.max(0, orderIds.length - attempted)}`
   );
 }
 

@@ -72,6 +72,19 @@ export const LOOKUP_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
  * by reading it again. */
 export const LOOKUP_REFRESH_ON_MISS_AFTER_MS = 60 * 1000;
 
+/** Orders re-sent by one press of Retry All in the Sync Failed queue.
+ *
+ * Twenty was measured wrong on 2026-08-11: six orders took forty-four seconds,
+ * about seven seconds each, and the request was killed before it could answer —
+ * every order had actually synced, but the screen said only "Application error".
+ * Each forward is several calls to Pancake, one of which can sit for fifteen
+ * seconds before it times out, so the honest ceiling is a handful.
+ *
+ * Lives here rather than beside the action because the button has to say the
+ * same number it will actually do, and a "use server" module can export nothing
+ * but functions. */
+export const RETRY_BATCH = 5;
+
 /** Pancake-side status every order must land in on creation. Pancake's create
  * -order body takes an integer `status`, and 8 = "Packaging" (Đang đóng hàng)
  * per the spec's own enum — so it is set at creation, no follow-up call. The

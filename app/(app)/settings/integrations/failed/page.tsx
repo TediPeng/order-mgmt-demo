@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { listOrdersWithFailedSync } from "@/lib/pancake/store";
+import { RETRY_BATCH } from "@/lib/pancake/config";
 import { retryFailedSyncsAction } from "@/lib/actions/pancake";
 import type { Order } from "@/lib/types";
 
@@ -160,9 +161,12 @@ export default async function SyncFailedPage({
       )}
 
       {ordered.map(({ cause, orders }) => {
+        // Ids only. The action closes over whatever this names, and an array of
+        // whole orders is a great deal more than it needs.
+        const groupIds = orders.map((o) => o.id);
         const retryGroup = async () => {
           "use server";
-          await retryFailedSyncsAction(orders.map((o) => o.id));
+          await retryFailedSyncsAction(groupIds);
         };
         return (
           <Card key={cause.key}>
@@ -188,8 +192,11 @@ export default async function SyncFailedPage({
                   )}
                   {canRetry && (
                     <form action={retryGroup}>
+                      {/* Says what it will do, not what is in the group. Only a
+                          handful fit in one request, and a button promising
+                          eleven that sends five is a bug report waiting. */}
                       <Button type="submit" size="sm" variant={cause.needsPerson ? "outline" : "primary"}>
-                        Retry all {orders.length}
+                        {orders.length > RETRY_BATCH ? `Retry next ${RETRY_BATCH}` : `Retry all ${orders.length}`}
                       </Button>
                     </form>
                   )}
@@ -211,9 +218,10 @@ export default async function SyncFailedPage({
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {orders.map((o) => {
+                      const orderId = o.id;
                       const retryOne = async () => {
                         "use server";
-                        await retryFailedSyncsAction([o.id]);
+                        await retryFailedSyncsAction([orderId]);
                       };
                       return (
                         <tr key={o.id} className="whitespace-nowrap">
