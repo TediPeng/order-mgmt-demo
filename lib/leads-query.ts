@@ -161,7 +161,16 @@ export async function queryLeads(input: {
   }
 
   const from = (page - 1) * pageSize;
-  const { data, count, error } = await query.order("created_at", { ascending: false }).range(from, from + pageSize - 1);
+  // The id is the tie-break, and it is not optional here. An import stamps one
+  // created_at across the whole batch — ROMA_aaliyah's 2,060 open leads share a
+  // single timestamp, as do bernadeth's 1,650 — so ordering by created_at alone
+  // leaves Postgres free to return a different arbitrary 25 rows every time the
+  // query runs. Paging skipped leads that way, and the shell's 60-second
+  // refresh made a lead an agent was typing into disappear from under them.
+  const { data, count, error } = await query
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .range(from, from + pageSize - 1);
   if (error) throw new Error(`Leads query failed: ${error.message}`);
   return { rows: (data || []) as unknown as Order[], total: count ?? 0 };
 }

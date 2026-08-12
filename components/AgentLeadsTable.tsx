@@ -62,14 +62,31 @@ export function AgentLeadsTable({
 }) {
   const router = useRouter();
   const [rows, setRows] = useState(orders);
-  const [openId, setOpenId] = useState<string | null>(null);
+  /**
+   * The open lead is HELD, not looked up in the current page.
+   *
+   * It used to be `rows.find(o => o.id === openId)`, so the popup existed only
+   * as long as its row happened to be among the twenty-five on screen. The
+   * shell re-renders the route every sixty seconds, and any refresh that
+   * returned a page without that row closed the popup — mid-sentence, with
+   * whatever had been typed in it. Agents reported leads vanishing while they
+   * were still filling them in, before they had even reached the status.
+   *
+   * A refresh now updates the copy being shown when it brings a newer one, and
+   * leaves it alone when it does not. Only Close closes it.
+   */
+  const [openOrder, setOpenOrder] = useState<Order | null>(null);
 
   useEffect(() => setRows(orders), [orders]);
 
   useEffect(() => {
+    setOpenOrder((current) => (current ? orders.find((o) => o.id === current.id) ?? current : current));
+  }, [orders]);
+
+  useEffect(() => {
     if (!initialOpenOrderNumber) return;
     const match = orders.find((o) => o.order_number === initialOpenOrderNumber);
-    if (match) setOpenId(match.id);
+    if (match) setOpenOrder(match);
     // Only for the initial deep-link, not on every refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialOpenOrderNumber]);
@@ -77,14 +94,14 @@ export function AgentLeadsTable({
   // By id, which is what "Return to active call" has to hand.
   useEffect(() => {
     if (!initialOpenOrderId) return;
-    if (orders.some((o) => o.id === initialOpenOrderId)) setOpenId(initialOpenOrderId);
+    const match = orders.find((o) => o.id === initialOpenOrderId);
+    if (match) setOpenOrder(match);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialOpenOrderId]);
 
-  const openOrder = rows.find((o) => o.id === openId) || null;
-
   function handleSaved(updated: Order) {
     setRows((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
+    setOpenOrder((current) => (current && current.id === updated.id ? updated : current));
     router.refresh();
   }
 
@@ -130,7 +147,7 @@ export function AgentLeadsTable({
                   <td className={cn("sticky left-0 z-10 whitespace-nowrap px-2.5 py-1.5", style.row)}>
                     <button
                       type="button"
-                      onClick={() => setOpenId(o.id)}
+                      onClick={() => setOpenOrder(o)}
                       title={
                         isPendingOrderId(o)
                           ? "Not yet forwarded to Pancake POS"
@@ -208,7 +225,7 @@ export function AgentLeadsTable({
           callSessions={callSessionsByOrderId[openOrder.id] || []}
           agentNameById={agentNameById}
           fullPageHref={null}
-          onClose={() => setOpenId(null)}
+          onClose={() => setOpenOrder(null)}
           onSaved={handleSaved}
         />
       )}

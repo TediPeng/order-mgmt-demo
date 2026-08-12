@@ -64,16 +64,26 @@ export function LeadsTable({
 }) {
   const router = useRouter();
   const [orders, setOrders] = useState(initialOrders);
-  const [openId, setOpenId] = useState<string | null>(null);
+  /**
+   * The open lead is HELD, not looked up in the current page — see the same
+   * note in AgentLeadsTable. Deriving it from the rows meant the shell's
+   * sixty-second refresh could close the popup, and whatever had been typed
+   * into it, the moment a refresh returned a page without that row.
+   */
+  const [openOrder, setOpenOrder] = useState<Order | null>(null);
 
   useEffect(() => {
     setOrders(initialOrders);
   }, [initialOrders]);
 
   useEffect(() => {
+    setOpenOrder((current) => (current ? initialOrders.find((o) => o.id === current.id) ?? current : current));
+  }, [initialOrders]);
+
+  useEffect(() => {
     if (!initialOpenOrderNumber) return;
     const match = initialOrders.find((o) => o.order_number === initialOpenOrderNumber);
-    if (match) setOpenId(match.id);
+    if (match) setOpenOrder(match);
     // Only run for the initial deep-link, not on every orders refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialOpenOrderNumber]);
@@ -83,14 +93,14 @@ export function LeadsTable({
   // finds it.
   useEffect(() => {
     if (!initialOpenOrderId) return;
-    if (initialOrders.some((o) => o.id === initialOpenOrderId)) setOpenId(initialOpenOrderId);
+    const match = initialOrders.find((o) => o.id === initialOpenOrderId);
+    if (match) setOpenOrder(match);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialOpenOrderId]);
 
-  const openOrder = orders.find((o) => o.id === openId) || null;
-
   function handleSaved(updated: Order) {
     setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
+    setOpenOrder((current) => (current && current.id === updated.id ? updated : current));
     router.refresh();
   }
 
@@ -144,7 +154,7 @@ export function LeadsTable({
                   <td className={cn("sticky left-0 z-10 whitespace-nowrap px-2.5 py-1.5", style.row)}>
                     <button
                       type="button"
-                      onClick={() => setOpenId(o.id)}
+                      onClick={() => setOpenOrder(o)}
                       title={isPendingOrderId(o) ? "Not yet forwarded to Pancake POS" : `Internal reference: ${o.order_number}`}
                       className={cn(
                         "font-medium hover:underline",
@@ -218,7 +228,7 @@ export function LeadsTable({
           agentNameById={agentNameById}
           canSeeFulfillment={canSeeFulfillment}
           fullPageHref={fullPageHrefBase ? `${fullPageHrefBase}/${openOrder.id}` : null}
-          onClose={() => setOpenId(null)}
+          onClose={() => setOpenOrder(null)}
           onSaved={handleSaved}
         />
       )}
