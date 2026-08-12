@@ -13,6 +13,7 @@ import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
+import { LeaveDetailsButton } from "@/components/LeaveDetailsButton";
 import { LeaveRequestForm } from "@/components/LeaveRequestForm";
 import { RequestLeaveButton } from "@/components/RequestLeaveButton";
 import { fileLeaveAction, cancelLeaveAction, resubmitLeaveAction, reviewLeaveAction } from "@/lib/actions/leave";
@@ -368,13 +369,46 @@ export default async function LeavePage({
                         )}
                       </td>
                       <td className="px-4 py-2 capitalize">{r.leave_type}</td>
-                      <td className="px-4 py-2 max-w-[220px] truncate text-slate-500" title={r.reason}>
-                        {r.reason}
-                        {r.attachment_path && (
-                          <a href={`/api/leave/${r.id}/attachment`} className="ml-1 inline-flex text-[var(--brand-primary)]">
-                            <Paperclip className="h-3 w-3" />
-                          </a>
-                        )}
+                      {/* The reason opens the whole request. It used to be a
+                          `title` tooltip: late, clipped at the window edge,
+                          impossible to select, and gone as soon as the pointer
+                          moved — a poor way to read the sentence a day off is
+                          being decided on. */}
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-1">
+                          <LeaveDetailsButton
+                            preview={r.reason}
+                            details={{
+                              agentName: byId.get(r.agent_id) || "—",
+                              filedAt: formatDateTime(r.created_at),
+                              dates: `${formatDate(r.leave_start)} – ${formatDate(r.leave_end)}`,
+                              days: r.leave_days,
+                              leaveType: r.leave_type,
+                              reason: r.reason,
+                              attachmentHref: r.attachment_path ? `/api/leave/${r.id}/attachment` : null,
+                              status: r.status,
+                              urgent: r.urgent_review,
+                              supervisorName: r.supervisor_id ? byId.get(r.supervisor_id) || null : null,
+                              remarks: r.management_remarks,
+                              reviewedBy: r.reviewed_by ? byId.get(r.reviewed_by) || null : null,
+                              reviewedAt: r.reviewed_at ? formatDateTime(r.reviewed_at) : null,
+                              clashes: clashes.map((c) => ({
+                                name: byId.get(c.agent_id) || "—",
+                                dates: `${formatDate(c.leave_start)} – ${formatDate(c.leave_end)}`,
+                                status: c.status,
+                              })),
+                            }}
+                          />
+                          {r.attachment_path && (
+                            <a
+                              href={`/api/leave/${r.id}/attachment`}
+                              title="Download the attachment"
+                              className="inline-flex shrink-0 text-[var(--brand-primary)]"
+                            >
+                              <Paperclip className="h-3 w-3" />
+                            </a>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-2">
                         <LeaveStatusBadge status={r.status} />
