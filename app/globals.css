@@ -37,7 +37,12 @@
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  /* Geist, which app/layout.tsx has been loading and handing to
+     --font-geist-sans all along. This line used to say Arial and won, so the
+     whole system rendered in it: the type scale below is carefully built, and
+     every screen was drawing it in the most generic font on the machine. The
+     stack after it is the fallback for the moments before the font arrives. */
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
 }
 
 @layer utilities {
@@ -120,7 +125,9 @@ body {
   --fc-today-bg-color: var(--brand-primary-10);
   --fc-border-color: #e2e8f0;
   --fc-event-border-color: transparent;
-  font-family: Arial, Helvetica, sans-serif;
+  /* FullCalendar ships its own font stack; this puts the calendar back on the
+     app's, so the schedule does not read as a different product. */
+  font-family: inherit;
 }
 .schedule-calendar .fc-event {
   cursor: pointer;

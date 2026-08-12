@@ -14,6 +14,13 @@ const config: Config = {
         background: "var(--background)",
         foreground: "var(--foreground)",
       },
+      // So `font-sans` and `font-mono` mean the fonts this app actually loads.
+      // Without these, Tailwind's own stacks win wherever a utility is used and
+      // the page ends up in two typefaces depending on the element.
+      fontFamily: {
+        sans: ["var(--font-geist-sans)", "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "Arial", "sans-serif"],
+        mono: ["var(--font-geist-mono)", "ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
+      },
     },
   },
   plugins: [],
