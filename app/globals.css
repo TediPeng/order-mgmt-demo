@@ -88,6 +88,16 @@ body {
     font-size: var(--text-control);
     line-height: 1.4;
   }
+}
+
+/* The cell cursor in the leads tables (useGridKeys). An outline rather than a
+   border so the ring is drawn inside the cell and nothing shifts by a pixel
+   when it moves; `outline-offset: -2px` keeps it clear of the gridline. */
+@layer components {
+  td[data-active="true"] {
+    outline: 2px solid var(--brand-primary);
+    outline-offset: -2px;
+  }
   /* Numeric table cells line up only when the digits share a width. */
   .num {
     font-variant-numeric: tabular-nums;

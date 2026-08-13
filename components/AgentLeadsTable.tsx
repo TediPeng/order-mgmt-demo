@@ -8,6 +8,7 @@ import { TrackingCell } from "@/components/TrackingCell";
 import type { EditorLine } from "@/components/OrderItemsEditor";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { listItemNames } from "@/lib/order-totals";
+import { useGridKeys } from "@/components/useGridKeys";
 import type { CallSession, Order } from "@/lib/types";
 import { displayOrderId, isPendingOrderId } from "@/lib/types";
 
@@ -99,6 +100,16 @@ export function AgentLeadsTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialOpenOrderId]);
 
+  // Spreadsheet keys over the rows on screen: arrows move a cell cursor, Enter
+  // opens the lead under it, Ctrl+C copies that row as tab-separated text that
+  // pastes into Excel as cells. Off while the popup is open, which owns the
+  // keyboard and has fields of its own.
+  const grid = useGridKeys({
+    rowCount: rows.length,
+    onEnter: (i) => setOpenOrder(rows[i]),
+    enabled: !openOrder,
+  });
+
   function handleSaved(updated: Order) {
     setRows((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
     setOpenOrder((current) => (current && current.id === updated.id ? updated : current));
@@ -109,31 +120,34 @@ export function AgentLeadsTable({
   // line: an agent scans this table down the customer-name column, and a row
   // that grows to three lines because one address wrapped costs more than the
   // truncation does.
-  const cell = "px-2.5 py-1.5 text-slate-600 whitespace-nowrap";
+  const cell = "border-r border-slate-100 px-2.5 py-1.5 text-slate-600 whitespace-nowrap";
 
   return (
     <>
-      <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
+      <div
+        {...grid.containerProps}
+        className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)]"
+      >
         <table className="w-full min-w-[2250px] text-left text-table">
           <thead className="sticky top-0 z-20 bg-slate-50 text-table font-medium uppercase tracking-wide text-slate-500 shadow-sm">
             <tr>
-              <th className="sticky left-0 z-30 whitespace-nowrap bg-slate-50 px-2.5 py-2">Order ID</th>
-              <th className="px-2.5 py-2">Order Date</th>
-              <th className="px-2.5 py-2">Order Source</th>
-              <th className="px-2.5 py-2">Customer Name</th>
-              <th className="px-2.5 py-2">Phone Number</th>
-              <th className="px-2.5 py-2">Address (Purok)</th>
-              <th className="px-2.5 py-2">Province</th>
-              <th className="px-2.5 py-2">City / Municipality</th>
-              <th className="px-2.5 py-2">Barangay</th>
-              <th className="px-2.5 py-2">Landmark</th>
-              <th className="px-2.5 py-2">Notes</th>
-              <th className="px-2.5 py-2">New Product Order</th>
-              <th className="px-2.5 py-2">Unit Price</th>
-              <th className="px-2.5 py-2">Tag</th>
-              <th className="px-2.5 py-2">Courier</th>
-              <th className="px-2.5 py-2">Tracking Number</th>
-              <th className="px-2.5 py-2">Status</th>
+              <th className="sticky left-0 z-30 whitespace-nowrap border-r border-slate-200 bg-slate-50 px-2.5 py-2">Order ID</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Order Date</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Order Source</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Customer Name</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Phone Number</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Address (Purok)</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Province</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">City / Municipality</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Barangay</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Landmark</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Notes</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">New Product Order</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Unit Price</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Tag</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Courier</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Tracking Number</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -144,7 +158,7 @@ export function AgentLeadsTable({
                   {/* Order ID doubles as the row control. Once an order syncs
                       this is Pancake's own generated id — the reference both
                       systems share — so it leads the row. */}
-                  <td className={cn("sticky left-0 z-10 whitespace-nowrap px-2.5 py-1.5", style.row)}>
+                  <td className={cn("sticky left-0 z-10 whitespace-nowrap border-r border-slate-100 px-2.5 py-1.5", style.row)}>
                     <button
                       type="button"
                       onClick={() => setOpenOrder(o)}
@@ -187,7 +201,7 @@ export function AgentLeadsTable({
                   <td className={cell}>
                     <TrackingCell value={o.tracking_number} />
                   </td>
-                  <td className="px-2.5 py-1.5">
+                  <td className="border-r border-slate-100 px-2.5 py-1.5">
                     <StatusBadge status={o.status} />
                   </td>
                 </tr>
