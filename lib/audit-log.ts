@@ -155,6 +155,11 @@ export async function accountCreatorIds(): Promise<Map<string, string>> {
 
 export interface LatestStatusChange {
   status: string;
+  /** What it was immediately before — every LEAD_STATUS_CHANGED entry has
+   * carried it since the trail began, and nothing was reading it. "CBR" alone
+   * does not say whether a lead has just been picked up or given up on; "NEW →
+   * CBR" does. */
+  from: string | null;
   at: string;
 }
 
@@ -167,7 +172,7 @@ export async function latestStatusChangeByOrder(
   if (orderIds.length === 0) return {};
   const { data, error } = await supabaseAdmin
     .from(TABLE)
-    .select("entity_id, updated_value, created_at")
+    .select("entity_id, previous_value, updated_value, created_at")
     .eq("action", "LEAD_STATUS_CHANGED")
     .eq("module", "orders")
     .in("entity_id", orderIds)
@@ -175,10 +180,16 @@ export async function latestStatusChangeByOrder(
   if (error) throw new Error(`Status history query failed: ${error.message}`);
 
   const out: Record<string, LatestStatusChange> = {};
-  for (const row of (data || []) as { entity_id: string | null; updated_value: unknown; created_at: string }[]) {
+  for (const row of (data || []) as {
+    entity_id: string | null;
+    previous_value: unknown;
+    updated_value: unknown;
+    created_at: string;
+  }[]) {
     if (!row.entity_id || out[row.entity_id]) continue;
     const status = (row.updated_value as { status?: string } | null)?.status;
-    if (status) out[row.entity_id] = { status, at: row.created_at };
+    const from = (row.previous_value as { status?: string } | null)?.status ?? null;
+    if (status) out[row.entity_id] = { status, from, at: row.created_at };
   }
   return out;
 }

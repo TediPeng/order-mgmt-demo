@@ -158,7 +158,7 @@ export function OrderDetailsModal({
   order: Order;
   agentName: string;
   productName: string;
-  latestStatusUpdate: { status: OrderStatus; at: string } | null;
+  latestStatusUpdate: { status: OrderStatus; from: string | null; at: string } | null;
   activeProducts: {
     id: string;
     name: string;
@@ -929,6 +929,14 @@ export function OrderDetailsModal({
             Latest status update:{" "}
             {latestStatusUpdate ? (
               <>
+                {/* Where it came from, not just where it landed. The trail has
+                    always recorded both; only the destination was shown. */}
+                {isKnownStatus(latestStatusUpdate.from) && (
+                  <>
+                    <StatusBadge status={latestStatusUpdate.from} />
+                    <span className="mx-1 text-slate-400">→</span>
+                  </>
+                )}
                 <StatusBadge status={latestStatusUpdate.status} /> on {formatDateTime(latestStatusUpdate.at)}
               </>
             ) : (

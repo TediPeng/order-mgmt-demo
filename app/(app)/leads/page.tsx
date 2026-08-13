@@ -199,7 +199,7 @@ export default async function LeadsPage({
   // matter how long the trail gets.
   const latestStatusUpdateByOrderId = (await latestStatusChangeByOrder(pageOrders.map((o) => o.id))) as Record<
     string,
-    { status: OrderStatus; at: string }
+    { status: OrderStatus; from: string | null; at: string }
   >;
 
   // The agent's open call (if any) and the call history for the rows on this
@@ -458,6 +458,7 @@ export default async function LeadsPage({
           canTagRegular={canTagRegular}
           callSessionsByOrderId={callSessionsByOrderId}
           agentNameById={agentFullNameById}
+          latestStatusUpdateByOrderId={latestStatusUpdateByOrderId}
           initialOpenOrderNumber={sp.open}
           initialOpenOrderId={sp.open_id}
         />

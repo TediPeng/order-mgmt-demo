@@ -9,7 +9,7 @@ import type { EditorLine } from "@/components/OrderItemsEditor";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { listItemNames } from "@/lib/order-totals";
 import { useGridKeys } from "@/components/useGridKeys";
-import type { CallSession, Order } from "@/lib/types";
+import type { CallSession, Order, OrderStatus } from "@/lib/types";
 import { displayOrderId, isPendingOrderId } from "@/lib/types";
 
 export interface CareStaff {
@@ -37,6 +37,7 @@ export function AgentLeadsTable({
   canTagRegular = false,
   callSessionsByOrderId = {},
   agentNameById = {},
+  latestStatusUpdateByOrderId = {},
   initialOpenOrderNumber,
   initialOpenOrderId,
 }: {
@@ -58,6 +59,8 @@ export function AgentLeadsTable({
   canTagRegular?: boolean;
   callSessionsByOrderId?: Record<string, CallSession[]>;
   agentNameById?: Record<string, string>;
+  /** The last status change per order, for the "from X" line under the badge. */
+  latestStatusUpdateByOrderId?: Record<string, { status: OrderStatus; from: string | null; at: string } | undefined>;
   initialOpenOrderNumber?: string;
   initialOpenOrderId?: string;
 }) {
@@ -202,6 +205,17 @@ export function AgentLeadsTable({
                     <TrackingCell value={o.tracking_number} />
                   </td>
                   <td className="border-r border-slate-100 px-2.5 py-1.5">
+                    {/* Where it came from, above where it is. "CBR" alone does
+                        not say whether a lead has just been picked up or given
+                        up on; "from NEW" does. Only on rows that have actually
+                        moved — a lead nobody has touched shows the badge alone. */}
+                    {(() => {
+                      const change = latestStatusUpdateByOrderId[o.id];
+                      const from = change && change.from !== o.status ? change.from : null;
+                      return from ? (
+                        <span className="block text-[10px] uppercase leading-none text-slate-400">from {from.replace(/_/g, " ")}</span>
+                      ) : null;
+                    })()}
                     <StatusBadge status={o.status} />
                   </td>
                 </tr>

@@ -38,7 +38,7 @@ export function LeadsTable({
   agentUsernameById: Record<string, string>;
   agentFullNameById: Record<string, string>;
   productNameByOrderId: Record<string, string>;
-  latestStatusUpdateByOrderId: Record<string, { status: OrderStatus; at: string } | undefined>;
+  latestStatusUpdateByOrderId: Record<string, { status: OrderStatus; from: string | null; at: string } | undefined>;
   activeProducts: {
     id: string;
     name: string;
@@ -202,6 +202,17 @@ export function LeadsTable({
                     <TrackingCell value={o.tracking_number} />
                   </td>
                   <td className="border-r border-slate-100 px-2.5 py-1.5">
+                    {/* Where it came from, above where it is. "CBR" alone does
+                        not say whether a lead has just been picked up or given
+                        up on; "from NEW" does. Only on rows that have actually
+                        moved — a lead nobody has touched shows the badge alone. */}
+                    {(() => {
+                      const change = latestStatusUpdateByOrderId[o.id];
+                      const from = change && change.from !== o.status ? change.from : null;
+                      return from ? (
+                        <span className="block text-[10px] uppercase leading-none text-slate-400">from {from.replace(/_/g, " ")}</span>
+                      ) : null;
+                    })()}
                     <StatusBadge status={o.status} />
                   </td>
                   <td className="border-r border-slate-100 px-2.5 py-1.5">
