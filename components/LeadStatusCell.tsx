@@ -21,6 +21,12 @@ import type { Order } from "@/lib/types";
  * control is disabled until Calling has been pressed rather than offering an
  * action that would come back as an error. Management has no such rule and the
  * dropdown is simply live for them.
+ *
+ * Calling shows for everyone regardless: a supervisor rings a customer too, and
+ * starting a call is the fastest way to open an order from the list. The route
+ * that opens a session does not care about the role — only that the person has
+ * timed in — so the button is never offered to somebody who cannot use it for a
+ * reason the popup will not explain.
  */
 export function LeadStatusCell({
   order,
@@ -118,8 +124,10 @@ export function LeadStatusCell({
           ))}
         </select>
 
-        {/* Only where a call is the rule. Management opens the order instead. */}
-        {requiresCallSession && !callActive && (
+        {/* Everyone, not only the roles the call rule applies to. A
+            supervisor rings a customer too, and the button is also the fastest
+            way to open the order from the list. */}
+        {!callActive && (
           <button
             type="button"
             onClick={beginCall}
