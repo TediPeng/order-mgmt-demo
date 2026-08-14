@@ -59,6 +59,22 @@ export function displayOrderId(order: Pick<Order, "order_number" | "pancake_orde
   return order.pancake_order_id || order.order_number;
 }
 
+/**
+ * The same reference, short enough for a frozen column.
+ *
+ * "ORD-" opens every internal number and says nothing — it is the one part of
+ * the string that is identical on every row, in the one column that is pinned
+ * to the left and costs horizontal space on every screen. A Pancake id is
+ * already short and is returned untouched.
+ *
+ * The full value stays in the cell's tooltip and in the popup header, because
+ * it is what an agent reads out and what gets pasted into Pancake.
+ */
+export function shortOrderId(order: Pick<Order, "order_number" | "pancake_order_id">): string {
+  if (order.pancake_order_id) return order.pancake_order_id;
+  return order.order_number.replace(/^ORD-/, "");
+}
+
 /** True while an order still shows its internal number because Pancake has not
  * issued one yet — the UI dims it and adds "(pending sync)". */
 export function isPendingOrderId(order: Pick<Order, "pancake_order_id">): boolean {

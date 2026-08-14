@@ -10,7 +10,7 @@ import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { useGridKeys } from "@/components/useGridKeys";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 import type { CallSession, Order, OrderStatus } from "@/lib/types";
-import { displayOrderId, isPendingOrderId } from "@/lib/types";
+import { shortOrderId, isPendingOrderId } from "@/lib/types";
 
 export function LeadsTable({
   orders: initialOrders,
@@ -131,36 +131,31 @@ export function LeadsTable({
         {...grid.containerProps}
         className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)]"
       >
-        <table className="w-full min-w-[2800px] text-left text-table">
+        <table className="w-full min-w-[2650px] text-left text-table">
           <thead className="sticky top-0 z-20 bg-slate-50 text-table font-medium uppercase tracking-wide text-slate-500 shadow-sm">
             <tr>
               {/* Above the body's own sticky column (z-10), so the two do not
                   cross at the corner where both are pinned. */}
               <th className="sticky left-0 z-30 whitespace-nowrap border-r border-slate-200 bg-slate-50 px-2.5 py-2">Order ID</th>
+              {/* Same order as the agents' table and as TEST TEMPLATE ROMA, so
+                  a supervisor comparing the two screens — or either against the
+                  spreadsheet — is reading one layout. */}
+              <th className="border-r border-slate-200 px-2.5 py-2">Previous Status</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Order Date</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Agent</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Agent (Caller Name)</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Customer Name</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Phone Number</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Purok</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Barangay</th>
               <th className="border-r border-slate-200 px-2.5 py-2">City</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Province</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Landmark</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">LM</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Notes</th>
-              {/* The customer's last purchase, back in the list where an agent
-                  can see it while dialling: what they bought, when, for how
-                  much, and how that order ended. It sat only in the popup, so
-                  the one fact that opens a call was a click away on every row. */}
-              <th className="border-r border-slate-200 px-2.5 py-2">Previous Order Date</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Previous Order Product</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Previous Order Amount</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Previous Status</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">New Product Order</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Unit Price</th>
-              {/* The two columns this table was missing. A supervisor chasing a
-                  parcel had to open each order to find out who is carrying it
-                  and under what number — the agents' own table has shown both
-                  all along. */}
+              <th className="border-r border-slate-200 px-2.5 py-2">Prev Order Date</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Prev Product</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Prev Amount</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">New Order</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Amount</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Courier</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Tracking Number</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Status</th>
@@ -176,16 +171,28 @@ export function LeadsTable({
                     <button
                       type="button"
                       onClick={() => setOpenOrder(o)}
-                      title={isPendingOrderId(o) ? "Not yet forwarded to Pancake POS" : `Internal reference: ${o.order_number}`}
+                      // The cell drops the "ORD-" prefix to keep the pinned
+                      // column narrow, so the tooltip carries the whole thing.
+                      title={
+                        isPendingOrderId(o)
+                          ? `${o.order_number} — not yet forwarded to Pancake POS`
+                          : `Pancake ID ${o.pancake_order_id} · internal reference ${o.order_number}`
+                      }
                       className={cn(
                         "font-medium hover:underline",
                         isPendingOrderId(o) ? "text-slate-400" : "text-[var(--brand-primary)]"
                       )}
                     >
-                      {displayOrderId(o)}
-                      {isPendingOrderId(o) && <span className="ml-1 text-xs font-normal">(pending sync)</span>}
+                      {shortOrderId(o)}
+                      {isPendingOrderId(o) && (
+                        <span className="ml-1 text-amber-500" aria-label="Not yet forwarded to Pancake POS">•</span>
+                      )}
                     </button>
                   </td>
+                  {/* Text, not a badge: the column can hold a status an import
+                      named that this system does not have, and a second badge
+                      in the row would read as one lead in two states. */}
+                  <td className={cell}>{o.previous_order_status ? o.previous_order_status.toUpperCase() : "—"}</td>
                   <td className={cell}>{o.order_date ? formatDate(o.order_date) : "—"}</td>
                   <td className={cell}>{agentUsernameById[o.agent_id] || "—"}</td>
                   <td className={cell}>{o.customer_name}</td>
@@ -205,11 +212,6 @@ export function LeadsTable({
                   <td className={cell}>
                     {o.previous_order_amount != null ? formatCurrency(o.previous_order_amount) : "—"}
                   </td>
-                  {/* Text, not a badge: the column can hold a status an import
-                      named that this system does not have, and it sits a few
-                      cells from the badge for the CURRENT status — two badges
-                      in one row would read as one lead in two states. */}
-                  <td className={cell}>{o.previous_order_status ? o.previous_order_status.toUpperCase() : "—"}</td>
                   {/* Every product, one per line. The cell used to name the
                       first and count the rest — "+1 more" is the least useful
                       thing that can be said about what somebody is buying, and
@@ -231,7 +233,10 @@ export function LeadsTable({
                       ));
                     })()}
                   </td>
-                  <td className={cell}>{o.unit_price != null ? formatCurrency(o.unit_price) : "—"}</td>
+                  {/* The template's AMOUNT: the order's total, which is what is
+                      said to the customer and what Prev Amount is on the other
+                      side of the row. Unit price lives in the popup. */}
+                  <td className={cell}>{formatCurrency(o.total_amount)}</td>
                   <td className={cell}>{o.courier || "—"}</td>
                   <td className={cell}>
                     <TrackingCell value={o.tracking_number} />

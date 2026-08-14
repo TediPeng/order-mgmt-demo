@@ -9,7 +9,7 @@ import type { EditorLine } from "@/components/OrderItemsEditor";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { useGridKeys } from "@/components/useGridKeys";
 import type { CallSession, Order, OrderStatus } from "@/lib/types";
-import { displayOrderId, isPendingOrderId } from "@/lib/types";
+import { shortOrderId, isPendingOrderId } from "@/lib/types";
 
 export interface CareStaff {
   name: string;
@@ -25,7 +25,8 @@ export interface CareStaff {
  * that value is Pancake's own generated id — the reference both systems share,
  * and the one an agent quotes — so it earns a column of its own rather than
  * hiding in the date cell's tooltip. Before syncing it falls back to the
- * internal number, dimmed and marked "(pending sync)". */
+ * internal number with the constant "ORD-" prefix trimmed and an amber dot
+ * for "not yet in Pancake" — the whole reference is on the tooltip. */
 export function AgentLeadsTable({
   orders,
   careStaffById,
@@ -130,31 +131,31 @@ export function AgentLeadsTable({
         {...grid.containerProps}
         className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)]"
       >
-        <table className="w-full min-w-[2850px] text-left text-table">
+        <table className="w-full min-w-[2500px] text-left text-table">
           <thead className="sticky top-0 z-20 bg-slate-50 text-table font-medium uppercase tracking-wide text-slate-500 shadow-sm">
             <tr>
+              {/* The column order is the floor's own working sheet (TEST
+                  TEMPLATE ROMA), so the screen and the spreadsheet they check it
+                  against read the same way and nobody has to translate between
+                  them. Order ID leads it: the template has no such column, but
+                  it is the row's only control — the popup, Calling and every
+                  edit hang off it. */}
               <th className="sticky left-0 z-30 whitespace-nowrap border-r border-slate-200 bg-slate-50 px-2.5 py-2">Order ID</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Previous Status</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Order Date</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Order Source</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Customer Name</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Phone Number</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Address (Purok)</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Province</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">City / Municipality</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Purok</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Barangay</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Landmark</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">City</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Province</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">LM</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Notes</th>
-              {/* The customer's last purchase, back in the list where an agent
-                  can see it while dialling: what they bought, when, for how
-                  much, and how that order ended. It sat only in the popup, so
-                  the one fact that opens a call was a click away on every row. */}
-              <th className="border-r border-slate-200 px-2.5 py-2">Previous Order Date</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Previous Order Product</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Previous Order Amount</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Previous Status</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">New Product Order</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Unit Price</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Tag</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Prev Order Date</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Prev Product</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Prev Amount</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">New Order</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Amount</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Courier</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Tracking Number</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Status</th>
@@ -172,30 +173,39 @@ export function AgentLeadsTable({
                     <button
                       type="button"
                       onClick={() => setOpenOrder(o)}
+                      // The cell drops the "ORD-" prefix to keep the pinned
+                      // column narrow, so the tooltip carries the whole thing —
+                      // it is what an agent reads out and what Pancake is given.
                       title={
                         isPendingOrderId(o)
-                          ? "Not yet forwarded to Pancake POS"
-                          : `Internal reference: ${o.order_number}`
+                          ? `${o.order_number} — not yet forwarded to Pancake POS`
+                          : `Pancake ID ${o.pancake_order_id} · internal reference ${o.order_number}`
                       }
                       className={cn(
                         "font-medium hover:underline",
                         isPendingOrderId(o) ? "text-slate-500" : "text-[var(--brand-primary)]"
                       )}
                     >
-                      {displayOrderId(o)}
+                      {shortOrderId(o)}
+                      {/* A dot, not "(pending sync)": those fourteen characters sat
+                          on nearly every row of a pinned column. The tooltip says
+                          it in words. */}
                       {isPendingOrderId(o) && (
-                        <span className="ml-1 text-xs font-normal text-slate-400">(pending sync)</span>
+                        <span className="ml-1 text-amber-500" aria-label="Not yet forwarded to Pancake POS">•</span>
                       )}
                     </button>
                   </td>
+                  {/* Text, not a badge: the column can hold a status an import
+                      named that this system does not have, and a second badge
+                      in the row would read as one lead in two states. */}
+                  <td className={cell}>{o.previous_order_status ? o.previous_order_status.toUpperCase() : "—"}</td>
                   <td className={cell}>{o.order_date ? formatDate(o.order_date) : "—"}</td>
-                  <td className={cell}>{o.order_source || "—"}</td>
                   <td className={cell}>{o.customer_name}</td>
                   <td className={cell}>{o.customer_phone || "—"}</td>
                   <td className={cell}>{o.purok || "—"}</td>
-                  <td className={cell}>{o.province || "—"}</td>
-                  <td className={cell}>{o.city || "—"}</td>
                   <td className={cell}>{o.barangay || "—"}</td>
+                  <td className={cell}>{o.city || "—"}</td>
+                  <td className={cell}>{o.province || "—"}</td>
                   <td className={cell}>{o.landmark || "—"}</td>
                   <td className={cell} title={o.notes || undefined}>
                     <span className="block max-w-[14rem] truncate">{o.notes || "—"}</span>
@@ -207,11 +217,6 @@ export function AgentLeadsTable({
                   <td className={cell}>
                     {o.previous_order_amount != null ? formatCurrency(o.previous_order_amount) : "—"}
                   </td>
-                  {/* Text, not a badge: the column can hold a status an import
-                      named that this system does not have, and it sits a few
-                      cells from the badge for the CURRENT status — two badges
-                      in one row would read as one lead in two states. */}
-                  <td className={cell}>{o.previous_order_status ? o.previous_order_status.toUpperCase() : "—"}</td>
                   {/* Every product, one per line. The cell used to name the
                       first and count the rest — "+1 more" is the least useful
                       thing that can be said about what somebody is buying, and
@@ -233,8 +238,10 @@ export function AgentLeadsTable({
                       ));
                     })()}
                   </td>
-                  <td className={cell}>{o.unit_price != null ? formatCurrency(o.unit_price) : "—"}</td>
-                  <td className={cell}>{o.tag || "—"}</td>
+                  {/* The template's AMOUNT: the order's total, which is what is
+                      said to the customer and what Prev Amount is on the other
+                      side of the row. Unit price lives in the popup. */}
+                  <td className={cell}>{formatCurrency(o.total_amount)}</td>
                   <td className={cell}>{o.courier || "—"}</td>
                   <td className={cell}>
                     <TrackingCell value={o.tracking_number} />
@@ -258,7 +265,7 @@ export function AgentLeadsTable({
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={21} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={19} className="px-4 py-10 text-center text-slate-400">
                   No leads found.
                 </td>
               </tr>
