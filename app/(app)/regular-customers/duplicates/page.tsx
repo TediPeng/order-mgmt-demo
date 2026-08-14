@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Trash2 } from "lucide-react";
 import { redirect } from "next/navigation";
 import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
@@ -107,6 +108,25 @@ export default async function DuplicatesPage({
                         {c.total_orders === 1 ? "" : "s"} · since{" "}
                         {c.regular_since ? formatDateTime(c.regular_since) : "—"}
                       </p>
+                      {/* This page is where a duplicate is looked at side by
+                          side, so it is where the decision to remove one gets
+                          made. The link goes to the same confirmation page as
+                          the customer's own record — nothing is deleted from
+                          here, and the orders behind whichever copy goes are
+                          released rather than destroyed, which is the part
+                          worth reading before choosing a side.
+
+                          Administrator only, matching the button on the
+                          customer page: deciding a duplicate is a Team Lead
+                          action, deleting a record is not. */}
+                      {isFullAccess(user.role) && (
+                        <Link
+                          href={`/regular-customers/${c.id}/delete`}
+                          className="mt-2 inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-3 w-3" aria-hidden /> Delete this one
+                        </Link>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -145,6 +165,17 @@ export default async function DuplicatesPage({
                   <p className="mt-1 text-xs text-slate-400">
                     Agent: {c?.owner_agent_id ? nameById.get(c.owner_agent_id) || "—" : "—"}
                   </p>
+                  {/* Same offer on this half of the page. `c` can be null here —
+                      a recorded match outlives the record it names — and there
+                      is nothing to delete when it is. */}
+                  {isFullAccess(user.role) && c && (
+                    <Link
+                      href={`/regular-customers/${c.id}/delete`}
+                      className="mt-2 inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-3 w-3" aria-hidden /> Delete this one
+                    </Link>
+                  )}
                 </div>
               ))}
             </div>
