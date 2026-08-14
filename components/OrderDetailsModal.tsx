@@ -978,7 +978,13 @@ export function OrderDetailsModal({
           </div>
         )}
 
-        <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-5 py-3">
+        {/* Pinned to the bottom of the card, which is the scrolling element, so
+            Close and Save Changes are reachable from anywhere in the form. They
+            used to sit after the last section: on a long order — a call history,
+            a sync panel, a duplicate warning — you had to scroll to the end to
+            leave, and the further you were from finished the further away the
+            way out was. */}
+        <div className="sticky bottom-0 z-20 flex items-center justify-between gap-2 rounded-b-xl border-t border-slate-200 bg-white px-5 py-3 shadow-[0_-2px_6px_-2px_rgba(15,23,42,0.12)]">
           <div>{fullPageHref && <Link href={fullPageHref} className="text-xs font-medium text-[var(--brand-primary)] hover:underline">Open full page</Link>}</div>
           <div className="flex gap-2">
             {/* No Edit Order and no Cancel. There is nothing to switch into —
