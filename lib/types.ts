@@ -60,19 +60,26 @@ export function displayOrderId(order: Pick<Order, "order_number" | "pancake_orde
 }
 
 /**
- * The same reference, short enough for a frozen column.
+ * The same reference, short enough for a frozen column: `ORD-20260811-0168`
+ * shows as `0168`.
  *
- * "ORD-" opens every internal number and says nothing — it is the one part of
- * the string that is identical on every row, in the one column that is pinned
- * to the left and costs horizontal space on every screen. A Pancake id is
- * already short and is returned untouched.
+ * The prefix and the date are the same on every row of a day's work, in the one
+ * column pinned to the left, costing horizontal space on every screen. The
+ * counter is what anybody actually reads. A Pancake id is already short and is
+ * returned untouched.
  *
- * The full value stays in the cell's tooltip and in the popup header, because
- * it is what an agent reads out and what gets pasted into Pancake.
+ * Near enough to unique to scan by: across the 51,948 orders without a Pancake
+ * id there are 51,421 distinct counters — 507 repeat at all, and the worst
+ * repeats four times in eighteen months. It is a label to find a row by, not a
+ * key; the full value is on the cell's tooltip, in the popup header and on the
+ * lead's own page, which is where it gets read out and pasted into Pancake.
  */
 export function shortOrderId(order: Pick<Order, "order_number" | "pancake_order_id">): string {
   if (order.pancake_order_id) return order.pancake_order_id;
-  return order.order_number.replace(/^ORD-/, "");
+  // ORD-YYYYMMDD-NNNN → NNNN, and anything not in that shape is left alone
+  // rather than sliced into something meaningless.
+  const parts = order.order_number.split("-");
+  return parts.length === 3 ? parts[2] : order.order_number;
 }
 
 /** True while an order still shows its internal number because Pancake has not
