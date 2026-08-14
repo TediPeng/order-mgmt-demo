@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, ChevronRight, ChevronUp, Copy, Maximize2, Minimize2, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, ChevronUp, Copy, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
 import { OrderItemsEditor, type EditorLine } from "@/components/OrderItemsEditor";
 import { summarizeItems, totalsFor } from "@/lib/order-totals";
 import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import { LEAD_STATUS_LABELS, LEAD_STATUSES, selectableStatuses } from "@/lib/validation";
 import { isOrderLocked, SYNCED_LOCK_MESSAGE } from "@/lib/lead-workflow";
 import { useCallSession } from "@/components/CallSessionProvider";
@@ -432,17 +432,32 @@ export function OrderDetailsModal({
             </h2>
             {/* Where it came from, beside where it is — the PREV Status column
                 of the list, carried into the header so the pair is read the
-                same way in both places. */}
+                same way in both places.
+
+                It wears the status's own colours, as the badge beside it does,
+                so DELIVERED and RETURNED are told apart at a glance instead of
+                both being a grey smudge on a blue bar. The word "prev" is what
+                keeps the two apart; an import can name a status this system does
+                not have, and that one falls back to plain white on the header. */}
             {order.previous_order_status && (
-              <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white">
+              <span
+                className={cn(
+                  "whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+                  isKnownStatus(order.previous_order_status)
+                    ? LEAD_STATUS_STYLES[order.previous_order_status].badge
+                    : "bg-white/20 text-white"
+                )}
+              >
                 prev {order.previous_order_status.replace(/_/g, " ")}
               </span>
             )}
             <StatusBadge status={order.status} />
           </div>
-          <button type="button" onClick={requestClose} className="rounded p-1 text-white/90 hover:bg-black/10" aria-label="Close">
-            <X className="h-5 w-5" />
-          </button>
+          {/* No ✕. Close is in the footer bar, which is pinned and therefore on
+              screen from anywhere in the form, and the backdrop closes too —
+              both go through requestClose, so unsaved work is still asked about
+              either way. Two closes a hand's width apart, doing the same thing,
+              is one more than the header needs. */}
         </div>
 
         <div className="space-y-4 p-5">
