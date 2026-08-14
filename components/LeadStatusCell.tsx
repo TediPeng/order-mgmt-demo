@@ -96,7 +96,23 @@ export function LeadCallCell({ order, onOpen }: { order: Order; onOpen: () => vo
   }
 
   if (synced) {
-    return (
+    // An order can sync while a call is open on it. Saying only "Details" then
+    // hides the fact that the clock is still running, and the popup behind it is
+    // the only place the call can be ended — so the row says so and leads there.
+    return callActive ? (
+      <button
+        type="button"
+        onClick={onOpen}
+        title="This call is in progress — open the order to end it"
+        className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-green-100 px-2 py-1 text-xs font-medium text-green-800 hover:bg-green-200"
+      >
+        <span className="relative flex h-1.5 w-1.5">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-60" />
+          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-600" />
+        </span>
+        On call
+      </button>
+    ) : (
       <button
         type="button"
         onClick={onOpen}

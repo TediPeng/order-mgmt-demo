@@ -1006,8 +1006,17 @@ export function OrderDetailsModal({
                 call running on this order whether the rule applies to them or
                 not: CALL in the leads row is offered to every role, so a
                 supervisor could otherwise start a call and find the popup had no
-                timer and no way to end it. */}
-            {(requiresCallSession || callActive) && !syncedLocked && (
+                timer and no way to end it.
+
+                A call already running is shown even on a locked order. The lock
+                stops the order being *edited* once Pancake has it, and it does
+                still stop a call being started — but an order can sync while a
+                call is open on it, and hiding the panel then left the call with
+                no way to end: the row said Details rather than Return to call,
+                and the popup it opened had no timer and no button. The session
+                stayed on the clock and on the Agent Monitor until somebody
+                noticed. Ending is never the thing to withhold. */}
+            {(callActive || (requiresCallSession && !syncedLocked)) && (
               <CallingPanel
                 compact
                 orderId={order.id}
