@@ -9,7 +9,7 @@ import { Alert } from "@/components/ui/Alert";
 import { OrderItemsEditor, type EditorLine } from "@/components/OrderItemsEditor";
 import { summarizeItems, totalsFor } from "@/lib/order-totals";
 import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
-import { cn, formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import { LEAD_STATUS_LABELS, LEAD_STATUSES, PAYMENT_METHOD_SUGGESTIONS, selectableStatuses } from "@/lib/validation";
 import { isOrderLocked, SYNCED_LOCK_MESSAGE } from "@/lib/lead-workflow";
 import { useCallSession } from "@/components/CallSessionProvider";
@@ -129,12 +129,6 @@ interface SyncHistoryEntry {
 
 const MISSING_PREFIX = "Missing required fields for Packaging: ";
 
-const STEPS = [
-  { n: 1 as const, label: "Customer" },
-  { n: 2 as const, label: "Products & pricing" },
-  { n: 3 as const, label: "Review" },
-];
-
 export function OrderDetailsModal({
   order,
   agentName,
@@ -192,7 +186,6 @@ export function OrderDetailsModal({
 }) {
   const [mode, setMode] = useState<"view" | "edit">("view");
   // Edit mode walks Customer info → Products & pricing → Review.
-  const [step, setStep] = useState<1 | 2 | 3>(1);
   const initial = useMemo(() => snapshotFrom(order), [order]);
   const [form, setForm] = useState<EditForm>(initial);
   const [lines, setLines] = useState<EditorLine[]>(initialLines);
@@ -420,7 +413,6 @@ export function OrderDetailsModal({
     setForm(initial);
     setMissing([]);
     setError(null);
-    setStep(1);
     setMode("view");
   }
 
@@ -551,34 +543,9 @@ export function OrderDetailsModal({
             </div>
           ) : (
             <div className="space-y-4">
-              <ol className="flex items-center gap-1 text-xs font-medium">
-                {STEPS.map((s) => (
-                  <li key={s.n} className="flex flex-1 items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setStep(s.n)}
-                      className={cn(
-                        "flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 transition-colors",
-                        step === s.n
-                          ? "bg-[var(--brand-primary-10)] text-[var(--brand-primary)]"
-                          : "text-slate-500 hover:bg-slate-50"
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px]",
-                          step === s.n ? "bg-[var(--brand-primary)] text-white" : "bg-slate-200 text-slate-600"
-                        )}
-                      >
-                        {s.n}
-                      </span>
-                      {s.label}
-                    </button>
-                  </li>
-                ))}
-              </ol>
 
-              {step === 1 && (
+              <h4 className="border-b border-slate-100 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Customer</h4>
+              {(
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -630,7 +597,8 @@ export function OrderDetailsModal({
                 </div>
               )}
 
-              {step === 2 && (
+              <h4 className="border-b border-slate-100 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Products &amp; pricing</h4>
+              {(
                 <div className="space-y-3">
                   <div>
                     <Label htmlFor="m_items">Products</Label>
@@ -699,7 +667,8 @@ export function OrderDetailsModal({
                 </div>
               )}
 
-              {step === 3 && (
+              <h4 className="border-b border-slate-100 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Review</h4>
+              {(
                 <div className="space-y-3">
                   {pancakeCheck.ok ? (
                     <Alert kind="success">All required fields are present — this order is ready to send to Pancake POS.</Alert>
@@ -765,15 +734,6 @@ export function OrderDetailsModal({
                   </div>
                 </div>
               )}
-
-              <div className="flex justify-between border-t border-slate-100 pt-3">
-                <Button type="button" variant="outline" size="sm" disabled={step === 1} onClick={() => setStep((s) => (s - 1) as 1 | 2 | 3)}>
-                  Back
-                </Button>
-                <Button type="button" variant="secondary" size="sm" disabled={step === 3} onClick={() => setStep((s) => (s + 1) as 1 | 2 | 3)}>
-                  Next
-                </Button>
-              </div>
             </div>
           )}
 
