@@ -696,3 +696,22 @@ export const attendanceManageSchema = z.object({
   status: z.enum(ATTENDANCE_STATUSES),
   remarks: z.string().trim().optional().default(""),
 });
+
+/**
+ * Statuses whose name contains the typed words, for the leads search box.
+ *
+ * Both spellings are matched: the label the floor reads ("CANNOT BE REACHED")
+ * and the enum value underneath it (`cbr`, or `call_back` read as "call back"),
+ * so a search works whether somebody types what is on the badge or what they
+ * remember the system calling it.
+ *
+ * Two characters minimum. On one letter almost every status matches and the
+ * search stops narrowing anything, which reads as the box being broken.
+ */
+export function statusesMatching(term: string): (typeof LEAD_STATUSES)[number][] {
+  const t = term.trim().toLowerCase();
+  if (t.length < 2) return [];
+  return LEAD_STATUSES.filter(
+    (s) => LEAD_STATUS_LABELS[s].toLowerCase().includes(t) || s.replace(/_/g, " ").includes(t)
+  );
+}

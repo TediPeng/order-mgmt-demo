@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { isFullAccess } from "@/lib/permissions";
 import { normalizePhone } from "@/lib/utils";
+import { statusesMatching } from "@/lib/validation";
 import type { DbShape, Order, Profile } from "@/lib/types";
 
 /**
@@ -126,6 +127,8 @@ export async function queryLeads(input: {
         `tracking_number.ilike.*${term}*`,
       ];
       if (digits) conditions.push(`customer_phone.ilike.*${digits}*`);
+      // …and by what the lead IS: typing "delivered" finds the delivered ones.
+      for (const s of statusesMatching(term)) conditions.push(`status.eq.${s}`);
       query = query.or(conditions.join(","));
     }
   } else {
@@ -140,6 +143,9 @@ export async function queryLeads(input: {
       // Management's box also matches an agent's username, which lives on
       // another table — resolved to ids by the caller, since a join here would
       // cost more than the handful of profiles it looks at.
+      // …and by status name, so "returned" narrows the list without
+      // reaching for a second control.
+      for (const s of statusesMatching(term)) conditions.push(`status.eq.${s}`);
       const agentIds = input.usernameToIds.get(term.toLowerCase()) || [];
       for (const id of agentIds) conditions.push(`agent_id.eq.${id}`);
       query = query.or(conditions.join(","));
