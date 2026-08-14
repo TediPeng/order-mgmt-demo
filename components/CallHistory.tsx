@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDateTime } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
 import { LEAD_STATUS_LABELS } from "@/lib/validation";
 import type { CallSession, OrderStatus } from "@/lib/types";
 
@@ -18,15 +18,28 @@ function statusLabel(value: string | null): string {
 
 /** Read-only call history for an order. Agents can see it but never edit it —
  * corrections are a Management action and go through the audit log. */
-export function CallHistory({ sessions, agentNameById }: { sessions: CallSession[]; agentNameById: Record<string, string> }) {
+export function CallHistory({
+  sessions,
+  agentNameById,
+  maxHeightClass = "max-h-60",
+}: {
+  sessions: CallSession[];
+  agentNameById: Record<string, string>;
+  /** How tall the list may grow before it scrolls inside itself. An order that
+   * has been called twenty times used to push Save Changes off the bottom of
+   * the popup; the caller raises this when the history is what is being read. */
+  maxHeightClass?: string;
+}) {
   if (sessions.length === 0) {
     return <p className="text-xs text-slate-400">No calls recorded for this order yet.</p>;
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-200">
+    <div className={cn("overflow-auto rounded-lg border border-slate-200", maxHeightClass)}>
       <table className="w-full min-w-[720px] text-left text-xs">
-        <thead className="bg-slate-50 uppercase text-slate-500">
+        {/* Sticky, because the list scrolls inside itself now and a column of
+            times with no heading above it says nothing. */}
+        <thead className="sticky top-0 z-10 bg-slate-50 uppercase text-slate-500 shadow-sm">
           <tr>
             <th className="px-3 py-2">Agent</th>
             <th className="px-3 py-2">Call Start</th>

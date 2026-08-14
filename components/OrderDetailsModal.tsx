@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, ChevronRight, Copy, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, ChevronUp, Copy, Maximize2, Minimize2, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
@@ -159,6 +159,8 @@ export function OrderDetailsModal({
   const [syncActionRunning, setSyncActionRunning] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(true);
+  const [historyMaximized, setHistoryMaximized] = useState(false);
 
   // The sync panel appears once the order has reached Packaging (Section 4
   // step 5) — before that there is nothing to sync and nothing to report.
@@ -892,8 +894,47 @@ export function OrderDetailsModal({
 
           {callSessions.length > 0 && (
             <div className="border-t border-slate-100 pt-3">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Call History</p>
-              <CallHistory sessions={callSessions} agentNameById={agentNameById} />
+              {/* An order that has been called twenty times filled the popup
+                  with its own history and pushed Save Changes off the bottom.
+                  Minimize folds it away to its heading; Maximize gives it most
+                  of the card when the history IS what is being read. Neither
+                  choice is remembered — the popup opens the same way every
+                  time, which is what makes it predictable. */}
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Call History ({callSessions.length})
+                </p>
+                <div className="flex items-center gap-1">
+                  {historyOpen && (
+                    <button
+                      type="button"
+                      onClick={() => setHistoryMaximized((v) => !v)}
+                      title={historyMaximized ? "Shrink the call history" : "Expand the call history"}
+                      aria-label={historyMaximized ? "Shrink the call history" : "Expand the call history"}
+                      className="rounded border border-slate-200 p-1 text-slate-500 hover:bg-slate-50"
+                    >
+                      {historyMaximized ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setHistoryOpen((v) => !v)}
+                    title={historyOpen ? "Hide the call history" : "Show the call history"}
+                    aria-label={historyOpen ? "Hide the call history" : "Show the call history"}
+                    aria-expanded={historyOpen}
+                    className="rounded border border-slate-200 p-1 text-slate-500 hover:bg-slate-50"
+                  >
+                    {historyOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
+              </div>
+              {historyOpen && (
+                <CallHistory
+                  sessions={callSessions}
+                  agentNameById={agentNameById}
+                  maxHeightClass={historyMaximized ? "max-h-[60vh]" : "max-h-60"}
+                />
+              )}
             </div>
           )}
         </div>
