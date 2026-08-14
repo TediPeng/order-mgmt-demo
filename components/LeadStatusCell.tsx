@@ -3,51 +3,31 @@
 import { useState } from "react";
 import { PhoneCall } from "lucide-react";
 import { useCallSession } from "@/components/CallSessionProvider";
-import { LEAD_STATUS_LABELS, selectableStatuses } from "@/lib/validation";
-import { isOrderLocked } from "@/lib/lead-workflow";
-import { buildRawFromOrder } from "@/lib/lead-payload";
+import { StatusBadge } from "@/components/ui/Badge";
 import { shortOrderId } from "@/lib/types";
 import type { Order } from "@/lib/types";
 
 /**
- * The status of a lead, changeable where it is read, with the call that has to
- * come first sitting beside it.
+ * Where a lead stands, and the call that changes it.
  *
- * Setting a status used to mean: open the popup, press Calling, press Edit,
- * walk two steps of a wizard, save. The status is the whole point of the call
- * and it was the furthest thing from the row.
+ * The status was briefly a dropdown here. It is set in the order itself now —
+ * the popup opens straight into the form, so the status sits beside the fields
+ * whose validity it depends on, and a lead cannot be moved to Packaging from a
+ * table cell that knows nothing about whether it has a price on it.
  *
- * The dropdown obeys the same rule the server does — an agent may not move a
- * lead without a call open on it (applyLeadUpdate refuses otherwise), so the
- * control is disabled until Calling has been pressed rather than offering an
- * action that would come back as an error. Management has no such rule and the
- * dropdown is simply live for them.
- *
- * Calling shows for everyone regardless: a supervisor rings a customer too, and
- * starting a call is the fastest way to open an order from the list. The route
- * that opens a session does not care about the role — only that the person has
- * timed in — so the button is never offered to somebody who cannot use it for a
- * reason the popup will not explain.
+ * What the row keeps is the reading: the status it is on, and the one it came
+ * from. Changing it is one press away.
  */
 export function LeadStatusCell({
   order,
-  canEdit,
-  requiresCallSession,
-  userIsFullAccess,
   previousStatus,
   onOpen,
-  onSaved,
 }: {
   order: Order;
-  canEdit: boolean;
-  /** Agents must be on a call; Management must not. */
-  requiresCallSession: boolean;
-  userIsFullAccess: boolean;
-  /** The status this lead moved away from, for the line above the control. */
+  /** The status this lead moved away from, for the line above the badge. */
   previousStatus?: string | null;
-  /** Opens the full popup — what Calling does once the call is running. */
+  /** Opens the order — what CALL does once the call is running. */
   onOpen: () => void;
-  onSaved: (updated: Order) => void;
 }) {
   const { session, startCall } = useCallSession();
   const [busy, setBusy] = useState(false);
@@ -58,33 +38,6 @@ export function LeadStatusCell({
   const callActive = Boolean(session && session.order_id === order.id);
   /** A call open on some OTHER order — one per agent is enforced server-side. */
   const otherCall = session && session.order_id !== order.id ? session : null;
-  const syncedLocked = isOrderLocked(order);
-  const canChange = canEdit && !syncedLocked && (!requiresCallSession || callActive);
-
-  async function changeStatus(next: string) {
-    if (next === order.status) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/leads/${order.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildRawFromOrder(order, { status: next })),
-      });
-      const json = await res.json();
-      if (!json.ok) {
-        // Kept short: this sits in a table cell. The popup gives the long
-        // version, including which fields Packaging is still missing.
-        setError(json.error || "Could not save.");
-        return;
-      }
-      onSaved(json.order as Order);
-    } catch {
-      setError("Network error.");
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function beginCall() {
     setBusy(true);
@@ -124,27 +77,9 @@ export function LeadStatusCell({
       )}
 
       <div className="flex items-center gap-1.5">
-        <select
-          value={order.status}
-          disabled={!canChange || busy}
-          onChange={(e) => changeStatus(e.target.value)}
-          title={
-            syncedLocked
-              ? "Synced to Pancake POS — locked"
-              : !canChange
-                ? "Start the call first"
-                : "Change the status of this lead"
-          }
-          className="max-w-[11rem] rounded-md border border-slate-200 bg-white px-1.5 py-1 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
-        >
-          {selectableStatuses(userIsFullAccess, order.status).map((s) => (
-            <option key={s} value={s}>
-              {LEAD_STATUS_LABELS[s]}
-            </option>
-          ))}
-        </select>
+        <StatusBadge status={order.status} />
 
-        {/* A call is already running somewhere else, so Calling here can only
+        {/* A call is already running somewhere else, so CALL here can only
             fail. Offering the way back instead of the button that refuses is
             the difference between a control and a trap. */}
         {otherCall && (
@@ -157,9 +92,9 @@ export function LeadStatusCell({
           </a>
         )}
 
-        {/* Everyone, not only the roles the call rule applies to. A
-            supervisor rings a customer too, and the button is also the fastest
-            way to open the order from the list. */}
+        {/* Everyone, not only the roles the call rule applies to. A supervisor
+            rings a customer too, and this is also the shortest way from the
+            list into the order. */}
         {!callActive && !otherCall && (
           <button
             type="button"
@@ -168,7 +103,7 @@ export function LeadStatusCell({
             title="Start the call and open this order"
             className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[var(--brand-primary)] px-2 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
           >
-            <PhoneCall className="h-3 w-3" /> Calling
+            <PhoneCall className="h-3 w-3" /> CALL
           </button>
         )}
         {callActive && (

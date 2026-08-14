@@ -245,18 +245,12 @@ export function AgentLeadsTable({
                   <td className={cell}>
                     <TrackingCell value={o.tracking_number} />
                   </td>
-                  {/* Status and the call that has to come before it, together:
-                      the status is what the call produces, and it used to be
-                      four clicks and two wizard steps away from this row. */}
+                  {/* Where the lead stands, and the call that moves it. */}
                   <td className="border-r border-slate-100 px-2.5 py-1.5">
                     <LeadStatusCell
                       order={o}
-                      canEdit={canEdit}
-                      requiresCallSession={true}
-                      userIsFullAccess={false}
                       previousStatus={latestStatusUpdateByOrderId[o.id]?.from ?? null}
                       onOpen={() => setOpenOrder(o)}
-                      onSaved={handleSaved}
                     />
                   </td>
                 </tr>
