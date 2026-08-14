@@ -15,7 +15,7 @@ import { shortOrderId, isPendingOrderId } from "@/lib/types";
 
 export function LeadsTable({
   orders: initialOrders,
-  agentUsernameById,
+  agentCallNameById,
   agentFullNameById,
   productNameByOrderId,
   latestStatusUpdateByOrderId,
@@ -35,7 +35,8 @@ export function LeadsTable({
   initialOpenOrderId,
 }: {
   orders: Order[];
-  agentUsernameById: Record<string, string>;
+  /** Call Name per agent — what the floor calls them, not their login. */
+  agentCallNameById: Record<string, string>;
   agentFullNameById: Record<string, string>;
   productNameByOrderId: Record<string, string>;
   latestStatusUpdateByOrderId: Record<string, { status: OrderStatus; from: string | null; at: string } | undefined>;
@@ -195,7 +196,7 @@ export function LeadsTable({
                       in the row would read as one lead in two states. */}
                   <td className={cell}>{o.previous_order_status ? o.previous_order_status.toUpperCase() : "—"}</td>
                   <td className={cell}>{o.order_date ? formatDate(o.order_date) : "—"}</td>
-                  <td className={cell}>{agentUsernameById[o.agent_id] || "—"}</td>
+                  <td className={cell}>{agentCallNameById[o.agent_id] || "—"}</td>
                   <td className={cell}>{o.customer_name}</td>
                   <td className={cell}>{o.customer_phone || "—"}</td>
                   <td className={cell}>{o.purok || "—"}</td>

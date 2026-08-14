@@ -18,6 +18,7 @@ import { AgentLeadsTable } from "@/components/AgentLeadsTable";
 import { LeadStatusCards, QUICK_FILTER_STATUSES } from "@/components/LeadStatusCards";
 
 import { LEAD_STATUSES, LEAD_STATUS_LABELS } from "@/lib/validation";
+import { displayCallName } from "@/lib/types";
 import type { CallSession, OrderStatus } from "@/lib/types";
 import { listSessionsForOrder } from "@/lib/call-sessions";
 
@@ -159,7 +160,10 @@ export default async function LeadsPage({
 
   const canEdit = can(user.role, "orders", "edit", db.role_permissions);
   const canManageIntegrations = can(user.role, "integrations", "manage", db.role_permissions);
-  const agentUsernameById = Object.fromEntries(db.profiles.map((p) => [p.id, p.username]));
+  // Call Name, not username: ROMA_jamie is how the account signs in, JAMIE is
+  // how the floor and the call-log files name the same person. displayCallName
+  // falls back to the full name for anyone without one.
+  const agentCallNameById = Object.fromEntries(db.profiles.map((p) => [p.id, displayCallName(p)]));
   const agentFullNameById = Object.fromEntries(db.profiles.map((p) => [p.id, p.full_name]));
   const careStaffById = Object.fromEntries(db.profiles.map((p) => [p.id, { name: p.full_name, email: p.email }]));
   const activeProducts = db.products
@@ -465,7 +469,7 @@ export default async function LeadsPage({
       ) : (
       <LeadsTable
         orders={pageOrders}
-        agentUsernameById={agentUsernameById}
+        agentCallNameById={agentCallNameById}
         agentFullNameById={agentFullNameById}
         productNameByOrderId={productNameByOrderId}
         latestStatusUpdateByOrderId={latestStatusUpdateByOrderId}
