@@ -896,21 +896,31 @@ export function OrderDetailsModal({
             <div className="border-t border-slate-100 pt-3">
               {/* An order that has been called twenty times filled the popup
                   with its own history and pushed Save Changes off the bottom.
-                  Minimize folds it away to its heading; Maximize gives it most
-                  of the card when the history IS what is being read. Neither
-                  choice is remembered — the popup opens the same way every
-                  time, which is what makes it predictable. */}
+                  It opens on the latest call only — the one that says where the
+                  lead was left — and the earlier ones are a press away. The
+                  other control folds the section to its heading entirely.
+
+                  Neither choice is remembered: the popup opens the same way
+                  every time, which is what makes it predictable. */}
               <div className="mb-2 flex items-center justify-between gap-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                   Call History ({callSessions.length})
                 </p>
                 <div className="flex items-center gap-1">
-                  {historyOpen && (
+                  {historyOpen && callSessions.length > 1 && (
                     <button
                       type="button"
                       onClick={() => setHistoryMaximized((v) => !v)}
-                      title={historyMaximized ? "Shrink the call history" : "Expand the call history"}
-                      aria-label={historyMaximized ? "Shrink the call history" : "Expand the call history"}
+                      title={
+                        historyMaximized
+                          ? "Show the latest call only"
+                          : `Show all ${callSessions.length} calls`
+                      }
+                      aria-label={
+                        historyMaximized
+                          ? "Show the latest call only"
+                          : `Show all ${callSessions.length} calls`
+                      }
                       className="rounded border border-slate-200 p-1 text-slate-500 hover:bg-slate-50"
                     >
                       {historyMaximized ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
@@ -929,11 +939,24 @@ export function OrderDetailsModal({
                 </div>
               </div>
               {historyOpen && (
-                <CallHistory
-                  sessions={callSessions}
-                  agentNameById={agentNameById}
-                  maxHeightClass={historyMaximized ? "max-h-[60vh]" : "max-h-60"}
-                />
+                <>
+                  <CallHistory
+                    sessions={historyMaximized ? callSessions : callSessions.slice(0, 1)}
+                    agentNameById={agentNameById}
+                    maxHeightClass={historyMaximized ? "max-h-[60vh]" : "max-h-none"}
+                  />
+                  {/* Say what is being held back, rather than leaving one row
+                      to look like the whole history. */}
+                  {!historyMaximized && callSessions.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setHistoryMaximized(true)}
+                      className="mt-1 text-[11px] text-slate-500 hover:text-[var(--brand-primary)] hover:underline"
+                    >
+                      {callSessions.length - 1} earlier {callSessions.length - 1 === 1 ? "call" : "calls"} hidden — show all
+                    </button>
+                  )}
+                </>
               )}
             </div>
           )}
