@@ -9,7 +9,7 @@ import { Alert } from "@/components/ui/Alert";
 import { OrderItemsEditor, type EditorLine } from "@/components/OrderItemsEditor";
 import { summarizeItems, totalsFor } from "@/lib/order-totals";
 import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
-import { cn, formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import { LEAD_STATUS_LABELS, LEAD_STATUSES, selectableStatuses } from "@/lib/validation";
 import { isOrderLocked, SYNCED_LOCK_MESSAGE } from "@/lib/lead-workflow";
 import { useCallSession } from "@/components/CallSessionProvider";
@@ -406,7 +406,12 @@ export function OrderDetailsModal({
         className="dense-form max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className={`flex items-center justify-between rounded-t-xl ${style.header} px-5 py-3`}>
+        {/* Pinned, like the footer bar: which order this is, where it stands and
+            where it came from are the three things you need while reading any
+            part of the form, and they were scrolling away at the first section.
+            The header carries a solid background already, so nothing shows
+            through it. */}
+        <div className={`sticky top-0 z-30 flex items-center justify-between rounded-t-xl ${style.header} px-5 py-3`}>
           <div className="flex items-center gap-2 text-white">
             {/* The same id the row was clicked on. The header used to print the
                 whole ORD-YYYYMMDD-NNNN while the list showed its counter, so
@@ -434,20 +439,14 @@ export function OrderDetailsModal({
                 of the list, carried into the header so the pair is read the
                 same way in both places.
 
-                It wears the status's own colours, as the badge beside it does,
-                so DELIVERED and RETURNED are told apart at a glance instead of
-                both being a grey smudge on a blue bar. The word "prev" is what
-                keeps the two apart; an import can name a status this system does
-                not have, and that one falls back to plain white on the header. */}
+                Solid white with near-black text, not the status's own pale
+                badge colours. Those are made for a white table row: teal-100 on
+                a teal-500 header, or blue-100 on blue-500, is the same colour
+                twice and the chip disappears into the bar behind it. White reads
+                against every header in the palette, from yellow-400 to red-900,
+                which is the one thing this chip has to do. */}
             {order.previous_order_status && (
-              <span
-                className={cn(
-                  "whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide",
-                  isKnownStatus(order.previous_order_status)
-                    ? LEAD_STATUS_STYLES[order.previous_order_status].badge
-                    : "bg-white/20 text-white"
-                )}
-              >
+              <span className="whitespace-nowrap rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-900 shadow-sm ring-1 ring-slate-900/10">
                 prev {order.previous_order_status.replace(/_/g, " ")}
               </span>
             )}
