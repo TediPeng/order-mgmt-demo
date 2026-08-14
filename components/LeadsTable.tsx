@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
+import { SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { OrderDetailsModal } from "@/components/OrderDetailsModal";
 import { TrackingCell } from "@/components/TrackingCell";
 import type { EditorLine } from "@/components/OrderItemsEditor";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { useGridKeys } from "@/components/useGridKeys";
+import { LeadStatusCell } from "@/components/LeadStatusCell";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 import type { CallSession, Order, OrderStatus } from "@/lib/types";
 import { shortOrderId, isPendingOrderId } from "@/lib/types";
@@ -241,19 +242,19 @@ export function LeadsTable({
                   <td className={cell}>
                     <TrackingCell value={o.tracking_number} />
                   </td>
+                  {/* Status and the call that has to come before it, together:
+                      the status is what the call produces, and it used to be
+                      four clicks and two wizard steps away from this row. */}
                   <td className="border-r border-slate-100 px-2.5 py-1.5">
-                    {/* Where it came from, above where it is. "CBR" alone does
-                        not say whether a lead has just been picked up or given
-                        up on; "from NEW" does. Only on rows that have actually
-                        moved — a lead nobody has touched shows the badge alone. */}
-                    {(() => {
-                      const change = latestStatusUpdateByOrderId[o.id];
-                      const from = change && change.from !== o.status ? change.from : null;
-                      return from ? (
-                        <span className="block text-[10px] uppercase leading-none text-slate-400">from {from.replace(/_/g, " ")}</span>
-                      ) : null;
-                    })()}
-                    <StatusBadge status={o.status} />
+                    <LeadStatusCell
+                      order={o}
+                      canEdit={canEdit}
+                      requiresCallSession={requiresCallSession}
+                      userIsFullAccess={canSetFulfillmentStatus}
+                      previousStatus={latestStatusUpdateByOrderId[o.id]?.from ?? null}
+                      onOpen={() => setOpenOrder(o)}
+                      onSaved={handleSaved}
+                    />
                   </td>
                   <td className="border-r border-slate-100 px-2.5 py-1.5">
                     <SyncStatusChip

@@ -21,6 +21,7 @@ import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { tagRegularCustomerAction } from "@/lib/actions/regular-customers";
 import { validateForPancake as computePancakeCheck } from "@/lib/pancake/validate";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
+import { buildRawFromOrder } from "@/lib/lead-payload";
 import type { CallSession, Order, OrderStatus } from "@/lib/types";
 
 interface EditForm {
@@ -80,39 +81,6 @@ function snapshotFrom(order: Order): EditForm {
  * does not have), so anything rendered as a badge has to be checked first. */
 function isKnownStatus(value: string | null): value is OrderStatus {
   return !!value && (LEAD_STATUSES as readonly string[]).includes(value);
-}
-
-function buildRawFromOrder(o: Order, overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  return {
-    customer_name: o.customer_name,
-    customer_phone: o.customer_phone,
-    purok: o.purok,
-    barangay: o.barangay,
-    city: o.city,
-    province: o.province,
-    pancake_province_id: o.pancake_province_id || "",
-    pancake_district_id: o.pancake_district_id || "",
-    pancake_commune_id: o.pancake_commune_id || "",
-    landmark: o.landmark,
-    previous_order_date: o.previous_order_date || "",
-    previous_order_product: o.previous_order_product || "",
-    previous_order_amount: o.previous_order_amount,
-    previous_order_note: o.previous_order_note || "",
-    previous_order_status: o.previous_order_status || "",
-    product_id: o.product_id || "",
-    unit_price: o.unit_price,
-    status: o.status,
-    notes: o.notes,
-    agent_id: o.agent_id,
-    quantity: o.quantity,
-    shipping_fee: o.shipping_fee,
-    courier: o.courier || "",
-    payment_method: o.payment_method || "",
-    order_source: o.order_source || "",
-    discount: o.discount ?? 0,
-    variant: o.variant || "",
-    ...overrides,
-  };
 }
 
 interface SyncHistoryEntry {
