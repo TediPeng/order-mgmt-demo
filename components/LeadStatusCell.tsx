@@ -6,6 +6,7 @@ import { useCallSession } from "@/components/CallSessionProvider";
 import { LEAD_STATUS_LABELS, selectableStatuses } from "@/lib/validation";
 import { isOrderLocked } from "@/lib/lead-workflow";
 import { buildRawFromOrder } from "@/lib/lead-payload";
+import { shortOrderId } from "@/lib/types";
 import type { Order } from "@/lib/types";
 
 /**
@@ -51,8 +52,12 @@ export function LeadStatusCell({
   const { session, startCall } = useCallSession();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The order already holding this agent's call, when that is what stopped us. */
+  const [blockedBy, setBlockedBy] = useState<{ id: string; order_number: string } | null>(null);
 
   const callActive = Boolean(session && session.order_id === order.id);
+  /** A call open on some OTHER order — one per agent is enforced server-side. */
+  const otherCall = session && session.order_id !== order.id ? session : null;
   const syncedLocked = isOrderLocked(order);
   const canChange = canEdit && !syncedLocked && (!requiresCallSession || callActive);
 
@@ -84,13 +89,28 @@ export function LeadStatusCell({
   async function beginCall() {
     setBusy(true);
     setError(null);
+    setBlockedBy(null);
     const result = await startCall(order.id);
     setBusy(false);
-    // Open the order either way: on success it is the panel the call is worked
-    // from, and on failure it is where the reason — timed out, already on
-    // another call — is explained in full.
+
+    if (result.ok) {
+      onOpen();
+      return;
+    }
+
+    // One call at a time is the rule, and being told so is not enough: the way
+    // out is to finish the call already running, which is on a different row —
+    // possibly a different page. Name it and offer to go there, rather than
+    // leaving a red sentence with nothing to press.
+    if (result.activeOrder) {
+      setBlockedBy(result.activeOrder);
+      return;
+    }
+
+    // Anything else — not timed in, most often — is explained properly by the
+    // panel inside the order, which carries the Go to Time In link.
     onOpen();
-    if (!result.ok) setError(result.error || "Could not start the call.");
+    setError(result.error || "Could not start the call.");
   }
 
   return (
@@ -124,10 +144,23 @@ export function LeadStatusCell({
           ))}
         </select>
 
+        {/* A call is already running somewhere else, so Calling here can only
+            fail. Offering the way back instead of the button that refuses is
+            the difference between a control and a trap. */}
+        {otherCall && (
+          <a
+            href={`/leads?open_id=${otherCall.order_id}`}
+            title="Finish the call you have open before starting another"
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-50"
+          >
+            <PhoneCall className="h-3 w-3" /> Return to call
+          </a>
+        )}
+
         {/* Everyone, not only the roles the call rule applies to. A
             supervisor rings a customer too, and the button is also the fastest
             way to open the order from the list. */}
-        {!callActive && (
+        {!callActive && !otherCall && (
           <button
             type="button"
             onClick={beginCall}
@@ -152,7 +185,23 @@ export function LeadStatusCell({
         )}
       </div>
 
-      {error && <span className="block max-w-[12rem] text-[10px] leading-tight text-red-600">{error}</span>}
+      {/* The way out of "one call at a time" is the call itself. open_id is how
+          the page pins an order that may be on another page or behind a filter,
+          which is the same route "Return to active call" takes in the popup. */}
+      {blockedBy && (
+        <span className="block max-w-[13rem] text-[10px] leading-tight text-slate-500">
+          On a call with{" "}
+          <a
+            href={`/leads?open_id=${blockedBy.id}`}
+            className="font-medium text-[var(--brand-primary)] hover:underline"
+          >
+            {shortOrderId({ order_number: blockedBy.order_number, pancake_order_id: null })}
+          </a>{" "}
+          — finish it first.
+        </span>
+      )}
+
+      {error && <span className="block max-w-[13rem] text-[10px] leading-tight text-red-600">{error}</span>}
     </div>
   );
 }
