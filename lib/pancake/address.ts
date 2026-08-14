@@ -75,6 +75,48 @@ function toOptions(body: unknown): GeoOption[] {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/**
+ * Stand-in geography for PANCAKE_MOCK_MODE.
+ *
+ * It used to be one invented province, which proved the picker rendered and
+ * nothing else: no address in the seed data could match it, so the local
+ * environment could not exercise the part that matters — resolving an
+ * imported address to a real selection. These are real Philippine names,
+ * chosen to cover the leads the dev database is seeded with.
+ *
+ * Not a substitute for Pancake's own list, which is what production matches
+ * against and spells its own way. A match here says the wiring works; it says
+ * nothing about how Pancake spells a place.
+ */
+const MOCK_GEO: { id: string; name: string; cities: { id: string; name: string; barangays: string[] }[] }[] = [
+  { id: "mock-ncr", name: "Metro Manila", cities: [
+    { id: "mock-pasay", name: "Pasay", barangays: ["Barangay 195", "Barangay 183"] },
+    { id: "mock-caloocan", name: "Caloocan", barangays: ["Bagong Silang", "Barangay 176"] },
+  ] },
+  { id: "mock-dnorte", name: "Davao del Norte", cities: [
+    { id: "mock-dujali", name: "Braulio E. Dujali", barangays: ["Poblacion", "Magupising"] },
+    { id: "mock-tagum", name: "Tagum City", barangays: ["Poblacion", "Apokon"] },
+  ] },
+  { id: "mock-rizal", name: "Rizal", cities: [
+    { id: "mock-cainta", name: "Cainta", barangays: ["San Roque", "Santo Domingo"] },
+  ] },
+  { id: "mock-pampanga", name: "Pampanga", cities: [
+    { id: "mock-angeles", name: "Angeles City", barangays: ["San Isidro", "Balibago"] },
+  ] },
+  { id: "mock-bulacan", name: "Bulacan", cities: [
+    { id: "mock-marilao", name: "Marilao", barangays: ["Sto. Nino", "Loma de Gato"] },
+  ] },
+  { id: "mock-quezon", name: "Quezon", cities: [
+    { id: "mock-lucban", name: "Lucban", barangays: ["Bagumbayan", "Poblacion"] },
+  ] },
+  { id: "mock-misor", name: "Misamis Oriental", cities: [
+    { id: "mock-cdo", name: "Cagayan de Oro", barangays: ["Bulua", "Carmen"] },
+  ] },
+  { id: "mock-dsur", name: "Davao del Sur", cities: [
+    { id: "mock-davao", name: "Davao City", barangays: ["Talomo", "Buhangin"] },
+  ] },
+];
+
 /** `GET /geo/provinces?country_code=63` */
 export async function fetchProvinces(
   account: PancakeAccount,
@@ -84,7 +126,7 @@ export async function fetchProvinces(
   const hit = cached(key, PROVINCE_TTL_MS);
   if (hit) return { ok: true, options: hit, error: null };
   if (mockMode() !== "off") {
-    return { ok: true, options: store(key, [{ id: "mock-prov", name: "Abra" }]), error: null };
+    return { ok: true, options: store(key, MOCK_GEO.map((p) => ({ id: p.id, name: p.name }))), error: null };
   }
 
   const res = await pancakeFetch(account, `${GEO_PROVINCES_PATH}?country_code=${encodeURIComponent(countryCode)}`, {
@@ -101,7 +143,8 @@ export async function fetchDistricts(account: PancakeAccount, provinceId: string
   const hit = cached(key, CHILD_TTL_MS);
   if (hit) return { ok: true, options: hit, error: null };
   if (mockMode() !== "off") {
-    return { ok: true, options: store(key, [{ id: "mock-dist", name: "Bangued" }]), error: null };
+    const cities = MOCK_GEO.find((p) => p.id === provinceId)?.cities ?? [];
+    return { ok: true, options: store(key, cities.map((c) => ({ id: c.id, name: c.name }))), error: null };
   }
 
   const res = await pancakeFetch(account, `${GEO_DISTRICTS_PATH}?province_id=${encodeURIComponent(provinceId)}`, {
@@ -123,7 +166,9 @@ export async function fetchCommunes(
   const hit = cached(key, CHILD_TTL_MS);
   if (hit) return { ok: true, options: hit, error: null };
   if (mockMode() !== "off") {
-    return { ok: true, options: store(key, [{ id: "mock-comm", name: "Agtangao" }]), error: null };
+    const brgys =
+      MOCK_GEO.find((p) => p.id === provinceId)?.cities.find((c) => c.id === districtId)?.barangays ?? [];
+    return { ok: true, options: store(key, brgys.map((b) => ({ id: `mock-${b.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, name: b }))), error: null };
   }
 
   const path =

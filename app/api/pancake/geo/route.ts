@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { listAccounts } from "@/lib/pancake/store";
 import { fetchCommunes, fetchDistricts, fetchProvinces } from "@/lib/pancake/address";
+import { mockMode } from "@/lib/pancake/config";
+import type { PancakeAccount } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -25,19 +27,25 @@ export async function GET(req: NextRequest) {
   // Address data is shop-independent, so any active account's credentials serve.
   const accounts = (await listAccounts()).filter((a) => a.is_active);
   const account = accounts.find((a) => a.is_default) || accounts[0];
-  if (!account) {
+  // Mock mode answers without calling Pancake, so it needs no credentials —
+  // and refusing here for want of an account defeated the point of it. The dev
+  // database has no Pancake account and never will, which left the address
+  // boxes permanently empty and unable to be worked on locally at all.
+  if (!account && mockMode() === "off") {
     return NextResponse.json(
       { ok: false, error: "No active Pancake POS account is configured, so address options cannot be loaded." },
       { status: 503 }
     );
   }
+  // The mock branches inside these never look at it.
+  const shop = account ?? ({ id: "mock" } as unknown as PancakeAccount);
 
   const result =
     level === "districts"
-      ? await fetchDistricts(account, provinceId)
+      ? await fetchDistricts(shop, provinceId)
       : level === "communes"
-        ? await fetchCommunes(account, provinceId, districtId)
-        : await fetchProvinces(account);
+        ? await fetchCommunes(shop, provinceId, districtId)
+        : await fetchProvinces(shop);
 
   if (!result.ok) return NextResponse.json({ ok: false, error: result.error }, { status: 502 });
   return NextResponse.json({ ok: true, options: result.options });
