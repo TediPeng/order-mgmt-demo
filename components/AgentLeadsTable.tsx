@@ -8,7 +8,7 @@ import { TrackingCell } from "@/components/TrackingCell";
 import type { EditorLine } from "@/components/OrderItemsEditor";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { useGridKeys } from "@/components/useGridKeys";
-import { LeadStatusCell } from "@/components/LeadStatusCell";
+import { LeadCallCell, LeadStatusCell } from "@/components/LeadStatusCell";
 import type { CallSession, Order, OrderStatus } from "@/lib/types";
 import { shortOrderId, isPendingOrderId } from "@/lib/types";
 
@@ -158,6 +158,7 @@ export function AgentLeadsTable({
               <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Courier</th>
               <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Tracking Number</th>
               <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Status</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Call</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -247,18 +248,20 @@ export function AgentLeadsTable({
                   </td>
                   {/* Where the lead stands, and the call that moves it. */}
                   <td className="border-r border-slate-100 px-2.5 py-1.5">
-                    <LeadStatusCell
-                      order={o}
-                      previousStatus={latestStatusUpdateByOrderId[o.id]?.from ?? null}
-                      onOpen={() => setOpenOrder(o)}
-                    />
+                    <LeadStatusCell order={o} previousStatus={latestStatusUpdateByOrderId[o.id]?.from ?? null} />
+                  </td>
+                  {/* Its own column: a reading and a control are two different
+                      things, and sharing a cell meant sorting them apart on
+                      every row. */}
+                  <td className="border-r border-slate-100 px-2.5 py-1.5">
+                    <LeadCallCell order={o} onOpen={() => setOpenOrder(o)} />
                   </td>
                 </tr>
               );
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={19} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={20} className="px-4 py-10 text-center text-slate-400">
                   No leads found.
                 </td>
               </tr>
