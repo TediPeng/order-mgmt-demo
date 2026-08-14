@@ -35,7 +35,6 @@ export function AgentLeadsTable({
   activeProducts,
   linesByOrder,
   canEdit,
-  canTagRegular = false,
   callSessionsByOrderId = {},
   agentNameById = {},
   latestStatusUpdateByOrderId = {},
@@ -57,7 +56,6 @@ export function AgentLeadsTable({
    * modal opens on the order as it stands rather than a blank row. */
   linesByOrder: Record<string, EditorLine[]>;
   canEdit: boolean;
-  canTagRegular?: boolean;
   callSessionsByOrderId?: Record<string, CallSession[]>;
   agentNameById?: Record<string, string>;
   /** The last status change per order, for the "from X" line under the badge. */
@@ -291,7 +289,6 @@ export function AgentLeadsTable({
           canManageIntegrations={false}
           // Agents must open a call before they can edit or change status;
           // the same rule is enforced server-side.
-          canTagRegular={canTagRegular}
           requiresCallSession
           callSessions={callSessionsByOrderId[openOrder.id] || []}
           agentNameById={agentNameById}

@@ -17,8 +17,6 @@ import { displayOrderId, isPendingOrderId, PANCAKE_SYNC_SOURCE_LABELS, type Panc
 import { AddressSelect } from "@/components/AddressSelect";
 import { CallingPanel } from "@/components/CallingPanel";
 import { CallHistory } from "@/components/CallHistory";
-import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
-import { tagRegularCustomerAction } from "@/lib/actions/regular-customers";
 import { validateForPancake as computePancakeCheck } from "@/lib/pancake/validate";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 import { buildRawFromOrder } from "@/lib/lead-payload";
@@ -108,7 +106,6 @@ export function OrderDetailsModal({
   canManageIntegrations = false,
   canSeeFulfillment = false,
   canSetFulfillmentStatus = false,
-  canTagRegular = false,
   duplicateWarnings = [],
   requiresCallSession = false,
   callSessions = [],
@@ -138,8 +135,6 @@ export function OrderDetailsModal({
   canSeeFulfillment?: boolean;
   /** Full-access users may set Pancake-owned fulfillment statuses by hand. */
   canSetFulfillmentStatus?: boolean;
-  /** Tagging moves the customer to Regular Customers; the lead leaves the active list. */
-  canTagRegular?: boolean;
   /** Possible duplicates for this customer. Management/Team Lead only — an
    * agent is never told a match exists, since it would reveal records outside
    * their own scope. */
@@ -903,16 +898,6 @@ export function OrderDetailsModal({
               ))}
             </ul>
             <p className="mt-1 text-xs text-amber-700">Nothing is merged automatically. Review under Regular Customers.</p>
-          </div>
-        )}
-
-        {canTagRegular && !order.is_regular_customer && (
-          <div className="border-t border-slate-100 px-5 py-3">
-            <form action={tagRegularCustomerAction.bind(null, order.id)}>
-              <ConfirmSubmitButton confirmMessage="Tag this customer as a Regular Customer? Their leads move out of the active Leads list; nothing is deleted.">
-                Tag as Regular Customer
-              </ConfirmSubmitButton>
-            </form>
           </div>
         )}
 

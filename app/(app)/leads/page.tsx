@@ -209,9 +209,6 @@ export default async function LeadsPage({
   // The agent's open call (if any) and the call history for the rows on this
   // page. Loaded here so a reopened popup restores its timer from the server
   // rather than restarting the count.
-  // Tagging creates a regular customer, so it takes the create grant — not
-  // merely being able to see the Regular Customers list.
-  const canTagRegular = can(user.role, "regular_customers", "create", db.role_permissions);
   const canViewRegularCustomers = can(user.role, "regular_customers", "view", db.role_permissions);
 
   // Duplicate warnings are computed for Management/Team Lead only. Agents are
@@ -459,7 +456,6 @@ export default async function LeadsPage({
           activeProducts={activeProducts}
           linesByOrder={linesByOrder}
           canEdit={canEdit}
-          canTagRegular={canTagRegular}
           callSessionsByOrderId={callSessionsByOrderId}
           agentNameById={agentFullNameById}
           latestStatusUpdateByOrderId={latestStatusUpdateByOrderId}
@@ -478,7 +474,6 @@ export default async function LeadsPage({
         canEdit={canEdit}
         canManageIntegrations={canManageIntegrations}
         canSetFulfillmentStatus={isFullAccess(user.role)}
-        canTagRegular={canTagRegular}
         duplicateWarningsByOrderId={duplicateWarningsByOrderId}
         requiresCallSession={!isFullAccess(user.role)}
         callSessionsByOrderId={callSessionsByOrderId}
