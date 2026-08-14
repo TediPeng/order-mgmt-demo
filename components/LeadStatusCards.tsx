@@ -17,7 +17,11 @@ import type { OrderStatus } from "@/lib/types";
 /** Stages this floor never works in. They exist in the enum because Pancake
  * has them and an inbound sync may still set one, and an Administrator can
  * still pick them in the Status dropdown to correct a record — they simply do
- * not earn a card of their own. */
+ * not earn a card or a line in the filter.
+ *
+ * A lead sitting in one of these is still counted in All Leads and still opens
+ * from its row; what it loses is a way to be filtered down to, which is the
+ * trade for a filter short enough to read. */
 const UNUSED_ON_THIS_FLOOR: readonly OrderStatus[] = [
   "waiting_confirmation",
   "confirmed",
@@ -25,6 +29,12 @@ const UNUSED_ON_THIS_FLOOR: readonly OrderStatus[] = [
   "purchased",
   "wait_for_printing",
   "deleted",
+  // Pancake's own bookkeeping, both of them. Money is collected after this
+  // floor is done with the order, and a partial return is settled in Pancake
+  // against the shipment — neither is an outcome anybody here calls a lead to
+  // reach, so neither was ever filtered on.
+  "collected_money",
+  "partial_return",
 ];
 
 export const QUICK_FILTER_STATUSES = LEAD_STATUSES.filter((s) => !UNUSED_ON_THIS_FLOOR.includes(s));
