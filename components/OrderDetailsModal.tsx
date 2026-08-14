@@ -10,7 +10,7 @@ import { OrderItemsEditor, type EditorLine } from "@/components/OrderItemsEditor
 import { summarizeItems, totalsFor } from "@/lib/order-totals";
 import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
-import { LEAD_STATUS_LABELS, LEAD_STATUSES, PAYMENT_METHOD_SUGGESTIONS, selectableStatuses } from "@/lib/validation";
+import { LEAD_STATUS_LABELS, LEAD_STATUSES, selectableStatuses } from "@/lib/validation";
 import { isOrderLocked, SYNCED_LOCK_MESSAGE } from "@/lib/lead-workflow";
 import { useCallSession } from "@/components/CallSessionProvider";
 import { displayOrderId, isPendingOrderId, PANCAKE_SYNC_SOURCE_LABELS, type PancakeSyncSource } from "@/lib/types";
@@ -584,39 +584,16 @@ export function OrderDetailsModal({
                       onLinesChange={setLines}
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {canSeeFulfillment && (
-                    <>
-                    <div>
-                      <Label htmlFor="m_shipping_fee">Shipping Fee</Label>
-                      <Input id="m_shipping_fee" type="number" min={0} step={0.01} value={form.shipping_fee} onChange={(e) => update("shipping_fee", e.target.value)} />
-                    </div>
-                    <div>
-                      <Label htmlFor="m_courier">Courier</Label>
-                      <Input id="m_courier" value={form.courier} onChange={(e) => update("courier", e.target.value)} />
-                    </div>
-                    <div>
-                      <Label htmlFor="m_payment_method">Payment Method</Label>
-                      <Input
-                        id="m_payment_method"
-                        list="m_payment_method_options"
-                        value={form.payment_method}
-                        onChange={(e) => update("payment_method", e.target.value)}
-                      />
-                      <datalist id="m_payment_method_options">
-                        {PAYMENT_METHOD_SUGGESTIONS.map((p) => (
-                          <option key={p} value={p} />
-                        ))}
-                      </datalist>
-                    </div>
-                    </>
-                    )}
-                    <div>
-                      <Label htmlFor="m_order_source">Order Source</Label>
-                      <Input id="m_order_source" value={form.order_source || "—"} disabled readOnly />
-                      <p className="mt-1 text-xs text-slate-400">Set from the assigned agent&apos;s Call Name.</p>
-                    </div>
-                  </div>
+                  {/* Shipping Fee, Courier, Payment Method and Order Source
+                      lived here. None of them is a thing an agent decides on a
+                      call: the first three are fulfillment's, filled from the
+                      Pancake account's defaults when an order forwards, and
+                      Order Source was already read-only, set from the agent's
+                      own Call Name.
+
+                      The values are untouched — the form still carries and
+                      saves whatever the order holds, so nothing is cleared by
+                      no longer being on screen. */}
                   <dl className="space-y-1 rounded-lg bg-slate-50 p-3 text-sm">
                     <div className="flex justify-between text-slate-600">
                       <dt>Line total ({draftQuantity || 0} × {formatCurrency(draftUnitPrice)})</dt>
