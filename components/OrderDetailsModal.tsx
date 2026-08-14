@@ -427,7 +427,12 @@ export function OrderDetailsModal({
               relocks as soon as you save.
             </Alert>
           )}
-          {requiresCallSession && !syncedLocked && (
+          {/* Shown to anyone the call rule applies to, so they can start one —
+              and to anyone who HAS a call running on this order, whether the
+              rule applies to them or not. The Calling button in the leads row
+              is offered to every role now, so a supervisor could start a call
+              and then find the popup had no timer and no way to end it. */}
+          {(requiresCallSession || callActive) && !syncedLocked && (
             <CallingPanel
               orderId={order.id}
               onEnded={() => setMode("view")}
