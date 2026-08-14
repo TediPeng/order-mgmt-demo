@@ -11,6 +11,32 @@ interface Option {
   name: string;
 }
 
+/** Imported addresses arrive slugged — "Metro-manila", "Braulio-e.-dujali" —
+ * while Pancake spells them out. Case, hyphens and full stops are the whole
+ * difference for the overwhelming majority. */
+function normalizePlace(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[-.]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * The one option whose name is exactly this, once both sides are normalised.
+ *
+ * Exact only, and only when exactly one option matches. A near-match would fill
+ * these boxes with somewhere the customer does not live, and this address is
+ * what a courier drives to — a blank box an agent has to fill is a smaller
+ * problem than a filled one that is wrong.
+ */
+function matchByName(options: Option[], name: string): Option | null {
+  const target = normalizePlace(name || "");
+  if (!target) return null;
+  const hits = options.filter((o) => normalizePlace(o.name) === target);
+  return hits.length === 1 ? hits[0] : null;
+}
+
 export interface AddressValue {
   province_id: string;
   province: string;
@@ -175,6 +201,23 @@ export function AddressSelect({
   const [loading, setLoading] = useState({ province: true, city: false, barangay: false });
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  /**
+   * What the import said, kept from the first render.
+   *
+   * Nearly every lead arrives with an address as text and no Pancake IDs —
+   * 49,301 of the 49,302 open ones — so these three boxes opened empty on a
+   * lead that already knew where the customer lived, and the agent retyped it
+   * during the call. Matching those names to Pancake's own lists fills them in.
+   *
+   * Held in a ref because choosing a province clears the city and barangay
+   * below it, which would throw away the very names the next level needs.
+   */
+  const imported = useRef({ province: value.province, city: value.city, barangay: value.barangay });
+  // One attempt per level. Without this, clearing a wrongly-matched box would
+  // simply re-fill it and the agent could never overrule the import.
+  const tried = useRef({ province: false, city: false, barangay: false });
+  const [autoFilled, setAutoFilled] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
     load("provinces", "/api/pancake/geo?level=provinces").then((r) => {
@@ -253,11 +296,66 @@ export function AddressSelect({
     [onChange, value]
   );
 
+  // --- Auto-fill from the import -------------------------------------------
+  // One level at a time, each as its list arrives: choosing a province is what
+  // loads the cities, so the cascade drives itself. A level that does not match
+  // exactly is left empty and stops the ones under it, which is the honest
+  // outcome — the agent picks from there.
+  useEffect(() => {
+    if (tried.current.province || value.province_id || provinces.length === 0) return;
+    tried.current.province = true;
+    const hit = matchByName(provinces, imported.current.province);
+    if (hit) {
+      setProvince(hit);
+      setAutoFilled(true);
+    }
+  }, [provinces, value.province_id, setProvince]);
+
+  useEffect(() => {
+    if (tried.current.city || value.city_id || cities.length === 0) return;
+    tried.current.city = true;
+    const hit = matchByName(cities, imported.current.city);
+    if (hit) {
+      setCity(hit);
+      setAutoFilled(true);
+    }
+  }, [cities, value.city_id, setCity]);
+
+  useEffect(() => {
+    if (tried.current.barangay || value.barangay_id || barangays.length === 0) return;
+    tried.current.barangay = true;
+    const hit = matchByName(barangays, imported.current.barangay);
+    if (hit) {
+      setBarangay(hit);
+      setAutoFilled(true);
+    }
+  }, [barangays, value.barangay_id, setBarangay]);
+
+  // What the import said, always in view while any level is still unresolved —
+  // so the agent is never hunting for it, and can see what the match was made
+  // against when one was made.
+  const importedLine = [imported.current.province, imported.current.city, imported.current.barangay]
+    .filter(Boolean)
+    .join(" / ");
+  const anyUnresolved = !value.province_id || !value.city_id || !value.barangay_id;
+
   return (
     <div className="space-y-2">
       {loadError && (
         <p className="rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
           Address options could not be loaded from Pancake POS: {loadError}
+        </p>
+      )}
+      {/* Two different things, deliberately: what the import said, and whether
+          anything was chosen for the agent on the strength of it. */}
+      {importedLine && (anyUnresolved || autoFilled) && (
+        <p className="text-xs text-slate-500">
+          <span className="text-slate-400">Import:</span> {importedLine}
+          {autoFilled && (
+            <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+              Auto-filled — check before saving
+            </span>
+          )}
         </p>
       )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
