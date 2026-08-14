@@ -100,3 +100,37 @@ export async function replaceItems(orderId: string, items: OrderItemInput[]): Pr
   const { error: insError } = await supabaseAdmin.from("order_items").insert(rows);
   if (insError) throw new Error(`order_items insert failed: ${insError.message}`);
 }
+
+/**
+ * Every line in the system, grouped by order — for the CSV export.
+ *
+ * The export scopes and filters tens of thousands of orders in memory, so
+ * asking for lines by id is not an option: the ids would not fit in a URL. This
+ * reads the whole table instead, which is affordable because only orders that
+ * went through the line editor have rows at all — a few hundred of them.
+ *
+ * Paginated with an explicit order, because PostgREST caps one response at a
+ * thousand rows and answers a plain select with the first thousand and no hint
+ * that the rest exist.
+ */
+export async function listAllItems(): Promise<Map<string, OrderItem[]>> {
+  const out = new Map<string, OrderItem[]>();
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabaseAdmin
+      .from("order_items")
+      .select("*")
+      .order("order_id", { ascending: true })
+      .order("position", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(`order_items read failed: ${error.message}`);
+    for (const row of data || []) {
+      const item = map(row);
+      const list = out.get(item.order_id) || [];
+      list.push(item);
+      out.set(item.order_id, list);
+    }
+    if (!data || data.length < PAGE) break;
+  }
+  return out;
+}

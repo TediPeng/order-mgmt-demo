@@ -7,7 +7,6 @@ import { OrderDetailsModal } from "@/components/OrderDetailsModal";
 import { TrackingCell } from "@/components/TrackingCell";
 import type { EditorLine } from "@/components/OrderItemsEditor";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
-import { listItemNames } from "@/lib/order-totals";
 import { useGridKeys } from "@/components/useGridKeys";
 import type { CallSession, Order, OrderStatus } from "@/lib/types";
 import { displayOrderId, isPendingOrderId } from "@/lib/types";
@@ -213,10 +212,26 @@ export function AgentLeadsTable({
                       cells from the badge for the CURRENT status — two badges
                       in one row would read as one lead in two states. */}
                   <td className={cell}>{o.previous_order_status ? o.previous_order_status.toUpperCase() : "—"}</td>
-                  {/* The cell names the first product and counts the rest; the
-                      tooltip names them all. */}
-                  <td className={cell} title={listItemNames(linesByOrder[o.id] || []) || undefined}>
-                    {productNameByOrderId[o.id] || o.product_name || "—"}
+                  {/* Every product, one per line. The cell used to name the
+                      first and count the rest — "+1 more" is the least useful
+                      thing that can be said about what somebody is buying, and
+                      an agent reading it aloud on a call had to open the order
+                      to find out. Of the orders that carry lines, most have two
+                      or three and the largest has five, so the row grows by a
+                      line or two and only where there is something to show. */}
+                  <td className="border-r border-slate-100 px-2.5 py-1.5 text-slate-600">
+                    {(() => {
+                      const names = (linesByOrder[o.id] || []).map((l) => l.product_name).filter(Boolean);
+                      // No lines is the ordinary case for an imported lead: it
+                      // never went through the line editor, so the order's own
+                      // product field is all there is.
+                      if (names.length === 0) return productNameByOrderId[o.id] || o.product_name || "—";
+                      return names.map((name, i) => (
+                        <span key={i} className="block whitespace-nowrap">
+                          {name}
+                        </span>
+                      ));
+                    })()}
                   </td>
                   <td className={cell}>{o.unit_price != null ? formatCurrency(o.unit_price) : "—"}</td>
                   <td className={cell}>{o.tag || "—"}</td>

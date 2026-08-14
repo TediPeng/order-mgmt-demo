@@ -9,6 +9,7 @@ import { buildBrandedCsv } from "@/lib/csv";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { LEAD_STATUS_LABELS } from "@/lib/validation";
 import { displayOrderId } from "@/lib/types";
+import { listAllItems } from "@/lib/order-items";
 
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
@@ -66,6 +67,10 @@ export async function GET(req: NextRequest) {
     "Total",
     "Status",
   ];
+  // The full product list per order, so a spreadsheet forwarded to somebody
+  // else does not say "+1 more" where a second product should be.
+  const itemsByOrder = await listAllItems();
+
   const rows = orders.map((o) => [
     displayOrderId(o),
     o.order_number,
@@ -87,7 +92,7 @@ export async function GET(req: NextRequest) {
     o.previous_order_status
       ? LEAD_STATUS_LABELS[o.previous_order_status as keyof typeof LEAD_STATUS_LABELS] || o.previous_order_status
       : "",
-    o.product_name || "",
+    (itemsByOrder.get(o.id) || []).map((i) => i.product_name).filter(Boolean).join(" + ") || o.product_name || "",
     o.unit_price != null ? formatCurrency(o.unit_price) : "",
     formatCurrency(o.total_amount),
     LEAD_STATUS_LABELS[o.status],
