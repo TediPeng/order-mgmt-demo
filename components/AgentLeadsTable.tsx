@@ -140,24 +140,24 @@ export function AgentLeadsTable({
                   it is the row's only control — the popup, Calling and every
                   edit hang off it. */}
               <th className="sticky left-0 z-30 whitespace-nowrap border-r border-slate-200 bg-slate-50 px-2.5 py-2">Order ID</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">PREV Status</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Order Date</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Customer</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Number</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Purok</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Barangay</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">City</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Province</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">LM</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Notes</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Prev Date</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Prev Order</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Prev AMT</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">New Order</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Amount</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Courier</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Tracking Number</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Status</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">PREV Status</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Order Date</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Customer</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Number</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Purok</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Barangay</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">City</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Province</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">LM</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Notes</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Prev Date</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Prev Order</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Prev AMT</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">New Order</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Amount</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Courier</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Tracking Number</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">

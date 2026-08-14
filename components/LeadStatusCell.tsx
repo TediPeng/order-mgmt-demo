@@ -68,15 +68,18 @@ export function LeadStatusCell({
 
   return (
     <div className="space-y-1">
-      {/* Where it came from, above where it is. "CBR" alone does not say
-          whether a lead has just been picked up or given up on. */}
-      {previousStatus && previousStatus !== order.status && (
-        <span className="block text-[10px] uppercase leading-none text-slate-400">
-          from {previousStatus.replace(/_/g, " ")}
-        </span>
-      )}
-
-      <div className="flex items-center gap-1.5">
+      {/* One line, so every row in the column is the same height. Where it came
+          from used to sit above the badge, which made the rows that had a
+          previous status taller than the ones that did not — the column read as
+          ragged rather than as a list. "CBR" alone does not say whether a lead
+          has just been picked up or given up on, so the reading stays; it just
+          reads left to right now. */}
+      <div className="flex items-center gap-1.5 whitespace-nowrap">
+        {previousStatus && previousStatus !== order.status && (
+          <span className="shrink-0 text-[10px] uppercase leading-none text-slate-400">
+            from {previousStatus.replace(/_/g, " ")}
+          </span>
+        )}
         <StatusBadge status={order.status} />
 
         {/* A call is already running somewhere else, so CALL here can only
