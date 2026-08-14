@@ -17,7 +17,7 @@ import { untagRegularCustomerAction } from "@/lib/actions/regular-customers";
 export default async function RegularCustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tagged?: string; untagged?: string; created?: string; error?: string; q?: string }>;
+  searchParams: Promise<{ tagged?: string; untagged?: string; created?: string; deleted?: string; error?: string; q?: string }>;
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
@@ -126,6 +126,11 @@ export default async function RegularCustomersPage({
       {sp.created && <Alert kind="success" className="mb-4">Regular customer added. No lead was created.</Alert>}
       {sp.tagged && <Alert kind="success" className="mb-4">Customer moved to Regular Customers. Their leads no longer appear in the active list.</Alert>}
       {sp.untagged && <Alert kind="success" className="mb-4">Customer returned to the active Leads list.</Alert>}
+      {sp.deleted && (
+        <Alert kind="success" className="mb-4">
+          {sp.deleted} was permanently deleted. Any orders they had are back in the Leads list.
+        </Alert>
+      )}
       {sp.error && <Alert kind="error" className="mb-4">{sp.error}</Alert>}
 
       {/* One box, matched against the name, the number and the address. A

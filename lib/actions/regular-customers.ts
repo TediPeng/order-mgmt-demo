@@ -7,6 +7,7 @@ import { orderRowsForPhoneAndAgent, orderRowsForCustomer } from "@/lib/orders-lo
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { orderInScope } from "@/lib/order-access";
+import { verifyPassword } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import {
   createRegularCustomer,
@@ -244,4 +245,82 @@ export async function reviewDuplicateAction(matchId: string, decision: Duplicate
   await writeDb(db);
 
   redirect(`${PATH}/duplicates?reviewed=1`);
+}
+
+/**
+ * Removes a regular customer's record outright.
+ *
+ * Not the same thing as "Return to Leads", which is the reversible one: that
+ * clears the flag and leaves the person on file. This deletes the row, and the
+ * duplicate-match records that point at it, and there is no undo.
+ *
+ * What it does NOT delete is the orders. Business transactions are never
+ * deleted in this system — an order is what was sold, to whom, by which agent,
+ * and removing it would silently change sales figures and agent counts for a
+ * period already reported on. The orders are released instead: their link to
+ * the customer is cut and they go back to being ordinary leads, exactly as
+ * Return to Leads leaves them.
+ *
+ * Administrator only, and gated the same way an account deletion is: the typed
+ * word, the password, a reason, and a final tick. Four steps for a row that
+ * cannot be brought back.
+ */
+export async function permanentlyDeleteRegularCustomerAction(customerId: string, formData: FormData) {
+  const { user, db } = await requireUserLite();
+  const back = (message: string) =>
+    redirect(`${PATH}/${customerId}/delete?error=${encodeURIComponent(message)}`);
+
+  if (!isFullAccess(user.role)) {
+    redirect(`${PATH}?error=${encodeURIComponent("Administrator access is required to delete a customer.")}`);
+  }
+
+  const { data: customer } = await supabaseAdmin.from("customers").select("*").eq("id", customerId).maybeSingle();
+  if (!customer) redirect(`${PATH}?error=${encodeURIComponent("That customer no longer exists.")}`);
+
+  if (String(formData.get("confirm_text") || "").trim() !== "DELETE") back("Type DELETE exactly to confirm.");
+
+  const reason = String(formData.get("reason") || "").trim();
+  if (reason.length < 5) back("Give a reason for this deletion (at least 5 characters).");
+
+  if (formData.get("final_confirm") !== "on") back("Tick the final confirmation to proceed.");
+
+  // Re-authenticate. Compared against the stored hash; never stored, logged or
+  // echoed back.
+  const password = String(formData.get("admin_password") || "");
+  if (!password) back("Enter your password to confirm this deletion.");
+  const self = db.profiles.find((p) => p.id === user.id)!;
+  if (!verifyPassword(password, self.password_hash)) back("That password is incorrect.");
+
+  // The orders first: cut loose while the customer row still exists, so a
+  // failure here leaves a customer with orders rather than orders pointing at
+  // a customer that is gone.
+  const released = adoptOrders(db, await orderRowsForCustomer(customerId));
+  for (const o of released) {
+    o.customer_id = null;
+    o.is_regular_customer = false;
+    o.regular_customer_since = null;
+    markOrderDirty(db, o.id);
+  }
+
+  // Duplicate matches name this customer on either side of the pair, and a
+  // match with a missing half renders as a blank row on the Duplicates page.
+  await supabaseAdmin.from("customer_duplicate_matches").delete().eq("customer_id", customerId);
+  await supabaseAdmin.from("customer_duplicate_matches").delete().eq("matched_customer_id", customerId);
+
+  const { error: deleteError } = await supabaseAdmin.from("customers").delete().eq("id", customerId);
+  if (deleteError) back(`Could not delete this customer: ${deleteError.message}`);
+
+  // Logged with everything the row held: once the row is gone, this entry is
+  // the only remaining record that the person was ever on file.
+  const info = await getRequestInfo();
+  logActivity(db, user.id, "REGULAR_CUSTOMER_DELETED", "customer", customerId, {
+    customer_name: customer.full_name,
+    phone: customer.phone_raw,
+    owner_agent_id: customer.owner_agent_id,
+    orders_released: released.length,
+    reason,
+  }, { module: "regular_customers", ...info });
+  await writeDb(db);
+
+  redirect(`${PATH}?deleted=${encodeURIComponent(customer.full_name)}`);
 }

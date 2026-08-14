@@ -80,6 +80,15 @@ export default async function RegularCustomerDetailPage({
               </ConfirmSubmitButton>
             </form>
           )}
+          {/* Administrator only, and a link rather than a form: the thing worth
+              reading before deleting a customer is what happens to their orders,
+              and that does not fit in a confirm() dialog. The reversible action
+              is offered first, on purpose. */}
+          {isFullAccess(user.role) && (
+            <LinkButton href={`/regular-customers/${customer.id}/delete`} variant="danger" size="sm">
+              Delete Permanently
+            </LinkButton>
+          )}
         </div>
       </div>
 
