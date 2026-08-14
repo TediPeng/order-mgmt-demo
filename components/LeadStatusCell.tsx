@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { PhoneCall } from "lucide-react";
+import { FileText, PhoneCall } from "lucide-react";
 import { useCallSession } from "@/components/CallSessionProvider";
 import { StatusBadge } from "@/components/ui/Badge";
+import { isOrderLocked } from "@/lib/lead-workflow";
 import { shortOrderId } from "@/lib/types";
 import type { Order } from "@/lib/types";
 
@@ -52,6 +53,12 @@ export function LeadStatusCell({
  */
 export function LeadCallCell({ order, onOpen }: { order: Order; onOpen: () => void }) {
   const { session, startCall } = useCallSession();
+  // Once Pancake has the order there is nothing left to call about: it is out of
+  // this floor's hands and the popup opens read-only anyway. Offering CALL would
+  // start a real session — counted, timed, on the monitor — against an order
+  // nobody is ringing, so the column offers the only thing still useful here,
+  // which is to look at it.
+  const synced = isOrderLocked(order);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** The order already holding this agent's call, when that is what stopped us. */
@@ -86,6 +93,19 @@ export function LeadCallCell({ order, onOpen }: { order: Order; onOpen: () => vo
     // panel inside the order, which carries the Go to Time In link.
     onOpen();
     setError(result.error || "Could not start the call.");
+  }
+
+  if (synced) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        title="This order is in Pancake POS — open it to read"
+        className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+      >
+        <FileText className="h-3 w-3" /> Details
+      </button>
+    );
   }
 
   return (

@@ -8,6 +8,7 @@ import { TrackingCell } from "@/components/TrackingCell";
 import type { EditorLine } from "@/components/OrderItemsEditor";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { useGridKeys } from "@/components/useGridKeys";
+import { useFrozenOffset } from "@/components/useFrozenOffset";
 import { LeadCallCell, LeadStatusCell } from "@/components/LeadStatusCell";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 import type { CallSession, Order, OrderStatus } from "@/lib/types";
@@ -100,6 +101,10 @@ export function LeadsTable({
   // opens the lead under it, Ctrl+C copies that row as tab-separated text that
   // pastes into Excel as cells. Off while the popup is open, which owns the
   // keyboard and has fields of its own.
+  // PREV Status is pinned against whatever the Order ID column actually
+  // becomes, not against a width it was asked for. See useFrozenOffset.
+  const { ref: idHeader, offset: prevLeft } = useFrozenOffset();
+
   const grid = useGridKeys({
     rowCount: orders.length,
     onEnter: (i) => setOpenOrder(orders[i]),
@@ -134,11 +139,11 @@ export function LeadsTable({
             <tr>
               {/* Above the body's own sticky column (z-10), so the two do not
                   cross at the corner where both are pinned. */}
-              <th className="sticky left-0 z-30 w-[7rem] whitespace-nowrap border-r border-slate-200 bg-slate-50 px-2.5 py-2">Order ID</th>
+              <th ref={idHeader} className="sticky left-0 z-30 whitespace-nowrap border-r border-slate-200 bg-slate-50 px-2.5 py-2">Order ID</th>
               {/* Same order as the agents' table and as TEST TEMPLATE ROMA, so
                   a supervisor comparing the two screens — or either against the
                   spreadsheet — is reading one layout. */}
-              <th className="sticky left-[7rem] z-30 w-[8.5rem] whitespace-nowrap border-r border-slate-200 bg-slate-50 px-2.5 py-2">PREV Status</th>
+              <th style={{ left: prevLeft }} className="sticky z-30 whitespace-nowrap border-r border-slate-200 bg-slate-50 px-2.5 py-2">PREV Status</th>
               <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Order Date</th>
               <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Agent</th>
               <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Customer</th>
@@ -167,7 +172,7 @@ export function LeadsTable({
               const style = LEAD_STATUS_STYLES[o.status];
               return (
                 <tr key={o.id} className={cn(style.row, style.rowHover)}>
-                  <td className={cn("sticky left-0 z-10 w-[7rem] whitespace-nowrap border-r border-slate-100 px-2.5 py-1.5", style.row)}>
+                  <td className={cn("sticky left-0 z-20 whitespace-nowrap border-r border-slate-100 px-2.5 py-1.5", style.row)}>
                     <button
                       type="button"
                       onClick={() => setOpenOrder(o)}
@@ -187,7 +192,7 @@ export function LeadsTable({
                           column PREV Status is pinned against has to be a known
                           width, or the two overlap. A Pancake id is ten digits
                           and the tooltip carries it whole. */}
-                      <span className="block max-w-[4.5rem] truncate">{shortOrderId(o)}</span>
+                      {shortOrderId(o)}
                       {isPendingOrderId(o) && (
                         <span className="ml-1 text-amber-500" aria-label="Not yet forwarded to Pancake POS">•</span>
                       )}
@@ -196,7 +201,7 @@ export function LeadsTable({
                   {/* Text, not a badge: the column can hold a status an import
                       named that this system does not have, and a second badge
                       in the row would read as one lead in two states. */}
-                  <td className={cn("sticky left-[7rem] z-10 w-[8.5rem] truncate border-r border-slate-100 px-2.5 py-1.5 text-slate-600", style.row)}>{o.previous_order_status ? o.previous_order_status.toUpperCase() : "—"}</td>
+                  <td style={{ left: prevLeft }} className={cn("sticky z-20 whitespace-nowrap border-r border-slate-100 px-2.5 py-1.5 text-slate-600", style.row)}>{o.previous_order_status ? o.previous_order_status.toUpperCase() : "—"}</td>
                   <td className={cell}>{o.order_date ? formatDate(o.order_date) : "—"}</td>
                   <td className={cell}>{agentCallNameById[o.agent_id] || "—"}</td>
                   <td className={cell}>{o.customer_name}</td>
