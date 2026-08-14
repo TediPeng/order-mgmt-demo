@@ -13,7 +13,7 @@ import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import { LEAD_STATUS_LABELS, LEAD_STATUSES, selectableStatuses } from "@/lib/validation";
 import { isOrderLocked, SYNCED_LOCK_MESSAGE } from "@/lib/lead-workflow";
 import { useCallSession } from "@/components/CallSessionProvider";
-import { displayOrderId, isPendingOrderId, PANCAKE_SYNC_SOURCE_LABELS, type PancakeSyncSource } from "@/lib/types";
+import { isPendingOrderId, PANCAKE_SYNC_SOURCE_LABELS, shortOrderId, type PancakeSyncSource } from "@/lib/types";
 import { AddressSelect } from "@/components/AddressSelect";
 import { CallingPanel } from "@/components/CallingPanel";
 import { CallHistory } from "@/components/CallHistory";
@@ -406,10 +406,36 @@ export function OrderDetailsModal({
       >
         <div className={`flex items-center justify-between rounded-t-xl ${style.header} px-5 py-3`}>
           <div className="flex items-center gap-2 text-white">
-            <h2 className="text-base font-semibold" title={`Internal reference: ${order.order_number}`}>
-              {displayOrderId(order)}
-              {isPendingOrderId(order) && <span className="ml-1.5 text-xs font-normal opacity-80">(pending sync)</span>}
+            {/* The same id the row was clicked on. The header used to print the
+                whole ORD-YYYYMMDD-NNNN while the list showed its counter, so
+                the popup appeared to be about a different order than the one
+                just pressed. The full reference stays on the tooltip, which is
+                where it gets read out and pasted into Pancake. */}
+            <h2
+              className="text-base font-semibold"
+              title={
+                order.pancake_order_id
+                  ? `Pancake ID ${order.pancake_order_id} · internal reference ${order.order_number}`
+                  : `Internal reference: ${order.order_number}`
+              }
+            >
+              {shortOrderId(order)}
+              {/* "(pending sync)" is a Pancake fact, and Pancake is fulfillment's
+                  surface — an agent is not shown the sync state anywhere else in
+                  this popup, and being told an order has not reached a system
+                  they have no part in only reads as something being wrong. */}
+              {canSeeFulfillment && isPendingOrderId(order) && (
+                <span className="ml-1.5 text-xs font-normal opacity-80">(pending sync)</span>
+              )}
             </h2>
+            {/* Where it came from, beside where it is — the PREV Status column
+                of the list, carried into the header so the pair is read the
+                same way in both places. */}
+            {order.previous_order_status && (
+              <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white">
+                prev {order.previous_order_status.replace(/_/g, " ")}
+              </span>
+            )}
             <StatusBadge status={order.status} />
           </div>
           <button type="button" onClick={requestClose} className="rounded p-1 text-white/90 hover:bg-black/10" aria-label="Close">

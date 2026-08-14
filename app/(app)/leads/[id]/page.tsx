@@ -117,7 +117,12 @@ export default async function LeadDetailPage({
               <h1 className="text-page-title text-slate-900" title={`Internal reference: ${order.order_number}`}>
                 {displayOrderId(order)}
               </h1>
-              {isPendingOrderId(order) && <span className="text-xs text-slate-400">(pending sync)</span>}
+              {/* Same rule as the popup: the sync state is fulfillment's, and
+                  an agent who reaches this page directly is not told about a
+                  system they have no part in. */}
+              {canSeeFulfillment && isPendingOrderId(order) && (
+                <span className="text-xs text-slate-400">(pending sync)</span>
+              )}
               <StatusBadge status={order.status} />
             </div>
             <p className="text-sm text-slate-500">
