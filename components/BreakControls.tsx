@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { startBreakAction, endBreakAction, checkOverBreakAction } from "@/lib/actions/attendance";
 import { startBioBreakAction, endBioBreakAction } from "@/lib/actions/bio-breaks";
 import { useCallSession } from "@/components/CallSessionProvider";
+import { OverBreakDialog } from "@/components/OverBreakDialog";
+import { AfterDutyDialog } from "@/components/AfterDutyDialog";
 
 /**
  * Compact break controls for a page header.
@@ -33,6 +35,8 @@ export function BreakControls({
   allowanceMinutes,
   bioStartedAt,
   canBreak,
+  dutyEndsAt,
+  scheduledTimeOut,
   redirectTo,
 }: {
   breakStart: string | null;
@@ -41,6 +45,9 @@ export function BreakControls({
   bioStartedAt: string | null;
   /** Timed in and not yet timed out. */
   canBreak: boolean;
+  /** End of shift as an instant, resolved server-side. Null when off the clock. */
+  dutyEndsAt?: string | null;
+  scheduledTimeOut?: string | null;
   redirectTo: string;
 }) {
   const router = useRouter();
@@ -55,12 +62,18 @@ export function BreakControls({
   const onBreak = !!breakStart && !breakEnd;
   const onBio = !!bioStartedAt;
   const alertedRef = useRef(false);
+  const [overBreakOpen, setOverBreakOpen] = useState(false);
+  const [afterDutyOpen, setAfterDutyOpen] = useState(false);
+  const [afterDutySeen, setAfterDutySeen] = useState(false);
 
   useEffect(() => {
-    if (!onBreak && !onBio) return;
+    // Ticks for the shift-end watch too, not only the two break timers — the
+    // dialog has to arrive at the scheduled minute for an agent who has taken
+    // no break at all.
+    if (!onBreak && !onBio && !dutyEndsAt) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [onBreak, onBio]);
+  }, [onBreak, onBio, dutyEndsAt]);
 
   // Same over-break alert the clock page raises, so taking a break from here is
   // not a way to miss it. Fires once, and never retroactively for a threshold
@@ -78,9 +91,28 @@ export function BreakControls({
     const elapsed = Math.floor((now - new Date(breakStart).getTime()) / 1000);
     if (!alertedRef.current && allowanceSec - elapsed <= 0) {
       alertedRef.current = true;
-      window.alert(`Your ${allowanceMinutes}-minute break has ended.`);
+      setOverBreakOpen(true);
     }
   }, [now, onBreak, breakStart, allowanceMinutes]);
+
+  // Ending the break takes the dialog with it, so a re-render mid-submit cannot
+  // leave it hanging over a break that is already closed.
+  useEffect(() => {
+    if (!onBreak) setOverBreakOpen(false);
+  }, [onBreak]);
+
+  // The shift end. Raised once per page load: dismissing it is a decision, and
+  // re-raising it every second would make that decision impossible to keep.
+  // A shift that had already ended before this page loaded still raises it —
+  // unlike the break alert — because arriving on the page after hours is
+  // exactly the case worth catching.
+  useEffect(() => {
+    if (!dutyEndsAt || afterDutySeen) return;
+    if (now >= new Date(dutyEndsAt).getTime()) {
+      setAfterDutySeen(true);
+      setAfterDutyOpen(true);
+    }
+  }, [now, dutyEndsAt, afterDutySeen]);
 
   // Keeps the over-60-minute flag and its notification firing without the agent
   // having to open the clock page.
@@ -103,6 +135,22 @@ export function BreakControls({
 
   return (
     <div className="flex items-center gap-2">
+      {overBreakOpen && onBreak && breakStart && (
+        <OverBreakDialog
+          breakStart={breakStart}
+          allowanceMinutes={allowanceMinutes}
+          redirectTo={redirectTo}
+          onDismiss={() => setOverBreakOpen(false)}
+        />
+      )}
+      {afterDutyOpen && dutyEndsAt && (
+        <AfterDutyDialog
+          dutyEndsAt={dutyEndsAt}
+          scheduledTimeOut={scheduledTimeOut || ""}
+          redirectTo={redirectTo}
+          onDismiss={() => setAfterDutyOpen(false)}
+        />
+      )}
       {onBreak ? (
         <form action={endBreakAction} className="flex items-center gap-1.5">
           <input type="hidden" name="redirect_to" value={redirectTo} />

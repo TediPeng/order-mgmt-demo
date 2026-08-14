@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { listItemsFor } from "@/lib/order-items";
 import { canonicalPhone, todayInTz } from "@/lib/utils";
+import { scheduledInstant } from "@/lib/attendance-logic";
 import { BreakControls } from "@/components/BreakControls";
 import { getActiveBioBreak } from "@/lib/bio-breaks";
 import { findDuplicates } from "@/lib/customers";
@@ -250,6 +251,15 @@ export default async function LeadsPage({
   // sending them to the clock page to start a break meant losing their place.
   const ownAttendance = db.attendance.find((a) => a.user_id === user.id && a.work_date === todayInTz());
   const ownBioBreak = ownAttendance?.time_in && !ownAttendance.time_out ? await getActiveBioBreak(user.id) : null;
+  // The end of this agent's shift as an instant. Their own scheduled_time_out
+  // where the roster set one, the company default otherwise, resolved against
+  // the configured timezone here rather than in the browser — a laptop set to
+  // the wrong timezone would otherwise raise the notice hours early or late.
+  const ownScheduledTimeOut = ownAttendance?.scheduled_time_out || db.work_schedule.work_end;
+  const dutyEndsAt =
+    ownAttendance?.time_in && !ownAttendance.time_out
+      ? scheduledInstant(todayInTz(), ownScheduledTimeOut, db.work_schedule.timezone).toISOString()
+      : null;
 
   const qs = (overrides: Record<string, string | undefined>) => {
     const params = new URLSearchParams();
@@ -290,6 +300,8 @@ export default async function LeadsPage({
             allowanceMinutes={db.work_schedule.break_minutes}
             bioStartedAt={ownBioBreak?.started_at ?? null}
             canBreak={!!ownAttendance?.time_in && !ownAttendance.time_out}
+            dutyEndsAt={dutyEndsAt}
+            scheduledTimeOut={ownScheduledTimeOut}
             redirectTo="/leads"
           />
           {/* The primary action here is now ordering for someone the agent
