@@ -2,6 +2,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { LEAD_STATUS_LABELS, LEAD_STATUSES } from "@/lib/validation";
 import { LEAD_STATUS_STYLES } from "@/components/ui/Badge";
+import { StatusFilterSelect, type StatusFilterOption } from "@/components/StatusFilterSelect";
 import type { OrderStatus } from "@/lib/types";
 
 /**
@@ -28,6 +29,19 @@ const UNUSED_ON_THIS_FLOOR: readonly OrderStatus[] = [
 
 export const QUICK_FILTER_STATUSES = LEAD_STATUSES.filter((s) => !UNUSED_ON_THIS_FLOOR.includes(s));
 
+/**
+ * The statuses that get a card. Everything else is in the dropdown beside them.
+ *
+ * Twenty-two cards wrapped into three rows and pushed the leads table off the
+ * screen, so the page opened on a wall of mostly-zero counters instead of on the
+ * work. These five are what the floor actually watches: what has just come in,
+ * what is being packed, and the three ways an order ends.
+ *
+ * The dropdown still filters by any of them, so nothing became unreachable —
+ * only less shouted about.
+ */
+const CARD_STATUSES: readonly OrderStatus[] = ["new", "packaging", "delivered", "returned", "odz"];
+
 export interface StatusCount {
   status: OrderStatus;
   count: number;
@@ -47,12 +61,25 @@ export function LeadStatusCards({
 }) {
   const byStatus = new Map(counts.map((c) => [c.status, c.count]));
 
+  // Every status is selectable from the dropdown, including the five that also
+  // have a card — a filter that omitted whatever you were already looking at
+  // would have nothing to show as its current value.
+  const options: StatusFilterOption[] = [
+    { value: "", label: "All Leads", href: hrefFor(undefined), count: total },
+    ...QUICK_FILTER_STATUSES.map((status) => ({
+      value: status,
+      label: LEAD_STATUS_LABELS[status],
+      href: hrefFor(status),
+      count: byStatus.get(status) ?? 0,
+    })),
+  ];
+
   return (
-    <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9">
+    <div className="mb-4 flex flex-wrap items-stretch gap-2">
       <Link
         href={hrefFor(undefined)}
         className={cn(
-          "rounded-lg border bg-white px-3 py-2 transition-colors hover:border-slate-300",
+          "min-w-[7rem] rounded-lg border bg-white px-3 py-2 transition-colors hover:border-slate-300",
           !selected ? "border-[var(--brand-primary)] ring-1 ring-[var(--brand-primary)]" : "border-slate-200"
         )}
       >
@@ -60,7 +87,7 @@ export function LeadStatusCards({
         <span className="text-lg font-semibold text-slate-900">{total}</span>
       </Link>
 
-      {QUICK_FILTER_STATUSES.map((status) => {
+      {CARD_STATUSES.map((status) => {
         const active = selected === status;
         const style = LEAD_STATUS_STYLES[status];
         return (
@@ -68,7 +95,7 @@ export function LeadStatusCards({
             key={status}
             href={hrefFor(status)}
             className={cn(
-              "rounded-lg border bg-white px-3 py-2 transition-colors hover:border-slate-300",
+              "min-w-[7rem] rounded-lg border bg-white px-3 py-2 transition-colors hover:border-slate-300",
               active ? "border-[var(--brand-primary)] ring-1 ring-[var(--brand-primary)]" : "border-slate-200"
             )}
           >
@@ -80,6 +107,13 @@ export function LeadStatusCards({
           </Link>
         );
       })}
+
+      {/* Every other status, with its count, in the space the cards no longer
+          fill. It sits in the same row so the two are read as one control: the
+          five you watch, and the way to reach the rest. */}
+      <div className="flex items-center">
+        <StatusFilterSelect options={options} value={selected ?? ""} />
+      </div>
     </div>
   );
 }
