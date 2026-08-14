@@ -593,23 +593,19 @@ export function OrderDetailsModal({
                       The values are untouched — the form still carries and
                       saves whatever the order holds, so nothing is cleared by
                       no longer being on screen. */}
-                  {/* The breakdown above the total — Line total, Discount,
-                      Shipping fee — is gone. It was showing the working for a
-                      sum the agent no longer has any part in: discount and
-                      shipping left the form with the fulfillment fields, so
-                      those two lines read "− ₱0.00" and "+ ₱0.00" on every
-                      order, and Line total repeated the quantity and price the
-                      editor states directly above it.
+                  {/* The totals box stood here: Line total, Discount, Shipping
+                      fee, Grand total. All of it is gone.
 
-                      The total stays, because that is the number said to the
-                      customer. Nothing is recalculated — the same grandTotal
-                      is shown, it just no longer shows its arithmetic. */}
-                  <dl className="rounded-lg bg-slate-50 p-3 text-sm">
-                    <div className="flex justify-between font-semibold text-slate-900">
-                      <dt>Grand total</dt>
-                      <dd>{formatCurrency(grandTotal)}</dd>
-                    </div>
-                  </dl>
+                      It was the working for a sum the agent has no part in —
+                      discount and shipping left the form with the other
+                      fulfillment fields, so both read ₱0.00 on every order —
+                      and the figure it ended on was the same one the line
+                      editor already prints as its Total, a few lines up. Two
+                      boxes were saying one number.
+
+                      Nothing changed in what is calculated or saved: the same
+                      total goes to the server, appears in the Review list under
+                      "Total amount", and reaches Pancake unchanged. */}
                 </div>
               )}
 
