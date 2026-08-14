@@ -147,8 +147,6 @@ export function OrderDetailsModal({
   onClose: () => void;
   onSaved: (updated: Order) => void;
 }) {
-  const [mode, setMode] = useState<"view" | "edit">("view");
-  // Edit mode walks Customer info → Products & pricing → Review.
   const initial = useMemo(() => snapshotFrom(order), [order]);
   const [form, setForm] = useState<EditForm>(initial);
   const [lines, setLines] = useState<EditorLine[]>(initialLines);
@@ -226,10 +224,6 @@ export function OrderDetailsModal({
     }
   }
 
-  const isDirty = mode === "edit" && JSON.stringify(form) !== JSON.stringify(initial);
-  // Only an in-progress edit can be lost now that the view mode has no controls
-  // of its own to abandon.
-  const hasUnsavedChanges = isDirty;
 
   // Calling session state. `locked` is what disables the controls; the server
   // refuses the same edits independently, so this is only the visible half.
@@ -241,6 +235,24 @@ export function OrderDetailsModal({
   // an Administrator unlock sets manual_unlock_active and reopens it for one save.
   const syncedLocked = isOrderLocked(order);
   const locked = syncedLocked || (requiresCallSession && !callActive);
+  /**
+   * The popup IS the form.
+   *
+   * It used to open read-only behind an Edit Order button, so working a lead
+   * was: press Calling, press Edit Order, then start typing — two presses
+   * between a ringing phone and the first field. There is nothing to read
+   * here that the form does not also show, so the form is what opens.
+   *
+   * Derived, not stored: a lead becomes editable the moment the call starts
+   * and read-only again when it ends or the order syncs to Pancake, with no
+   * state to keep in step.
+   */
+  const editing = canEdit && !locked;
+
+  const isDirty = editing && JSON.stringify(form) !== JSON.stringify(initial);
+  // Only an in-progress edit can be lost now that the view mode has no controls
+  // of its own to abandon.
+  const hasUnsavedChanges = isDirty;
 
   function update<K extends keyof EditForm>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -329,7 +341,6 @@ export function OrderDetailsModal({
       // running against a session that no longer exists.
       if (callActive) clearSession();
       onSaved(json.order as Order);
-      setMode("view");
       setError(null);
       setMissing([]);
     } catch {
@@ -370,13 +381,6 @@ export function OrderDetailsModal({
         notes: form.notes,
       })
     );
-  }
-
-  function handleCancelEdit() {
-    setForm(initial);
-    setMissing([]);
-    setError(null);
-    setMode("view");
   }
 
   function requestClose() {
@@ -430,7 +434,6 @@ export function OrderDetailsModal({
           {(requiresCallSession || callActive) && !syncedLocked && (
             <CallingPanel
               orderId={order.id}
-              onEnded={() => setMode("view")}
               onOpenActive={(id) => {
                 window.location.href = `/leads?open_id=${id}`;
               }}
@@ -452,7 +455,7 @@ export function OrderDetailsModal({
             </div>
           </div>
 
-          {mode === "view" ? (
+          {!editing ? (
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
                 <p className="text-xs uppercase text-slate-400">Customer Name</p>
@@ -740,7 +743,7 @@ export function OrderDetailsModal({
             </div>
           </div>
 
-          {mode === "view" && (
+          {!editing && (
             <div>
               <p className="text-xs uppercase text-slate-400">Notes</p>
               <p className="whitespace-pre-wrap text-sm text-slate-700">{order.notes || "—"}</p>
@@ -904,26 +907,16 @@ export function OrderDetailsModal({
         <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-5 py-3">
           <div>{fullPageHref && <Link href={fullPageHref} className="text-xs font-medium text-[var(--brand-primary)] hover:underline">Open full page</Link>}</div>
           <div className="flex gap-2">
-            {mode === "view" ? (
-              <>
-                <Button type="button" variant="outline" onClick={requestClose}>
-                  Close
-                </Button>
-                {canEdit && (
-                  <Button type="button" disabled={locked} onClick={() => setMode("edit")}>
-                    Edit Order
-                  </Button>
-                )}
-              </>
-            ) : (
-              <>
-                <Button type="button" variant="outline" onClick={handleCancelEdit} disabled={saving}>
-                  Cancel
-                </Button>
-                <Button type="button" onClick={handleSaveEdit} disabled={saving}>
-                  {saving ? "Saving…" : "Save Changes"}
-                </Button>
-              </>
+            {/* No Edit Order and no Cancel. There is nothing to switch into —
+                the form is the popup — and requestClose already asks before
+                dropping unsaved work, which is all Cancel ever did. */}
+            <Button type="button" variant="outline" onClick={requestClose} disabled={saving}>
+              Close
+            </Button>
+            {editing && (
+              <Button type="button" onClick={handleSaveEdit} disabled={saving}>
+                {saving ? "Saving…" : "Save Changes"}
+              </Button>
             )}
           </div>
         </div>
