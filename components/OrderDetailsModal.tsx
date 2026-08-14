@@ -480,6 +480,51 @@ export function OrderDetailsModal({
             </div>
           </div>
 
+          {/* What the customer bought last, above the order being taken now.
+              It sat at the bottom, under the whole form and the notes — which
+              is the one place it is no use, because it is what the call opens
+              with. The five fields are one block under one heading rather than
+              five labels each repeating the word "Previous". */}
+          <div className="rounded-lg bg-slate-50 p-3">
+            <p className="mb-2 border-b border-slate-200 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Previous Details
+            </p>
+            <div className="grid grid-cols-3 gap-3 text-sm">
+              <div>
+                <p className="text-xs uppercase text-slate-400">Order Date</p>
+                <p className="text-slate-700">{order.previous_order_date ? formatDate(order.previous_order_date) : "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-slate-400">Ordered Product</p>
+                <p className="text-slate-700">{order.previous_order_product || "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-slate-400">Amt</p>
+                <p className="text-slate-700">
+                  {order.previous_order_amount != null ? formatCurrency(order.previous_order_amount) : "—"}
+                </p>
+              </div>
+              {/* Full width: a note is a sentence, not a value, and wrapping it
+                  into a third-of-a-row column made it unreadable. */}
+              <div className="col-span-3">
+                <p className="text-xs uppercase text-slate-400">Note</p>
+                <p className="whitespace-pre-wrap text-slate-700">{order.previous_order_note || "—"}</p>
+              </div>
+              <div className="col-span-3">
+                <p className="text-xs uppercase text-slate-400">Status</p>
+                {/* The column is text, so it can hold a status an import file
+                    named that this system does not have. Badge the ones we know
+                    and print the rest as-is — StatusBadge would throw on a key
+                    that has no style. */}
+                {isKnownStatus(order.previous_order_status) ? (
+                  <StatusBadge status={order.previous_order_status as OrderStatus} />
+                ) : (
+                  <p className="text-slate-700">{order.previous_order_status || "—"}</p>
+                )}
+              </div>
+            </div>
+          </div>
+
           {!editing ? (
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
@@ -704,41 +749,6 @@ export function OrderDetailsModal({
               )}
             </div>
           )}
-
-          <div className="grid grid-cols-3 gap-3 rounded-lg bg-slate-50 p-3 text-sm">
-            <div>
-              <p className="text-xs uppercase text-slate-400">Previous Order Date</p>
-              <p className="text-slate-700">{order.previous_order_date ? formatDate(order.previous_order_date) : "—"}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase text-slate-400">Previous Order Product</p>
-              <p className="text-slate-700">{order.previous_order_product || "—"}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase text-slate-400">Previous Order Amount</p>
-              <p className="text-slate-700">
-                {order.previous_order_amount != null ? formatCurrency(order.previous_order_amount) : "—"}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs uppercase text-slate-400">Previous Status</p>
-              {/* The column is text, so it can hold a status an import file
-                  named that this system does not have. Badge the ones we know
-                  and print the rest as-is — StatusBadge would throw on a key
-                  that has no style. */}
-              {isKnownStatus(order.previous_order_status) ? (
-                <StatusBadge status={order.previous_order_status as OrderStatus} />
-              ) : (
-                <p className="text-slate-700">{order.previous_order_status || "—"}</p>
-              )}
-            </div>
-            {/* Full width: a note is a sentence, not a value, and wrapping it
-                into a third-of-a-row column made it unreadable. */}
-            <div className="col-span-3">
-              <p className="text-xs uppercase text-slate-400">Previous Note</p>
-              <p className="whitespace-pre-wrap text-slate-700">{order.previous_order_note || "—"}</p>
-            </div>
-          </div>
 
           {!editing && (
             <div>
