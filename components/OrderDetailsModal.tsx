@@ -453,19 +453,7 @@ export function OrderDetailsModal({
               relocks as soon as you save.
             </Alert>
           )}
-          {/* Shown to anyone the call rule applies to, so they can start one —
-              and to anyone who HAS a call running on this order, whether the
-              rule applies to them or not. The Calling button in the leads row
-              is offered to every role now, so a supervisor could start a call
-              and then find the popup had no timer and no way to end it. */}
-          {(requiresCallSession || callActive) && !syncedLocked && (
-            <CallingPanel
-              orderId={order.id}
-              onOpenActive={(id) => {
-                window.location.href = `/leads?open_id=${id}`;
-              }}
-            />
-          )}
+          {/* Calling moved to the footer bar, beside Close — see below. */}
           {error && <Alert kind="error">{error}</Alert>}
           {missing.length > 0 && (
             <Alert kind="error">Missing required fields for Packaging: {missing.join(", ")}</Alert>
@@ -986,13 +974,35 @@ export function OrderDetailsModal({
             way out was. */}
         <div className="sticky bottom-0 z-20 flex items-center justify-between gap-2 rounded-b-xl border-t border-slate-200 bg-white px-5 py-3 shadow-[0_-2px_6px_-2px_rgba(15,23,42,0.12)]">
           <div>{fullPageHref && <Link href={fullPageHref} className="text-xs font-medium text-[var(--brand-primary)] hover:underline">Open full page</Link>}</div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             {/* No Edit Order and no Cancel. There is nothing to switch into —
                 the form is the popup — and requestClose already asks before
                 dropping unsaved work, which is all Cancel ever did. */}
             <Button type="button" variant="outline" onClick={requestClose} disabled={saving}>
               Close
             </Button>
+
+            {/* Calling lives here rather than in a strip at the top of the form.
+                It is a control, and the controls are in the bar that is always
+                on screen — an agent who scrolled to the address no longer has to
+                scroll back up to start the call, and the running timer stays
+                visible for the whole call instead of only at the top.
+
+                Shown to anyone the call rule applies to, and to anyone who HAS a
+                call running on this order whether the rule applies to them or
+                not: CALL in the leads row is offered to every role, so a
+                supervisor could otherwise start a call and find the popup had no
+                timer and no way to end it. */}
+            {(requiresCallSession || callActive) && !syncedLocked && (
+              <CallingPanel
+                compact
+                orderId={order.id}
+                onOpenActive={(id) => {
+                  window.location.href = `/leads?open_id=${id}`;
+                }}
+              />
+            )}
+
             {editing && (
               <Button type="button" onClick={handleSaveEdit} disabled={saving}>
                 {saving ? "Saving…" : "Save Changes"}
