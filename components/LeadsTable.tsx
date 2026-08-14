@@ -134,11 +134,11 @@ export function LeadsTable({
             <tr>
               {/* Above the body's own sticky column (z-10), so the two do not
                   cross at the corner where both are pinned. */}
-              <th className="sticky left-0 z-30 whitespace-nowrap border-r border-slate-200 bg-slate-50 px-2.5 py-2">Order ID</th>
+              <th className="sticky left-0 z-30 w-[7rem] whitespace-nowrap border-r border-slate-200 bg-slate-50 px-2.5 py-2">Order ID</th>
               {/* Same order as the agents' table and as TEST TEMPLATE ROMA, so
                   a supervisor comparing the two screens — or either against the
                   spreadsheet — is reading one layout. */}
-              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">PREV Status</th>
+              <th className="sticky left-[7rem] z-30 w-[8.5rem] whitespace-nowrap border-r border-slate-200 bg-slate-50 px-2.5 py-2">PREV Status</th>
               <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Order Date</th>
               <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Agent</th>
               <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Customer</th>
@@ -167,7 +167,7 @@ export function LeadsTable({
               const style = LEAD_STATUS_STYLES[o.status];
               return (
                 <tr key={o.id} className={cn(style.row, style.rowHover)}>
-                  <td className={cn("sticky left-0 z-10 whitespace-nowrap border-r border-slate-100 px-2.5 py-1.5", style.row)}>
+                  <td className={cn("sticky left-0 z-10 w-[7rem] whitespace-nowrap border-r border-slate-100 px-2.5 py-1.5", style.row)}>
                     <button
                       type="button"
                       onClick={() => setOpenOrder(o)}
@@ -183,7 +183,11 @@ export function LeadsTable({
                         isPendingOrderId(o) ? "text-slate-400" : "text-[var(--brand-primary)]"
                       )}
                     >
-                      {shortOrderId(o)}
+                      {/* Truncated rather than allowed to widen the cell: the
+                          column PREV Status is pinned against has to be a known
+                          width, or the two overlap. A Pancake id is ten digits
+                          and the tooltip carries it whole. */}
+                      <span className="block max-w-[4.5rem] truncate">{shortOrderId(o)}</span>
                       {isPendingOrderId(o) && (
                         <span className="ml-1 text-amber-500" aria-label="Not yet forwarded to Pancake POS">•</span>
                       )}
@@ -192,7 +196,7 @@ export function LeadsTable({
                   {/* Text, not a badge: the column can hold a status an import
                       named that this system does not have, and a second badge
                       in the row would read as one lead in two states. */}
-                  <td className={cell}>{o.previous_order_status ? o.previous_order_status.toUpperCase() : "—"}</td>
+                  <td className={cn("sticky left-[7rem] z-10 w-[8.5rem] truncate border-r border-slate-100 px-2.5 py-1.5 text-slate-600", style.row)}>{o.previous_order_status ? o.previous_order_status.toUpperCase() : "—"}</td>
                   <td className={cell}>{o.order_date ? formatDate(o.order_date) : "—"}</td>
                   <td className={cell}>{agentCallNameById[o.agent_id] || "—"}</td>
                   <td className={cell}>{o.customer_name}</td>
