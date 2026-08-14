@@ -140,7 +140,7 @@ export function AgentLeadsTable({
                   it is the row's only control — the popup, Calling and every
                   edit hang off it. */}
               <th className="sticky left-0 z-30 whitespace-nowrap border-r border-slate-200 bg-slate-50 px-2.5 py-2">Order ID</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Previous Status</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">PREV Status</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Order Date</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Customer</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Number</th>
@@ -152,7 +152,7 @@ export function AgentLeadsTable({
               <th className="border-r border-slate-200 px-2.5 py-2">Notes</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Prev Date</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Prev Order</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Prev Amount</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Prev AMT</th>
               <th className="border-r border-slate-200 px-2.5 py-2">New Order</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Amount</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Courier</th>

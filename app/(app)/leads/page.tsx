@@ -164,8 +164,7 @@ export default async function LeadsPage({
   // how the floor and the call-log files name the same person. displayCallName
   // falls back to the full name for anyone without one.
   const agentCallNameById = Object.fromEntries(db.profiles.map((p) => [p.id, displayCallName(p)]));
-  const agentFullNameById = Object.fromEntries(db.profiles.map((p) => [p.id, p.full_name]));
-  const careStaffById = Object.fromEntries(db.profiles.map((p) => [p.id, { name: p.full_name, email: p.email }]));
+  const careStaffById = Object.fromEntries(db.profiles.map((p) => [p.id, { name: displayCallName(p), email: p.email }]));
   const activeProducts = db.products
     .filter((p) => p.status === "active")
     .map((p) => ({
@@ -234,7 +233,7 @@ export default async function LeadsPage({
         duplicateWarningsByOrderId[o.id] = findings.map((d) => ({
           name: d.matched.full_name,
           phone: d.matched.phone_raw,
-          agent: agentFullNameById[d.matched.owner_agent_id] || "—",
+          agent: agentCallNameById[d.matched.owner_agent_id] || "—",
           fields: d.fields,
           confidence: d.confidence,
         }));
@@ -457,7 +456,7 @@ export default async function LeadsPage({
           linesByOrder={linesByOrder}
           canEdit={canEdit}
           callSessionsByOrderId={callSessionsByOrderId}
-          agentNameById={agentFullNameById}
+          agentNameById={agentCallNameById}
           latestStatusUpdateByOrderId={latestStatusUpdateByOrderId}
           initialOpenOrderNumber={sp.open}
           initialOpenOrderId={sp.open_id}
@@ -466,7 +465,6 @@ export default async function LeadsPage({
       <LeadsTable
         orders={pageOrders}
         agentCallNameById={agentCallNameById}
-        agentFullNameById={agentFullNameById}
         productNameByOrderId={productNameByOrderId}
         latestStatusUpdateByOrderId={latestStatusUpdateByOrderId}
         activeProducts={activeProducts}
@@ -477,7 +475,7 @@ export default async function LeadsPage({
         duplicateWarningsByOrderId={duplicateWarningsByOrderId}
         requiresCallSession={!isFullAccess(user.role)}
         callSessionsByOrderId={callSessionsByOrderId}
-        agentNameById={agentFullNameById}
+        agentNameById={agentCallNameById}
         canSeeFulfillment={!isAgent}
         fullPageHrefBase={isFullAccess(user.role) ? "/leads" : null}
         initialOpenOrderNumber={sp.open}

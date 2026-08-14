@@ -274,7 +274,6 @@ export function OrderDetailsModal({
   );
   const draftQuantity = draftTotals.quantity;
   const draftDiscount = draftTotals.discount;
-  const lineTotal = draftTotals.subtotal + draftTotals.discount;
   const grandTotal = draftTotals.total;
   // The first priced line stands in for the order wherever a single figure is
   // still wanted — the Pancake pre-check below asks for one unit price.
@@ -594,20 +593,19 @@ export function OrderDetailsModal({
                       The values are untouched — the form still carries and
                       saves whatever the order holds, so nothing is cleared by
                       no longer being on screen. */}
-                  <dl className="space-y-1 rounded-lg bg-slate-50 p-3 text-sm">
-                    <div className="flex justify-between text-slate-600">
-                      <dt>Line total ({draftQuantity || 0} × {formatCurrency(draftUnitPrice)})</dt>
-                      <dd>{formatCurrency(lineTotal)}</dd>
-                    </div>
-                    <div className="flex justify-between text-slate-600">
-                      <dt>Discount</dt>
-                      <dd>− {formatCurrency(draftDiscount)}</dd>
-                    </div>
-                    <div className="flex justify-between text-slate-600">
-                      <dt>Shipping fee</dt>
-                      <dd>+ {formatCurrency(draftShipping)}</dd>
-                    </div>
-                    <div className="flex justify-between border-t border-slate-200 pt-1 font-semibold text-slate-900">
+                  {/* The breakdown above the total — Line total, Discount,
+                      Shipping fee — is gone. It was showing the working for a
+                      sum the agent no longer has any part in: discount and
+                      shipping left the form with the fulfillment fields, so
+                      those two lines read "− ₱0.00" and "+ ₱0.00" on every
+                      order, and Line total repeated the quantity and price the
+                      editor states directly above it.
+
+                      The total stays, because that is the number said to the
+                      customer. Nothing is recalculated — the same grandTotal
+                      is shown, it just no longer shows its arithmetic. */}
+                  <dl className="rounded-lg bg-slate-50 p-3 text-sm">
+                    <div className="flex justify-between font-semibold text-slate-900">
                       <dt>Grand total</dt>
                       <dd>{formatCurrency(grandTotal)}</dd>
                     </div>

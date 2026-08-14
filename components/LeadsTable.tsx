@@ -16,7 +16,6 @@ import { shortOrderId, isPendingOrderId } from "@/lib/types";
 export function LeadsTable({
   orders: initialOrders,
   agentCallNameById,
-  agentFullNameById,
   productNameByOrderId,
   latestStatusUpdateByOrderId,
   activeProducts,
@@ -36,7 +35,6 @@ export function LeadsTable({
   orders: Order[];
   /** Call Name per agent — what the floor calls them, not their login. */
   agentCallNameById: Record<string, string>;
-  agentFullNameById: Record<string, string>;
   productNameByOrderId: Record<string, string>;
   latestStatusUpdateByOrderId: Record<string, { status: OrderStatus; from: string | null; at: string } | undefined>;
   activeProducts: {
@@ -140,7 +138,7 @@ export function LeadsTable({
               {/* Same order as the agents' table and as TEST TEMPLATE ROMA, so
                   a supervisor comparing the two screens — or either against the
                   spreadsheet — is reading one layout. */}
-              <th className="border-r border-slate-200 px-2.5 py-2">Previous Status</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">PREV Status</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Order Date</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Agent</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Customer</th>
@@ -153,7 +151,7 @@ export function LeadsTable({
               <th className="border-r border-slate-200 px-2.5 py-2">Notes</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Prev Date</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Prev Order</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Prev Amount</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Prev AMT</th>
               <th className="border-r border-slate-200 px-2.5 py-2">New Order</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Amount</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Courier</th>
@@ -272,7 +270,7 @@ export function LeadsTable({
       {openOrder && (
         <OrderDetailsModal
           order={openOrder}
-          agentName={agentFullNameById[openOrder.agent_id] || "—"}
+          agentName={agentCallNameById[openOrder.agent_id] || "—"}
           productName={productNameByOrderId[openOrder.id] || openOrder.product_name}
           latestStatusUpdate={latestStatusUpdateByOrderId[openOrder.id] || null}
           activeProducts={activeProducts}
