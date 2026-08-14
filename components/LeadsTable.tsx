@@ -132,7 +132,7 @@ export function LeadsTable({
         {...grid.containerProps}
         className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)]"
       >
-        <table className="w-full min-w-[2200px] text-left text-table">
+        <table className="w-full min-w-[2800px] text-left text-table">
           <thead className="sticky top-0 z-20 bg-slate-50 text-table font-medium uppercase tracking-wide text-slate-500 shadow-sm">
             <tr>
               {/* Above the body's own sticky column (z-10), so the two do not
@@ -148,6 +148,14 @@ export function LeadsTable({
               <th className="border-r border-slate-200 px-2.5 py-2">Province</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Landmark</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Notes</th>
+              {/* The customer's last purchase, back in the list where an agent
+                  can see it while dialling: what they bought, when, for how
+                  much, and how that order ended. It sat only in the popup, so
+                  the one fact that opens a call was a click away on every row. */}
+              <th className="border-r border-slate-200 px-2.5 py-2">Previous Order Date</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Previous Order Product</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Previous Order Amount</th>
+              <th className="border-r border-slate-200 px-2.5 py-2">Previous Status</th>
               <th className="border-r border-slate-200 px-2.5 py-2">New Product Order</th>
               <th className="border-r border-slate-200 px-2.5 py-2">Unit Price</th>
               {/* The two columns this table was missing. A supervisor chasing a
@@ -191,6 +199,18 @@ export function LeadsTable({
                   <td className={cell} title={o.notes || undefined}>
                     <span className="block max-w-[14rem] truncate">{o.notes || "—"}</span>
                   </td>
+                  <td className={cell}>{o.previous_order_date ? formatDate(o.previous_order_date) : "—"}</td>
+                  <td className={cell} title={o.previous_order_product || undefined}>
+                    <span className="block max-w-[14rem] truncate">{o.previous_order_product || "—"}</span>
+                  </td>
+                  <td className={cell}>
+                    {o.previous_order_amount != null ? formatCurrency(o.previous_order_amount) : "—"}
+                  </td>
+                  {/* Text, not a badge: the column can hold a status an import
+                      named that this system does not have, and it sits a few
+                      cells from the badge for the CURRENT status — two badges
+                      in one row would read as one lead in two states. */}
+                  <td className={cell}>{o.previous_order_status ? o.previous_order_status.toUpperCase() : "—"}</td>
                   {/* The cell names the first product and counts the rest; the
                       tooltip names them all. */}
                   <td className={cell} title={listItemNames(linesByOrder[o.id] || []) || undefined}>
@@ -226,7 +246,7 @@ export function LeadsTable({
             })}
             {orders.length === 0 && (
               <tr>
-                <td colSpan={17} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={21} className="px-4 py-10 text-center text-slate-400">
                   No leads found.
                 </td>
               </tr>
