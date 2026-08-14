@@ -302,8 +302,29 @@ export async function permanentlyDeleteRegularCustomerAction(customerId: string,
     markOrderDirty(db, o.id);
   }
 
-  // Duplicate matches name this customer on either side of the pair, and a
-  // match with a missing half renders as a blank row on the Duplicates page.
+  // …and written NOW, not at the writeDb below.
+  //
+  // orders.customer_id carries a foreign key to this row. The loop above only
+  // changes the in-memory copy, which does not reach the database until writeDb
+  // — and writeDb runs after the delete, so the delete met orders still pointing
+  // here and Postgres refused it: "violates foreign key constraint
+  // orders_customer_id_fkey". The customer was undeletable for as long as they
+  // had ever had an order.
+  //
+  // Keyed on customer_id rather than on the ids above, because that column is
+  // exactly the set the constraint is about: orderRowsForCustomer also matches
+  // on phone, and those rows carry the flags but not the reference.
+  const { error: releaseError } = await supabaseAdmin
+    .from("orders")
+    .update({ customer_id: null, is_regular_customer: false, regular_customer_since: null })
+    .eq("customer_id", customerId);
+  if (releaseError) back(`Could not release this customer's orders: ${releaseError.message}`);
+
+  // Duplicate matches name this customer on either side of the pair, and a match
+  // with a missing half renders as a blank row on the Duplicates page. Both of
+  // those foreign keys are ON DELETE CASCADE, so this is not what makes the
+  // delete succeed — it is done here so the intent is on the page rather than
+  // resting on a constraint nobody reading this file can see.
   await supabaseAdmin.from("customer_duplicate_matches").delete().eq("customer_id", customerId);
   await supabaseAdmin.from("customer_duplicate_matches").delete().eq("matched_customer_id", customerId);
 
