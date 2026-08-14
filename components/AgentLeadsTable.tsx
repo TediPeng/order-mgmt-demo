@@ -158,7 +158,8 @@ export function AgentLeadsTable({
               <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Courier</th>
               <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Tracking Number</th>
               <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Status</th>
-              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Call</th>
+              {/* Pinned to the right edge, the way Order ID is pinned to the left: the call is reachable from any horizontal scroll position. */}
+              <th className="sticky right-0 z-30 whitespace-nowrap border-l border-slate-200 bg-slate-50 px-2.5 py-2">Call</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -250,10 +251,10 @@ export function AgentLeadsTable({
                   <td className="border-r border-slate-100 px-2.5 py-1.5">
                     <LeadStatusCell order={o} previousStatus={latestStatusUpdateByOrderId[o.id]?.from ?? null} />
                   </td>
-                  {/* Its own column: a reading and a control are two different
-                      things, and sharing a cell meant sorting them apart on
-                      every row. */}
-                  <td className="border-r border-slate-100 px-2.5 py-1.5">
+                  {/* Its own column, pinned right: a reading and a control are
+                      two different things, and the control stays reachable
+                      however far the row is scrolled. */}
+                  <td className={cn("sticky right-0 z-10 border-l border-slate-200 px-2.5 py-1.5", style.row)}>
                     <LeadCallCell order={o} onOpen={() => setOpenOrder(o)} />
                   </td>
                 </tr>
