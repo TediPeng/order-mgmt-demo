@@ -8,7 +8,7 @@ import { TrackingCell } from "@/components/TrackingCell";
 import type { EditorLine } from "@/components/OrderItemsEditor";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { useGridKeys } from "@/components/useGridKeys";
-import { LeadStatusCell } from "@/components/LeadStatusCell";
+import { LeadCallCell, LeadStatusCell } from "@/components/LeadStatusCell";
 import type { CallSession, Order, OrderStatus } from "@/lib/types";
 import { shortOrderId, isPendingOrderId } from "@/lib/types";
 
@@ -139,25 +139,27 @@ export function AgentLeadsTable({
                   them. Order ID leads it: the template has no such column, but
                   it is the row's only control — the popup, Calling and every
                   edit hang off it. */}
-              <th className="sticky left-0 z-30 whitespace-nowrap border-r border-slate-200 bg-slate-50 px-2.5 py-2">Order ID</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Previous Status</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Order Date</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Customer</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Number</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Purok</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Barangay</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">City</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Province</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">LM</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Notes</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Prev Date</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Prev Order</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Prev Amount</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">New Order</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Amount</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Courier</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Tracking Number</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Status</th>
+              <th className="sticky left-0 z-30 w-[7rem] whitespace-nowrap border-r border-slate-200 bg-slate-50 px-2.5 py-2">Order ID</th>
+              <th className="sticky left-[7rem] z-30 w-[8.5rem] whitespace-nowrap border-r border-slate-200 bg-slate-50 px-2.5 py-2">PREV Status</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Order Date</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Customer</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Number</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Purok</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Barangay</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">City</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Province</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">LM</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Notes</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Prev Date</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Prev Order</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Prev AMT</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">New Order</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Amount</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Courier</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Tracking Number</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Status</th>
+              {/* Pinned to the right edge, the way Order ID is pinned to the left: the call is reachable from any horizontal scroll position. */}
+              <th className="sticky right-0 z-30 whitespace-nowrap border-l border-slate-200 bg-slate-50 px-2.5 py-2">Call</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -168,7 +170,7 @@ export function AgentLeadsTable({
                   {/* Order ID doubles as the row control. Once an order syncs
                       this is Pancake's own generated id — the reference both
                       systems share — so it leads the row. */}
-                  <td className={cn("sticky left-0 z-10 whitespace-nowrap border-r border-slate-100 px-2.5 py-1.5", style.row)}>
+                  <td className={cn("sticky left-0 z-10 w-[7rem] whitespace-nowrap border-r border-slate-100 px-2.5 py-1.5", style.row)}>
                     <button
                       type="button"
                       onClick={() => setOpenOrder(o)}
@@ -185,7 +187,11 @@ export function AgentLeadsTable({
                         isPendingOrderId(o) ? "text-slate-500" : "text-[var(--brand-primary)]"
                       )}
                     >
-                      {shortOrderId(o)}
+                      {/* Truncated rather than allowed to widen the cell: the
+                          column PREV Status is pinned against has to be a known
+                          width, or the two overlap. A Pancake id is ten digits
+                          and the tooltip carries it whole. */}
+                      <span className="block max-w-[4.5rem] truncate">{shortOrderId(o)}</span>
                       {/* A dot, not "(pending sync)": those fourteen characters sat
                           on nearly every row of a pinned column. The tooltip says
                           it in words. */}
@@ -197,7 +203,7 @@ export function AgentLeadsTable({
                   {/* Text, not a badge: the column can hold a status an import
                       named that this system does not have, and a second badge
                       in the row would read as one lead in two states. */}
-                  <td className={cell}>{o.previous_order_status ? o.previous_order_status.toUpperCase() : "—"}</td>
+                  <td className={cn("sticky left-[7rem] z-10 w-[8.5rem] truncate border-r border-slate-100 px-2.5 py-1.5 text-slate-600", style.row)}>{o.previous_order_status ? o.previous_order_status.toUpperCase() : "—"}</td>
                   <td className={cell}>{o.order_date ? formatDate(o.order_date) : "—"}</td>
                   <td className={cell}>{o.customer_name}</td>
                   <td className={cell}>{o.customer_phone || "—"}</td>
@@ -247,18 +253,20 @@ export function AgentLeadsTable({
                   </td>
                   {/* Where the lead stands, and the call that moves it. */}
                   <td className="border-r border-slate-100 px-2.5 py-1.5">
-                    <LeadStatusCell
-                      order={o}
-                      previousStatus={latestStatusUpdateByOrderId[o.id]?.from ?? null}
-                      onOpen={() => setOpenOrder(o)}
-                    />
+                    <LeadStatusCell order={o} previousStatus={latestStatusUpdateByOrderId[o.id]?.from ?? null} />
+                  </td>
+                  {/* Its own column, pinned right: a reading and a control are
+                      two different things, and the control stays reachable
+                      however far the row is scrolled. */}
+                  <td className={cn("sticky right-0 z-10 border-l border-slate-200 px-2.5 py-1.5", style.row)}>
+                    <LeadCallCell order={o} onOpen={() => setOpenOrder(o)} />
                   </td>
                 </tr>
               );
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={19} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={20} className="px-4 py-10 text-center text-slate-400">
                   No leads found.
                 </td>
               </tr>

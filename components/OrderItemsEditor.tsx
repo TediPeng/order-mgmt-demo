@@ -265,13 +265,12 @@ export function OrderItemsEditor({
         );
       })}
 
-      <div className="flex flex-col items-end gap-0.5 border-t border-slate-100 pt-2 text-sm">
-        <p className="text-slate-500">
-          Subtotal <span className="ml-2 tabular-nums text-slate-800">{formatCurrency(subtotal)}</span>
-        </p>
-        <p className="text-slate-500">
-          Shipping <span className="ml-2 tabular-nums text-slate-800">{formatCurrency(shippingFee)}</span>
-        </p>
+      {/* Subtotal and Shipping are gone from here for the same reason the
+          breakdown went from the popup: shipping is not the agent's to set and
+          reads ₱0.00 on every order, which left Subtotal saying the same figure
+          as the Total directly under it. One number is left — the one said to
+          the customer. */}
+      <div className="flex flex-col items-end border-t border-slate-100 pt-2 text-sm">
         <p className="font-semibold text-slate-900">
           Total <span className="ml-2 tabular-nums">{formatCurrency(subtotal + shippingFee)}</span>
         </p>

@@ -8,27 +8,49 @@ import { shortOrderId } from "@/lib/types";
 import type { Order } from "@/lib/types";
 
 /**
- * Where a lead stands, and the call that changes it.
+ * Where a lead stands.
  *
- * The status was briefly a dropdown here. It is set in the order itself now —
- * the popup opens straight into the form, so the status sits beside the fields
- * whose validity it depends on, and a lead cannot be moved to Packaging from a
- * table cell that knows nothing about whether it has a price on it.
+ * The status was briefly a dropdown here, and the CALL button sat beside it. Both
+ * have moved out: the status is set in the order itself — the popup opens
+ * straight into the form, so it sits beside the fields whose validity it depends
+ * on — and calling is its own column, because a reading and a control are two
+ * different things and putting them in one cell meant the eye had to sort them
+ * apart on every row.
  *
- * What the row keeps is the reading: the status it is on, and the one it came
- * from. Changing it is one press away.
+ * What is left is the reading: the status the lead is on, and the one it came
+ * from.
  */
 export function LeadStatusCell({
   order,
   previousStatus,
-  onOpen,
 }: {
   order: Order;
-  /** The status this lead moved away from, for the line above the badge. */
+  /** The status this lead moved away from, read before the current one. */
   previousStatus?: string | null;
-  /** Opens the order — what CALL does once the call is running. */
-  onOpen: () => void;
 }) {
+  return (
+    // One line, so every row in the column is the same height. Where it came
+    // from used to sit above the badge, which made the rows that had a previous
+    // status taller than the ones that did not.
+    <div className="flex items-center gap-1.5 whitespace-nowrap">
+      {previousStatus && previousStatus !== order.status && (
+        <span className="shrink-0 text-[10px] uppercase leading-none text-slate-400">
+          from {previousStatus.replace(/_/g, " ")}
+        </span>
+      )}
+      <StatusBadge status={order.status} />
+    </div>
+  );
+}
+
+/**
+ * The call that changes it — its own column, next to the status it produces.
+ *
+ * Offered to everyone, not only the roles the call rule applies to: a supervisor
+ * rings a customer too, and this is also the shortest way from the list into the
+ * order.
+ */
+export function LeadCallCell({ order, onOpen }: { order: Order; onOpen: () => void }) {
   const { session, startCall } = useCallSession();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,57 +90,43 @@ export function LeadStatusCell({
 
   return (
     <div className="space-y-1">
-      {/* Where it came from, above where it is. "CBR" alone does not say
-          whether a lead has just been picked up or given up on. */}
-      {previousStatus && previousStatus !== order.status && (
-        <span className="block text-[10px] uppercase leading-none text-slate-400">
-          from {previousStatus.replace(/_/g, " ")}
-        </span>
+      {/* A call is already running somewhere else, so CALL here can only fail.
+          Offering the way back instead of the button that refuses is the
+          difference between a control and a trap. */}
+      {otherCall && (
+        <a
+          href={`/leads?open_id=${otherCall.order_id}`}
+          title="Finish the call you have open before starting another"
+          className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-50"
+        >
+          <PhoneCall className="h-3 w-3" /> Return to call
+        </a>
       )}
 
-      <div className="flex items-center gap-1.5">
-        <StatusBadge status={order.status} />
+      {!callActive && !otherCall && (
+        <button
+          type="button"
+          onClick={beginCall}
+          disabled={busy}
+          title="Start the call and open this order"
+          className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-[var(--brand-primary)] px-2 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+        >
+          <PhoneCall className="h-3 w-3" /> CALL
+        </button>
+      )}
 
-        {/* A call is already running somewhere else, so CALL here can only
-            fail. Offering the way back instead of the button that refuses is
-            the difference between a control and a trap. */}
-        {otherCall && (
-          <a
-            href={`/leads?open_id=${otherCall.order_id}`}
-            title="Finish the call you have open before starting another"
-            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-50"
-          >
-            <PhoneCall className="h-3 w-3" /> Return to call
-          </a>
-        )}
-
-        {/* Everyone, not only the roles the call rule applies to. A supervisor
-            rings a customer too, and this is also the shortest way from the
-            list into the order. */}
-        {!callActive && !otherCall && (
-          <button
-            type="button"
-            onClick={beginCall}
-            disabled={busy}
-            title="Start the call and open this order"
-            className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[var(--brand-primary)] px-2 py-1 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-          >
-            <PhoneCall className="h-3 w-3" /> CALL
-          </button>
-        )}
-        {callActive && (
-          <span
-            className="inline-flex shrink-0 items-center gap-1 rounded-md bg-green-100 px-2 py-1 text-xs font-medium text-green-800"
-            title="This call is in progress"
-          >
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-60" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-600" />
-            </span>
-            On call
+      {callActive && (
+        <span
+          className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-green-100 px-2 py-1 text-xs font-medium text-green-800"
+          title="This call is in progress"
+        >
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-60" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-600" />
           </span>
-        )}
-      </div>
+          On call
+        </span>
+      )}
 
       {/* The way out of "one call at a time" is the call itself. open_id is how
           the page pins an order that may be on another page or behind a filter,

@@ -90,6 +90,44 @@ body {
   }
 }
 
+/* Denser type for a surface that has to hold a whole order at once.
+
+   The order popup carries the previous order, the customer, the address, every
+   product line and the review list inside one card that has to fit on a laptop
+   screen while a customer is on the line. At the app's normal control size that
+   is several screens of scrolling, and what an agent needs is to see it.
+
+   Scoped by class rather than by shrinking the type scale itself: the rest of
+   the app is read at arm's length, one form at a time, and does not need this.
+
+   These override Tailwind's own size utilities by specificity (0-2-0 against
+   0-1-0), so they hold wherever the class lands in the stylesheet, and they name
+   the utility rather than the element — nothing changes size unless it was
+   already marked as that size, so the hierarchy inside the popup survives.
+   Inputs, selects, textareas and labels all carry `text-sm`, so they follow. */
+@layer components {
+  .dense-form .text-base {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+  .dense-form .text-sm {
+    font-size: 0.75rem;
+    line-height: 1.125rem;
+  }
+  .dense-form .text-xs {
+    font-size: 0.6875rem;
+    line-height: 1rem;
+  }
+  /* The controls lose height with the type, or the form ends up the same length
+     with smaller writing in it. */
+  .dense-form input,
+  .dense-form select,
+  .dense-form textarea {
+    padding-top: 0.375rem;
+    padding-bottom: 0.375rem;
+  }
+}
+
 /* The cell cursor in the leads tables (useGridKeys). An outline rather than a
    border so the ring is drawn inside the cell and nothing shifts by a pixel
    when it moves; `outline-offset: -2px` keeps it clear of the gridline. */

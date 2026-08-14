@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, ChevronRight, Copy, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, ChevronUp, Copy, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
@@ -10,10 +10,10 @@ import { OrderItemsEditor, type EditorLine } from "@/components/OrderItemsEditor
 import { summarizeItems, totalsFor } from "@/lib/order-totals";
 import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
-import { LEAD_STATUS_LABELS, LEAD_STATUSES, PAYMENT_METHOD_SUGGESTIONS, selectableStatuses } from "@/lib/validation";
+import { LEAD_STATUS_LABELS, LEAD_STATUSES, selectableStatuses } from "@/lib/validation";
 import { isOrderLocked, SYNCED_LOCK_MESSAGE } from "@/lib/lead-workflow";
 import { useCallSession } from "@/components/CallSessionProvider";
-import { displayOrderId, isPendingOrderId, PANCAKE_SYNC_SOURCE_LABELS, type PancakeSyncSource } from "@/lib/types";
+import { isPendingOrderId, PANCAKE_SYNC_SOURCE_LABELS, shortOrderId, type PancakeSyncSource } from "@/lib/types";
 import { AddressSelect } from "@/components/AddressSelect";
 import { CallingPanel } from "@/components/CallingPanel";
 import { CallHistory } from "@/components/CallHistory";
@@ -159,6 +159,8 @@ export function OrderDetailsModal({
   const [syncActionRunning, setSyncActionRunning] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(true);
+  const [historyMaximized, setHistoryMaximized] = useState(false);
 
   // The sync panel appears once the order has reached Packaging (Section 4
   // step 5) — before that there is nothing to sync and nothing to report.
@@ -274,7 +276,6 @@ export function OrderDetailsModal({
   );
   const draftQuantity = draftTotals.quantity;
   const draftDiscount = draftTotals.discount;
-  const lineTotal = draftTotals.subtotal + draftTotals.discount;
   const grandTotal = draftTotals.total;
   // The first priced line stands in for the order wherever a single figure is
   // still wanted — the Pancake pre-check below asks for one unit price.
@@ -402,20 +403,60 @@ export function OrderDetailsModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={requestClose}>
       <div
-        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white shadow-xl"
+        className="dense-form max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className={`flex items-center justify-between rounded-t-xl ${style.header} px-5 py-3`}>
+        {/* Pinned, like the footer bar: which order this is, where it stands and
+            where it came from are the three things you need while reading any
+            part of the form, and they were scrolling away at the first section.
+            The header carries a solid background already, so nothing shows
+            through it. */}
+        <div className={`sticky top-0 z-30 flex items-center justify-between rounded-t-xl ${style.header} px-5 py-3`}>
           <div className="flex items-center gap-2 text-white">
-            <h2 className="text-base font-semibold" title={`Internal reference: ${order.order_number}`}>
-              {displayOrderId(order)}
-              {isPendingOrderId(order) && <span className="ml-1.5 text-xs font-normal opacity-80">(pending sync)</span>}
+            {/* The same id the row was clicked on. The header used to print the
+                whole ORD-YYYYMMDD-NNNN while the list showed its counter, so
+                the popup appeared to be about a different order than the one
+                just pressed. The full reference stays on the tooltip, which is
+                where it gets read out and pasted into Pancake. */}
+            <h2
+              className="text-base font-semibold"
+              title={
+                order.pancake_order_id
+                  ? `Pancake ID ${order.pancake_order_id} · internal reference ${order.order_number}`
+                  : `Internal reference: ${order.order_number}`
+              }
+            >
+              {shortOrderId(order)}
+              {/* "(pending sync)" is a Pancake fact, and Pancake is fulfillment's
+                  surface — an agent is not shown the sync state anywhere else in
+                  this popup, and being told an order has not reached a system
+                  they have no part in only reads as something being wrong. */}
+              {canSeeFulfillment && isPendingOrderId(order) && (
+                <span className="ml-1.5 text-xs font-normal opacity-80">(pending sync)</span>
+              )}
             </h2>
+            {/* Where it came from, beside where it is — the PREV Status column
+                of the list, carried into the header so the pair is read the
+                same way in both places.
+
+                Solid white with near-black text, not the status's own pale
+                badge colours. Those are made for a white table row: teal-100 on
+                a teal-500 header, or blue-100 on blue-500, is the same colour
+                twice and the chip disappears into the bar behind it. White reads
+                against every header in the palette, from yellow-400 to red-900,
+                which is the one thing this chip has to do. */}
+            {order.previous_order_status && (
+              <span className="whitespace-nowrap rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-900 shadow-sm ring-1 ring-slate-900/10">
+                prev {order.previous_order_status.replace(/_/g, " ")}
+              </span>
+            )}
             <StatusBadge status={order.status} />
           </div>
-          <button type="button" onClick={requestClose} className="rounded p-1 text-white/90 hover:bg-black/10" aria-label="Close">
-            <X className="h-5 w-5" />
-          </button>
+          {/* No ✕. Close is in the footer bar, which is pinned and therefore on
+              screen from anywhere in the form, and the backdrop closes too —
+              both go through requestClose, so unsaved work is still asked about
+              either way. Two closes a hand's width apart, doing the same thing,
+              is one more than the header needs. */}
         </div>
 
         <div className="space-y-4 p-5">
@@ -426,19 +467,7 @@ export function OrderDetailsModal({
               relocks as soon as you save.
             </Alert>
           )}
-          {/* Shown to anyone the call rule applies to, so they can start one —
-              and to anyone who HAS a call running on this order, whether the
-              rule applies to them or not. The Calling button in the leads row
-              is offered to every role now, so a supervisor could start a call
-              and then find the popup had no timer and no way to end it. */}
-          {(requiresCallSession || callActive) && !syncedLocked && (
-            <CallingPanel
-              orderId={order.id}
-              onOpenActive={(id) => {
-                window.location.href = `/leads?open_id=${id}`;
-              }}
-            />
-          )}
+          {/* Calling moved to the footer bar, beside Close — see below. */}
           {error && <Alert kind="error">{error}</Alert>}
           {missing.length > 0 && (
             <Alert kind="error">Missing required fields for Packaging: {missing.join(", ")}</Alert>
@@ -452,6 +481,51 @@ export function OrderDetailsModal({
             <div>
               <p className="text-xs uppercase text-slate-400">Agent</p>
               <p className="text-slate-800">{agentName}</p>
+            </div>
+          </div>
+
+          {/* What the customer bought last, above the order being taken now.
+              It sat at the bottom, under the whole form and the notes — which
+              is the one place it is no use, because it is what the call opens
+              with. The five fields are one block under one heading rather than
+              five labels each repeating the word "Previous". */}
+          <div className="rounded-lg bg-slate-50 p-3">
+            <p className="mb-2 border-b border-slate-200 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Previous Details
+            </p>
+            <div className="grid grid-cols-3 gap-3 text-sm">
+              <div>
+                <p className="text-xs uppercase text-slate-400">Order Date</p>
+                <p className="text-slate-700">{order.previous_order_date ? formatDate(order.previous_order_date) : "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-slate-400">Ordered Product</p>
+                <p className="text-slate-700">{order.previous_order_product || "—"}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-slate-400">Amt</p>
+                <p className="text-slate-700">
+                  {order.previous_order_amount != null ? formatCurrency(order.previous_order_amount) : "—"}
+                </p>
+              </div>
+              {/* Full width: a note is a sentence, not a value, and wrapping it
+                  into a third-of-a-row column made it unreadable. */}
+              <div className="col-span-3">
+                <p className="text-xs uppercase text-slate-400">Note</p>
+                <p className="whitespace-pre-wrap text-slate-700">{order.previous_order_note || "—"}</p>
+              </div>
+              <div className="col-span-3">
+                <p className="text-xs uppercase text-slate-400">Status</p>
+                {/* The column is text, so it can hold a status an import file
+                    named that this system does not have. Badge the ones we know
+                    and print the rest as-is — StatusBadge would throw on a key
+                    that has no style. */}
+                {isKnownStatus(order.previous_order_status) ? (
+                  <StatusBadge status={order.previous_order_status as OrderStatus} />
+                ) : (
+                  <p className="text-slate-700">{order.previous_order_status || "—"}</p>
+                )}
+              </div>
             </div>
           </div>
 
@@ -584,57 +658,29 @@ export function OrderDetailsModal({
                       onLinesChange={setLines}
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {canSeeFulfillment && (
-                    <>
-                    <div>
-                      <Label htmlFor="m_shipping_fee">Shipping Fee</Label>
-                      <Input id="m_shipping_fee" type="number" min={0} step={0.01} value={form.shipping_fee} onChange={(e) => update("shipping_fee", e.target.value)} />
-                    </div>
-                    <div>
-                      <Label htmlFor="m_courier">Courier</Label>
-                      <Input id="m_courier" value={form.courier} onChange={(e) => update("courier", e.target.value)} />
-                    </div>
-                    <div>
-                      <Label htmlFor="m_payment_method">Payment Method</Label>
-                      <Input
-                        id="m_payment_method"
-                        list="m_payment_method_options"
-                        value={form.payment_method}
-                        onChange={(e) => update("payment_method", e.target.value)}
-                      />
-                      <datalist id="m_payment_method_options">
-                        {PAYMENT_METHOD_SUGGESTIONS.map((p) => (
-                          <option key={p} value={p} />
-                        ))}
-                      </datalist>
-                    </div>
-                    </>
-                    )}
-                    <div>
-                      <Label htmlFor="m_order_source">Order Source</Label>
-                      <Input id="m_order_source" value={form.order_source || "—"} disabled readOnly />
-                      <p className="mt-1 text-xs text-slate-400">Set from the assigned agent&apos;s Call Name.</p>
-                    </div>
-                  </div>
-                  <dl className="space-y-1 rounded-lg bg-slate-50 p-3 text-sm">
-                    <div className="flex justify-between text-slate-600">
-                      <dt>Line total ({draftQuantity || 0} × {formatCurrency(draftUnitPrice)})</dt>
-                      <dd>{formatCurrency(lineTotal)}</dd>
-                    </div>
-                    <div className="flex justify-between text-slate-600">
-                      <dt>Discount</dt>
-                      <dd>− {formatCurrency(draftDiscount)}</dd>
-                    </div>
-                    <div className="flex justify-between text-slate-600">
-                      <dt>Shipping fee</dt>
-                      <dd>+ {formatCurrency(draftShipping)}</dd>
-                    </div>
-                    <div className="flex justify-between border-t border-slate-200 pt-1 font-semibold text-slate-900">
-                      <dt>Grand total</dt>
-                      <dd>{formatCurrency(grandTotal)}</dd>
-                    </div>
-                  </dl>
+                  {/* Shipping Fee, Courier, Payment Method and Order Source
+                      lived here. None of them is a thing an agent decides on a
+                      call: the first three are fulfillment's, filled from the
+                      Pancake account's defaults when an order forwards, and
+                      Order Source was already read-only, set from the agent's
+                      own Call Name.
+
+                      The values are untouched — the form still carries and
+                      saves whatever the order holds, so nothing is cleared by
+                      no longer being on screen. */}
+                  {/* The totals box stood here: Line total, Discount, Shipping
+                      fee, Grand total. All of it is gone.
+
+                      It was the working for a sum the agent has no part in —
+                      discount and shipping left the form with the other
+                      fulfillment fields, so both read ₱0.00 on every order —
+                      and the figure it ended on was the same one the line
+                      editor already prints as its Total, a few lines up. Two
+                      boxes were saying one number.
+
+                      Nothing changed in what is calculated or saved: the same
+                      total goes to the server, appears in the Review list under
+                      "Total amount", and reaches Pancake unchanged. */}
                 </div>
               )}
 
@@ -662,13 +708,16 @@ export function OrderDetailsModal({
                       ["Landmark", form.landmark],
                       ["Product", [selectedProductName, form.variant].filter(Boolean).join(" — ")],
                       ["Quantity", String(draftQuantity || "")],
-                      ["Unit price", unitPriceEntered ? formatCurrency(checkUnitPrice) : ""],
-                      ["Discount", formatCurrency(draftDiscount)],
+                      // Unit price, Discount, Payment method and Order source
+                      // are gone from this summary. The first two are stated on
+                      // the line they belong to in the editor above — a lead
+                      // with three products has three unit prices and one line
+                      // here could only ever show one of them — and the last
+                      // two left the form with the rest of fulfillment's
+                      // fields. Total amount is what this list is read for.
                       ["Shipping fee", form.shipping_fee === "" ? "" : formatCurrency(draftShipping)],
                       ["Total amount", formatCurrency(grandTotal)],
-                      ["Payment method", form.payment_method],
                       ["Courier", form.courier],
-                      ["Order source", form.order_source],
                       ["Agent", agentName],
                     ].map(([label, value]) => (
                       <div key={label as string} className={label === "Address" ? "col-span-2" : undefined}>
@@ -707,41 +756,6 @@ export function OrderDetailsModal({
               )}
             </div>
           )}
-
-          <div className="grid grid-cols-3 gap-3 rounded-lg bg-slate-50 p-3 text-sm">
-            <div>
-              <p className="text-xs uppercase text-slate-400">Previous Order Date</p>
-              <p className="text-slate-700">{order.previous_order_date ? formatDate(order.previous_order_date) : "—"}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase text-slate-400">Previous Order Product</p>
-              <p className="text-slate-700">{order.previous_order_product || "—"}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase text-slate-400">Previous Order Amount</p>
-              <p className="text-slate-700">
-                {order.previous_order_amount != null ? formatCurrency(order.previous_order_amount) : "—"}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs uppercase text-slate-400">Previous Status</p>
-              {/* The column is text, so it can hold a status an import file
-                  named that this system does not have. Badge the ones we know
-                  and print the rest as-is — StatusBadge would throw on a key
-                  that has no style. */}
-              {isKnownStatus(order.previous_order_status) ? (
-                <StatusBadge status={order.previous_order_status as OrderStatus} />
-              ) : (
-                <p className="text-slate-700">{order.previous_order_status || "—"}</p>
-              )}
-            </div>
-            {/* Full width: a note is a sentence, not a value, and wrapping it
-                into a third-of-a-row column made it unreadable. */}
-            <div className="col-span-3">
-              <p className="text-xs uppercase text-slate-400">Previous Note</p>
-              <p className="whitespace-pre-wrap text-slate-700">{order.previous_order_note || "—"}</p>
-            </div>
-          </div>
 
           {!editing && (
             <div>
@@ -882,8 +896,70 @@ export function OrderDetailsModal({
 
           {callSessions.length > 0 && (
             <div className="border-t border-slate-100 pt-3">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Call History</p>
-              <CallHistory sessions={callSessions} agentNameById={agentNameById} />
+              {/* An order that has been called twenty times filled the popup
+                  with its own history and pushed Save Changes off the bottom.
+                  It opens on the latest call only — the one that says where the
+                  lead was left — and the earlier ones are a press away. The
+                  other control folds the section to its heading entirely.
+
+                  Neither choice is remembered: the popup opens the same way
+                  every time, which is what makes it predictable. */}
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Call History ({callSessions.length})
+                </p>
+                <div className="flex items-center gap-1">
+                  {historyOpen && callSessions.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setHistoryMaximized((v) => !v)}
+                      title={
+                        historyMaximized
+                          ? "Show the latest call only"
+                          : `Show all ${callSessions.length} calls`
+                      }
+                      aria-label={
+                        historyMaximized
+                          ? "Show the latest call only"
+                          : `Show all ${callSessions.length} calls`
+                      }
+                      className="rounded border border-slate-200 p-1 text-slate-500 hover:bg-slate-50"
+                    >
+                      {historyMaximized ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setHistoryOpen((v) => !v)}
+                    title={historyOpen ? "Hide the call history" : "Show the call history"}
+                    aria-label={historyOpen ? "Hide the call history" : "Show the call history"}
+                    aria-expanded={historyOpen}
+                    className="rounded border border-slate-200 p-1 text-slate-500 hover:bg-slate-50"
+                  >
+                    {historyOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </button>
+                </div>
+              </div>
+              {historyOpen && (
+                <>
+                  <CallHistory
+                    sessions={historyMaximized ? callSessions : callSessions.slice(0, 1)}
+                    agentNameById={agentNameById}
+                    maxHeightClass={historyMaximized ? "max-h-[60vh]" : "max-h-none"}
+                  />
+                  {/* Say what is being held back, rather than leaving one row
+                      to look like the whole history. */}
+                  {!historyMaximized && callSessions.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setHistoryMaximized(true)}
+                      className="mt-1 text-[11px] text-slate-500 hover:text-[var(--brand-primary)] hover:underline"
+                    >
+                      {callSessions.length - 1} earlier {callSessions.length - 1 === 1 ? "call" : "calls"} hidden — show all
+                    </button>
+                  )}
+                </>
+              )}
             </div>
           )}
         </div>
@@ -904,15 +980,43 @@ export function OrderDetailsModal({
           </div>
         )}
 
-        <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-5 py-3">
+        {/* Pinned to the bottom of the card, which is the scrolling element, so
+            Close and Save Changes are reachable from anywhere in the form. They
+            used to sit after the last section: on a long order — a call history,
+            a sync panel, a duplicate warning — you had to scroll to the end to
+            leave, and the further you were from finished the further away the
+            way out was. */}
+        <div className="sticky bottom-0 z-20 flex items-center justify-between gap-2 rounded-b-xl border-t border-slate-200 bg-white px-5 py-3 shadow-[0_-2px_6px_-2px_rgba(15,23,42,0.12)]">
           <div>{fullPageHref && <Link href={fullPageHref} className="text-xs font-medium text-[var(--brand-primary)] hover:underline">Open full page</Link>}</div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             {/* No Edit Order and no Cancel. There is nothing to switch into —
                 the form is the popup — and requestClose already asks before
                 dropping unsaved work, which is all Cancel ever did. */}
             <Button type="button" variant="outline" onClick={requestClose} disabled={saving}>
               Close
             </Button>
+
+            {/* Calling lives here rather than in a strip at the top of the form.
+                It is a control, and the controls are in the bar that is always
+                on screen — an agent who scrolled to the address no longer has to
+                scroll back up to start the call, and the running timer stays
+                visible for the whole call instead of only at the top.
+
+                Shown to anyone the call rule applies to, and to anyone who HAS a
+                call running on this order whether the rule applies to them or
+                not: CALL in the leads row is offered to every role, so a
+                supervisor could otherwise start a call and find the popup had no
+                timer and no way to end it. */}
+            {(requiresCallSession || callActive) && !syncedLocked && (
+              <CallingPanel
+                compact
+                orderId={order.id}
+                onOpenActive={(id) => {
+                  window.location.href = `/leads?open_id=${id}`;
+                }}
+              />
+            )}
+
             {editing && (
               <Button type="button" onClick={handleSaveEdit} disabled={saving}>
                 {saving ? "Saving…" : "Save Changes"}

@@ -61,12 +61,14 @@ export function displayOrderId(order: Pick<Order, "order_number" | "pancake_orde
 
 /**
  * The same reference, short enough for a frozen column: `ORD-20260811-0168`
- * shows as `0168`.
+ * shows as `168`, and the first order of a day as `001`.
  *
  * The prefix and the date are the same on every row of a day's work, in the one
  * column pinned to the left, costing horizontal space on every screen. The
- * counter is what anybody actually reads. A Pancake id is already short and is
- * returned untouched.
+ * counter is what anybody actually reads, and the zero the sequence is padded
+ * to four digits with is not part of it — three digits is what a day's work
+ * reaches, so that is the width the column is held to. A Pancake id is the
+ * number typed into Pancake to find the order, so it is returned whole.
  *
  * Near enough to unique to scan by: across the 51,948 orders without a Pancake
  * id there are 51,421 distinct counters — 507 repeat at all, and the worst
@@ -79,7 +81,12 @@ export function shortOrderId(order: Pick<Order, "order_number" | "pancake_order_
   // ORD-YYYYMMDD-NNNN → NNNN, and anything not in that shape is left alone
   // rather than sliced into something meaningless.
   const parts = order.order_number.split("-");
-  return parts.length === 3 ? parts[2] : order.order_number;
+  if (parts.length !== 3) return order.order_number;
+  // The padding drops, but not below three digits: a counter that reads "1" on
+  // one row and "168" on the next is a ragged column, and "001" is still read
+  // as the first order of the day. A day past 999 keeps every digit it needs.
+  const counter = parts[2].replace(/^0+/, "");
+  return counter ? counter.padStart(3, "0") : "000";
 }
 
 /** True while an order still shows its internal number because Pancake has not

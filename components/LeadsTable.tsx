@@ -8,7 +8,7 @@ import { TrackingCell } from "@/components/TrackingCell";
 import type { EditorLine } from "@/components/OrderItemsEditor";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { useGridKeys } from "@/components/useGridKeys";
-import { LeadStatusCell } from "@/components/LeadStatusCell";
+import { LeadCallCell, LeadStatusCell } from "@/components/LeadStatusCell";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 import type { CallSession, Order, OrderStatus } from "@/lib/types";
 import { shortOrderId, isPendingOrderId } from "@/lib/types";
@@ -16,7 +16,6 @@ import { shortOrderId, isPendingOrderId } from "@/lib/types";
 export function LeadsTable({
   orders: initialOrders,
   agentCallNameById,
-  agentFullNameById,
   productNameByOrderId,
   latestStatusUpdateByOrderId,
   activeProducts,
@@ -36,7 +35,6 @@ export function LeadsTable({
   orders: Order[];
   /** Call Name per agent — what the floor calls them, not their login. */
   agentCallNameById: Record<string, string>;
-  agentFullNameById: Record<string, string>;
   productNameByOrderId: Record<string, string>;
   latestStatusUpdateByOrderId: Record<string, { status: OrderStatus; from: string | null; at: string } | undefined>;
   activeProducts: {
@@ -136,30 +134,32 @@ export function LeadsTable({
             <tr>
               {/* Above the body's own sticky column (z-10), so the two do not
                   cross at the corner where both are pinned. */}
-              <th className="sticky left-0 z-30 whitespace-nowrap border-r border-slate-200 bg-slate-50 px-2.5 py-2">Order ID</th>
+              <th className="sticky left-0 z-30 w-[7rem] whitespace-nowrap border-r border-slate-200 bg-slate-50 px-2.5 py-2">Order ID</th>
               {/* Same order as the agents' table and as TEST TEMPLATE ROMA, so
                   a supervisor comparing the two screens — or either against the
                   spreadsheet — is reading one layout. */}
-              <th className="border-r border-slate-200 px-2.5 py-2">Previous Status</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Order Date</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Agent</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Customer</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Number</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Purok</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Barangay</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">City</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Province</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">LM</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Notes</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Prev Date</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Prev Order</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Prev Amount</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">New Order</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Amount</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Courier</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Tracking Number</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Status</th>
-              <th className="border-r border-slate-200 px-2.5 py-2">Pancake Sync</th>
+              <th className="sticky left-[7rem] z-30 w-[8.5rem] whitespace-nowrap border-r border-slate-200 bg-slate-50 px-2.5 py-2">PREV Status</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Order Date</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Agent</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Customer</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Number</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Purok</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Barangay</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">City</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Province</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">LM</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Notes</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Prev Date</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Prev Order</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Prev AMT</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">New Order</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Amount</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Courier</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Tracking Number</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Status</th>
+              <th className="whitespace-nowrap border-r border-slate-200 px-2.5 py-2">Pancake Sync</th>
+              {/* Pinned to the right edge, the way Order ID is pinned to the left: the call is reachable from any horizontal scroll position. */}
+              <th className="sticky right-0 z-30 whitespace-nowrap border-l border-slate-200 bg-slate-50 px-2.5 py-2">Call</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -167,7 +167,7 @@ export function LeadsTable({
               const style = LEAD_STATUS_STYLES[o.status];
               return (
                 <tr key={o.id} className={cn(style.row, style.rowHover)}>
-                  <td className={cn("sticky left-0 z-10 whitespace-nowrap border-r border-slate-100 px-2.5 py-1.5", style.row)}>
+                  <td className={cn("sticky left-0 z-10 w-[7rem] whitespace-nowrap border-r border-slate-100 px-2.5 py-1.5", style.row)}>
                     <button
                       type="button"
                       onClick={() => setOpenOrder(o)}
@@ -183,7 +183,11 @@ export function LeadsTable({
                         isPendingOrderId(o) ? "text-slate-400" : "text-[var(--brand-primary)]"
                       )}
                     >
-                      {shortOrderId(o)}
+                      {/* Truncated rather than allowed to widen the cell: the
+                          column PREV Status is pinned against has to be a known
+                          width, or the two overlap. A Pancake id is ten digits
+                          and the tooltip carries it whole. */}
+                      <span className="block max-w-[4.5rem] truncate">{shortOrderId(o)}</span>
                       {isPendingOrderId(o) && (
                         <span className="ml-1 text-amber-500" aria-label="Not yet forwarded to Pancake POS">•</span>
                       )}
@@ -192,7 +196,7 @@ export function LeadsTable({
                   {/* Text, not a badge: the column can hold a status an import
                       named that this system does not have, and a second badge
                       in the row would read as one lead in two states. */}
-                  <td className={cell}>{o.previous_order_status ? o.previous_order_status.toUpperCase() : "—"}</td>
+                  <td className={cn("sticky left-[7rem] z-10 w-[8.5rem] truncate border-r border-slate-100 px-2.5 py-1.5 text-slate-600", style.row)}>{o.previous_order_status ? o.previous_order_status.toUpperCase() : "—"}</td>
                   <td className={cell}>{o.order_date ? formatDate(o.order_date) : "—"}</td>
                   <td className={cell}>{agentCallNameById[o.agent_id] || "—"}</td>
                   <td className={cell}>{o.customer_name}</td>
@@ -243,11 +247,7 @@ export function LeadsTable({
                   </td>
                   {/* Where the lead stands, and the call that moves it. */}
                   <td className="border-r border-slate-100 px-2.5 py-1.5">
-                    <LeadStatusCell
-                      order={o}
-                      previousStatus={latestStatusUpdateByOrderId[o.id]?.from ?? null}
-                      onOpen={() => setOpenOrder(o)}
-                    />
+                    <LeadStatusCell order={o} previousStatus={latestStatusUpdateByOrderId[o.id]?.from ?? null} />
                   </td>
                   <td className="border-r border-slate-100 px-2.5 py-1.5">
                     <SyncStatusChip
@@ -255,12 +255,18 @@ export function LeadsTable({
                       needsReview={o.pancake_sync_status === "sync_failed" && o.pancake_retry_count >= MAX_ATTEMPTS}
                     />
                   </td>
+                  {/* Its own column, pinned right: a reading and a control are
+                      two different things, and the control stays reachable
+                      however far the row is scrolled. */}
+                  <td className={cn("sticky right-0 z-10 border-l border-slate-200 px-2.5 py-1.5", style.row)}>
+                    <LeadCallCell order={o} onOpen={() => setOpenOrder(o)} />
+                  </td>
                 </tr>
               );
             })}
             {orders.length === 0 && (
               <tr>
-                <td colSpan={21} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={22} className="px-4 py-10 text-center text-slate-400">
                   No leads found.
                 </td>
               </tr>
@@ -272,7 +278,7 @@ export function LeadsTable({
       {openOrder && (
         <OrderDetailsModal
           order={openOrder}
-          agentName={agentFullNameById[openOrder.agent_id] || "—"}
+          agentName={agentCallNameById[openOrder.agent_id] || "—"}
           productName={productNameByOrderId[openOrder.id] || openOrder.product_name}
           latestStatusUpdate={latestStatusUpdateByOrderId[openOrder.id] || null}
           activeProducts={activeProducts}

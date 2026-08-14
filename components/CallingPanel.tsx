@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { formatElapsed, useCallSession } from "@/components/CallSessionProvider";
 import { TIME_IN_HREF } from "@/lib/time-in-gate";
+import { cn } from "@/lib/utils";
 
 export interface CallingState {
   session: { id: string; order_id: string; started_at: string } | null;
@@ -27,11 +28,14 @@ export function CallingPanel({
   onStarted,
   onEnded,
   onOpenActive,
+  compact = false,
 }: {
   orderId: string;
   onStarted?: () => void;
   onEnded?: () => void;
   onOpenActive: (orderId: string) => void;
+  /** Renders as a single row of controls, for the popup's footer bar. */
+  compact?: boolean;
 }) {
   const { session, now, startCall, endCall } = useCallSession();
   const [busy, setBusy] = useState(false);
@@ -63,6 +67,61 @@ export function CallingPanel({
     await endCall();
     setBusy(false);
     onEnded?.();
+  }
+
+  // In the popup's footer the panel is one control among others, not a section
+  // of its own: no explanatory strip, no border, and any error said in a line
+  // beside the button rather than in an alert that would double the height of a
+  // bar the form is scrolling under.
+  if (compact) {
+    return (
+      <div className="flex items-center gap-2">
+        {error && (
+          <span
+            className={cn(
+              "max-w-[18rem] text-[11px] leading-tight",
+              timeInBlocked ? "text-amber-700" : "text-red-600"
+            )}
+          >
+            {error}{" "}
+            {timeInBlocked && (
+              <Link href={TIME_IN_HREF} className="font-medium underline">
+                Go to Time In
+              </Link>
+            )}
+          </span>
+        )}
+
+        {blockedByOtherOrder && !active && (
+          <Button type="button" size="sm" variant="secondary" onClick={() => onOpenActive(blockedByOtherOrder)}>
+            Return to active call
+          </Button>
+        )}
+
+        {!blockedByOtherOrder && !active && (
+          <Button type="button" size="sm" disabled={busy} onClick={start}>
+            <PhoneCall className="h-4 w-4" /> {busy ? "Starting…" : "Calling"}
+          </Button>
+        )}
+
+        {active && (
+          <>
+            <span className="flex items-center gap-1.5 whitespace-nowrap rounded-md bg-green-50 px-2 py-1 text-green-800">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-60" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-green-600" />
+              </span>
+              <span className="font-mono text-xs tabular-nums text-green-900" aria-live="off">
+                {formatElapsed(session!.started_at, now)}
+              </span>
+            </span>
+            <Button type="button" size="sm" variant="outline" disabled={busy} onClick={endWithoutUpdate}>
+              <PhoneOff className="h-4 w-4" /> End call
+            </Button>
+          </>
+        )}
+      </div>
+    );
   }
 
   if (blockedByOtherOrder && !active) {

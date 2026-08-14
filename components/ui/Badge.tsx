@@ -110,7 +110,15 @@ export const LEAD_STATUS_STYLES: Record<OrderStatus, LeadStatusStyle> = {
 
 export function StatusBadge({ status }: { status: OrderStatus }) {
   return (
-    <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium", LEAD_STATUS_STYLES[status].badge)}>
+    // A badge is a label, not a paragraph. "CANNOT BE REACHED" and "REJECT
+    // OFFER" were breaking across two lines in a table cell, which made those
+    // rows taller than the ones around them and left the whole column ragged.
+    <span
+      className={cn(
+        "inline-flex whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium",
+        LEAD_STATUS_STYLES[status].badge
+      )}
+    >
       {LEAD_STATUS_LABELS[status]}
     </span>
   );
@@ -143,7 +151,13 @@ export function SyncStatusChip({
       ? `${PANCAKE_SYNC_STATUS_LABELS.sync_failed} — needs review`
       : PANCAKE_SYNC_STATUS_LABELS[status];
   return (
-    <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium", style.chip, className)}>
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium",
+        style.chip,
+        className
+      )}
+    >
       <span className={cn("h-1.5 w-1.5 rounded-full", style.dot, status === "syncing" && "animate-pulse")} />
       {label}
     </span>
