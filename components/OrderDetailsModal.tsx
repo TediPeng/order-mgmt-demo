@@ -704,13 +704,16 @@ export function OrderDetailsModal({
                       ["Landmark", form.landmark],
                       ["Product", [selectedProductName, form.variant].filter(Boolean).join(" — ")],
                       ["Quantity", String(draftQuantity || "")],
-                      ["Unit price", unitPriceEntered ? formatCurrency(checkUnitPrice) : ""],
-                      ["Discount", formatCurrency(draftDiscount)],
+                      // Unit price, Discount, Payment method and Order source
+                      // are gone from this summary. The first two are stated on
+                      // the line they belong to in the editor above — a lead
+                      // with three products has three unit prices and one line
+                      // here could only ever show one of them — and the last
+                      // two left the form with the rest of fulfillment's
+                      // fields. Total amount is what this list is read for.
                       ["Shipping fee", form.shipping_fee === "" ? "" : formatCurrency(draftShipping)],
                       ["Total amount", formatCurrency(grandTotal)],
-                      ["Payment method", form.payment_method],
                       ["Courier", form.courier],
-                      ["Order source", form.order_source],
                       ["Agent", agentName],
                     ].map(([label, value]) => (
                       <div key={label as string} className={label === "Address" ? "col-span-2" : undefined}>
