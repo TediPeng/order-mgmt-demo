@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Download } from "lucide-react";
 import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { can } from "@/lib/permissions";
+import { can, isFullAccess } from "@/lib/permissions";
 import { formatDate, formatTime, todayInTz } from "@/lib/utils";
 import { AttendanceWidget } from "@/components/AttendanceWidget";
 import { AttendanceCalendar } from "@/components/AttendanceCalendar";
@@ -108,8 +108,19 @@ export default async function AttendancePage({
   const dayByUserId: Record<string, Attendance> = Object.fromEntries(
     db.attendance.filter((a) => a.work_date === dayDate).map((a) => [a.user_id, a])
   );
-  // Whoever timed in, earliest first.
-  const activeEmployees = pickableEmployees.filter((p) => p.is_active && !p.is_deleted);
+  // The floor, and only the floor.
+  //
+  // Administrators and Team Leads are not on a shift the way an agent is, and
+  // the System Administrator turned up in this table every single day. Test
+  // accounts go for the same reason they are left out of the Leads scope: their
+  // rows are real but they are not the floor's work.
+  //
+  // Decided by scope rather than by the word "agent", so somebody on a custom
+  // role that only sees their own leads is counted with the agents — the same
+  // rule the Leads page uses to pick which UI to show.
+  const activeEmployees = pickableEmployees.filter(
+    (p) => p.is_active && !p.is_deleted && !p.is_test_account && !isFullAccess(p.role) && p.role !== "team_lead"
+  );
   // Only people who actually have a record for the day. Listing everybody else
   // underneath meant the table opened on a block of dashes — every account that
   // does not work the floor, every rest day, every not-yet — and the four lines

@@ -8,7 +8,7 @@ import { getRequestInfo } from "@/lib/request-info";
 import { notify, agentEventRecipients } from "@/lib/notifications";
 import { requireUserLite, requirePermission } from "./guards";
 import { attendanceOverrideSchema } from "@/lib/validation";
-import { computeMinutesBetween, computeMinutesLate, computeOvertimeHours } from "@/lib/attendance-logic";
+import { computeMinutesBetween, computeMinutesLate, computeOvertimeHours, scheduledInstant } from "@/lib/attendance-logic";
 import { activeSuspensionOn } from "@/lib/schedule-access";
 import { todayInTz } from "@/lib/utils";
 
@@ -263,8 +263,20 @@ export async function overrideAttendanceAction(formData: FormData) {
   }
   const data = parsed.data;
 
-  const timeInIso = new Date(`${data.work_date}T${data.time_in}`).toISOString();
-  const timeOutIso = data.time_out ? new Date(`${data.work_date}T${data.time_out}`).toISOString() : null;
+  // Read in the company's timezone, not the server's.
+  //
+  // This was `new Date("2026-08-15T07:34")`, which has no zone in it and so is
+  // parsed as the server's local time. The server is UTC, so an Administrator
+  // typing 07:34 — meaning 7:34 in the morning, which is what the card beside
+  // the form displays — had 3:34 PM stored against the record. Eight hours out,
+  // silently, on the one screen whose whole purpose is correcting attendance.
+  //
+  // scheduledInstant is the same helper time-in lateness and overtime already
+  // use, so an overridden record is now measured the same way an ordinary one is.
+  const timeInIso = scheduledInstant(data.work_date, data.time_in, db.work_schedule.timezone).toISOString();
+  const timeOutIso = data.time_out
+    ? scheduledInstant(data.work_date, data.time_out, db.work_schedule.timezone).toISOString()
+    : null;
   const totalHours = timeOutIso
     ? Math.round(((new Date(timeOutIso).getTime() - new Date(timeInIso).getTime()) / 3600000) * 100) / 100
     : null;
