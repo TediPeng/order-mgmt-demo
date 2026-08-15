@@ -32,6 +32,14 @@ function shiftMonth(year: number, month: number, delta: number): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
+/** One day either side of a YYYY-MM-DD, in UTC so the arithmetic never lands on
+ * a daylight-saving edge and repeats or skips a date. */
+function shiftDay(date: string, delta: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0, 10);
+}
+
 const SUMMARY_STATUSES: { key: AttendanceStatus; label: string }[] = [
   { key: "on_time", label: "Present (On Time)" },
   { key: "timed_out", label: "Present (Timed Out)" },
@@ -45,7 +53,7 @@ const SUMMARY_STATUSES: { key: AttendanceStatus; label: string }[] = [
 export default async function AttendancePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; timedin?: string; timedout?: string; user?: string; month?: string; view?: string }>;
+  searchParams: Promise<{ error?: string; timedin?: string; timedout?: string; user?: string; month?: string; view?: string; date?: string }>;
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
@@ -91,10 +99,34 @@ export default async function AttendancePage({
   }
 
   const isTableView = sp.view === "table";
+  // Everyone, for one day. The other two views answer "this person, this
+  // month", which means picking a name from a dropdown before the page can
+  // say anything — and the question actually asked most mornings is who came
+  // in, and when. Rows are people here, so nobody is chosen first.
+  const isEveryoneView = sp.view === "all" && canViewAll;
+  const dayDate = sp.date && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) ? sp.date : todayStr;
+  const dayByUserId: Record<string, Attendance> = Object.fromEntries(
+    db.attendance.filter((a) => a.work_date === dayDate).map((a) => [a.user_id, a])
+  );
+  // Whoever timed in, earliest first, then everybody who did not. An absence is
+  // as much of an answer as a time, so the people with no row are listed rather
+  // than left out.
+  const dayRoster = pickableEmployees
+    .filter((p) => p.is_active && !p.is_deleted)
+    .map((p) => ({ person: p, record: dayByUserId[p.id] as Attendance | undefined }))
+    .sort((a, b) => {
+      const at = a.record?.time_in || "";
+      const bt = b.record?.time_in || "";
+      if (at && bt) return at.localeCompare(bt);
+      if (at) return -1;
+      if (bt) return 1;
+      return a.person.full_name.localeCompare(b.person.full_name);
+    });
+  const timedInCount = dayRoster.filter((r) => r.record?.time_in).length;
   const monthLabel = new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
 
   const qs = (overrides: Record<string, string | undefined>) => {
-    const merged = { user: sp.user, month: sp.month, view: sp.view, ...overrides };
+    const merged = { user: sp.user, month: sp.month, view: sp.view, date: sp.date, ...overrides };
     const params = new URLSearchParams();
     Object.entries(merged).forEach(([k, v]) => {
       if (v) params.set(k, v);
@@ -137,20 +169,42 @@ export default async function AttendancePage({
       </div>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        {/* The Everyone view reads one day, so it steps by days. The other two
+            read one month and step by months — the same three controls, moving
+            whichever unit is on screen. */}
+        {isEveryoneView ? (
+          <div className="flex items-center gap-2">
+            <LinkButton href={qs({ date: shiftDay(dayDate, -1) })} variant="outline" size="sm">
+              ← Previous
+            </LinkButton>
+            <span className="min-w-[10rem] text-center text-sm font-semibold text-slate-700">
+              {formatDate(dayDate)}
+            </span>
+            <LinkButton href={qs({ date: shiftDay(dayDate, 1) })} variant="outline" size="sm">
+              Next →
+            </LinkButton>
+            <LinkButton href={qs({ date: todayStr })} variant="secondary" size="sm">
+              Today
+            </LinkButton>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <LinkButton href={qs({ month: shiftMonth(year, month, -1) })} variant="outline" size="sm">
+              ← Previous
+            </LinkButton>
+            <span className="min-w-[10rem] text-center text-sm font-semibold text-slate-700">{monthLabel}</span>
+            <LinkButton href={qs({ month: shiftMonth(year, month, 1) })} variant="outline" size="sm">
+              Next →
+            </LinkButton>
+            <LinkButton href={qs({ month: todayStr.slice(0, 7) })} variant="secondary" size="sm">
+              Today
+            </LinkButton>
+          </div>
+        )}
         <div className="flex items-center gap-2">
-          <LinkButton href={qs({ month: shiftMonth(year, month, -1) })} variant="outline" size="sm">
-            ← Previous
-          </LinkButton>
-          <span className="min-w-[10rem] text-center text-sm font-semibold text-slate-700">{monthLabel}</span>
-          <LinkButton href={qs({ month: shiftMonth(year, month, 1) })} variant="outline" size="sm">
-            Next →
-          </LinkButton>
-          <LinkButton href={qs({ month: todayStr.slice(0, 7) })} variant="secondary" size="sm">
-            Today
-          </LinkButton>
-        </div>
-        <div className="flex items-center gap-2">
-          {canViewAll && (
+          {/* No employee picker in the Everyone view — the whole point of it is
+              that nobody has to be chosen before the page says anything. */}
+          {canViewAll && !isEveryoneView && (
             <form className="flex items-center gap-2">
               <input type="hidden" name="month" value={sp.month || ""} />
               <input type="hidden" name="view" value={sp.view || ""} />
@@ -180,6 +234,14 @@ export default async function AttendancePage({
             >
               Table
             </Link>
+            {canViewAll && (
+              <Link
+                href={qs({ view: "all" })}
+                className={`rounded px-2.5 py-1 font-medium ${isEveryoneView ? "bg-[var(--brand-primary)] text-white" : "text-slate-500 hover:bg-slate-100"}`}
+              >
+                Everyone
+              </Link>
+            )}
           </div>
           {canExport && (
             <a href={`/api/attendance/export?${new URLSearchParams({ user: targetUserId, from, to }).toString()}`}>
@@ -191,6 +253,79 @@ export default async function AttendancePage({
         </div>
       </div>
 
+      {isEveryoneView ? (
+        <div className="rounded-lg border border-slate-200 bg-white">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-slate-100 px-4 py-3">
+            <p className="text-sm font-medium text-slate-700">
+              {timedInCount} of {dayRoster.length} timed in
+            </p>
+            <p className="text-xs text-slate-400">Earliest first. Anyone with no record is listed last.</p>
+          </div>
+          <div className="max-h-[70vh] overflow-auto">
+            <table className="w-full min-w-[900px] text-left text-sm">
+              <thead className="sticky top-0 z-20 bg-slate-50 text-xs uppercase text-slate-500 shadow-sm">
+                <tr>
+                  <th className="px-4 py-3">Employee</th>
+                  <th className="px-4 py-3">Time In</th>
+                  <th className="px-4 py-3">Time Out</th>
+                  <th className="px-4 py-3">Break</th>
+                  <th className="px-4 py-3">Total Hours</th>
+                  <th className="px-4 py-3">Overtime</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Flags</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {dayRoster.map(({ person, record }) => (
+                  <tr key={person.id} className={record?.time_in ? undefined : "bg-slate-50/60"}>
+                    <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-800">
+                      {person.full_name}
+                      {person.id === user.id && <span className="ml-1 text-xs font-normal text-slate-400">(You)</span>}
+                    </td>
+                    <td className="px-4 py-3">{record?.time_in ? formatTime(record.time_in) : "—"}</td>
+                    <td className="px-4 py-3">{record?.time_out ? formatTime(record.time_out) : "—"}</td>
+                    <td className="px-4 py-3 text-slate-500">
+                      {record?.break_start ? `${formatTime(record.break_start)} – ${formatTime(record.break_end)}` : "—"}
+                      {record?.break_minutes != null && <span className="ml-1 text-xs">({record.break_minutes}m)</span>}
+                    </td>
+                    <td className="px-4 py-3">{record?.total_hours ?? "—"}</td>
+                    <td className="px-4 py-3">{record && record.overtime_hours > 0 ? record.overtime_hours : "—"}</td>
+                    <td className="px-4 py-3">
+                      {/* No row at all is not the same as a status. Saying "No
+                          record" rather than badging it Absent leaves the
+                          judgement to whoever is reading — the sweep that marks
+                          absences runs later in the day. */}
+                      {record ? (
+                        <AttendanceStatusBadge status={record.status} />
+                      ) : (
+                        <span className="text-xs text-slate-400">No record</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {record && <LateFlag minutesLate={record.minutes_late} />}
+                        {record && <OverBreakFlag minutes={record.over_break_minutes} />}
+                        {record?.overridden && (
+                          <span className="inline-flex rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">
+                            Overridden
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {dayRoster.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-10 text-center text-slate-400">
+                      No employees in your scope.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
         <div className="lg:col-span-3">
           {isTableView ? (
@@ -289,6 +424,7 @@ export default async function AttendancePage({
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }
