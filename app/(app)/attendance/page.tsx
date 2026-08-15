@@ -7,6 +7,7 @@ import { formatDate, formatTime, todayInTz } from "@/lib/utils";
 import { AttendanceWidget } from "@/components/AttendanceWidget";
 import { AttendanceCalendar } from "@/components/AttendanceCalendar";
 import { RequestLeaveButton } from "@/components/RequestLeaveButton";
+import { BackToCallButton } from "@/components/BackToCallButton";
 import { AttendanceStatusBadge, LateFlag, OverBreakFlag } from "@/components/ui/AttendanceBadge";
 import { Alert } from "@/components/ui/Alert";
 import { Select } from "@/components/ui/Field";
@@ -155,7 +156,12 @@ export default async function AttendancePage({
     <div>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-page-title text-slate-900">Attendance</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* An agent comes here mid-shift to start a break or check their
+              hours. One call is open at a time and the popup that ends it lives
+              in the leads table, so without this the way back is to remember
+              which lead it was on. Renders nothing when no call is running. */}
+          <BackToCallButton />
           {canFileLeave && <RequestLeaveButton action={fileLeaveAction} today={todayStr} />}
           {canManage && (
             <LinkButton href="/attendance/manage" variant="outline" size="sm">

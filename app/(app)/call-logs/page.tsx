@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
+import { BackToCallButton } from "@/components/BackToCallButton";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
 import { uploadCallLogAction, deleteCallLogAction } from "@/lib/actions/call-logs";
 import { AgentCallLogUpload } from "@/components/AgentCallLogUpload";
@@ -65,7 +66,12 @@ export default async function CallLogsPage({
   if (isAgent) {
     return (
       <div>
-        <h1 className="mb-4 text-page-title text-slate-900">Call Logs</h1>
+        {/* The agent view of this page is where a call log gets uploaded
+            mid-shift; the same way back applies. */}
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <h1 className="text-page-title text-slate-900">Call Logs</h1>
+          <BackToCallButton />
+        </div>
         <AgentCallLogUpload imageError={sp.error} imageUploaded={Boolean(sp.image_uploaded)} />
       </div>
     );
@@ -86,7 +92,10 @@ export default async function CallLogsPage({
 
   return (
     <div>
-      <h1 className="mb-4 text-page-title text-slate-900">Call Logs</h1>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <h1 className="text-page-title text-slate-900">Call Logs</h1>
+        <BackToCallButton />
+      </div>
 
       {sp.error && (
         <Alert kind="error" className="mb-4">
