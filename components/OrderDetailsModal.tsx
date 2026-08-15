@@ -488,6 +488,22 @@ export function OrderDetailsModal({
               </span>
             )}
             <StatusBadge status={order.status} />
+
+            {/* This lead belongs to a regular customer.
+                Worth saying in the header rather than leaving to be inferred:
+                these orders are kept out of the Leads list, so an agent who
+                reaches one through a search or a pinned link has no other clue
+                why it is not among the leads they were working. It is also the
+                one state in which Make Regular Customer is absent from the
+                footer, and an absent button explains nothing by itself.
+
+                Amber and starred, matching that button — the same fact, once as
+                the action and once as the result. */}
+            {order.is_regular_customer && (
+              <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-950 shadow-sm">
+                <Star className="h-3 w-3" aria-hidden /> Regular Customer
+              </span>
+            )}
           </div>
           {/* No ✕. Close is in the footer bar, which is pinned and therefore on
               screen from anywhere in the form, and the backdrop closes too —
