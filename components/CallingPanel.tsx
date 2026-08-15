@@ -8,6 +8,7 @@ import { Alert } from "@/components/ui/Alert";
 import { formatElapsed, useCallSession } from "@/components/CallSessionProvider";
 import { TIME_IN_HREF } from "@/lib/time-in-gate";
 import { cn } from "@/lib/utils";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 export interface CallingState {
   session: { id: string; order_id: string; started_at: string } | null;
@@ -41,6 +42,7 @@ export function CallingPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [timeInBlocked, setTimeInBlocked] = useState(false);
+  const [confirmEnd, setConfirmEnd] = useState(false);
 
   const active = Boolean(session && session.order_id === orderId);
   const blockedByOtherOrder = session && session.order_id !== orderId ? session.order_id : null;
@@ -61,7 +63,7 @@ export function CallingPanel({
   }
 
   async function endWithoutUpdate() {
-    if (!window.confirm("End this call without recording a status update?")) return;
+    setConfirmEnd(false);
     setBusy(true);
     setError(null);
     await endCall();
@@ -115,10 +117,30 @@ export function CallingPanel({
                 {formatElapsed(session!.started_at, now)}
               </span>
             </span>
-            <Button type="button" size="sm" variant="outline" disabled={busy} onClick={endWithoutUpdate}>
+            {/* Red: ending a call is the one control here that closes something
+                and cannot be taken back, and outlined it looked like Close. */}
+            <Button
+              type="button"
+              size="sm"
+              variant="danger"
+              disabled={busy}
+              className="whitespace-nowrap"
+              onClick={() => setConfirmEnd(true)}
+            >
               <PhoneOff className="h-4 w-4" /> End call
             </Button>
           </>
+        )}
+        {confirmEnd && (
+          <ConfirmDialog
+            title="End this call?"
+            message="Wala pang status update na maitatala para sa tawag na ito. Matatapos pa rin ang tawag at mananatili sa call history."
+            confirmLabel="End call"
+            cancelLabel="Keep calling"
+            busy={busy}
+            onConfirm={endWithoutUpdate}
+            onCancel={() => setConfirmEnd(false)}
+          />
         )}
       </div>
     );
@@ -177,10 +199,21 @@ export function CallingPanel({
             {formatElapsed(session!.started_at, now)}
           </span>
         </div>
-        <Button type="button" size="sm" variant="outline" disabled={busy} onClick={endWithoutUpdate}>
+        <Button type="button" size="sm" variant="danger" disabled={busy} onClick={() => setConfirmEnd(true)}>
           <PhoneOff className="h-4 w-4" /> End without update
         </Button>
       </div>
+        {confirmEnd && (
+          <ConfirmDialog
+            title="End this call?"
+            message="Wala pang status update na maitatala para sa tawag na ito. Matatapos pa rin ang tawag at mananatili sa call history."
+            confirmLabel="End call"
+            cancelLabel="Keep calling"
+            busy={busy}
+            onConfirm={endWithoutUpdate}
+            onCancel={() => setConfirmEnd(false)}
+          />
+        )}
     </div>
   );
 }
