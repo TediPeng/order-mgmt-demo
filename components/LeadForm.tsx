@@ -8,6 +8,7 @@ import { AddressSelect, EMPTY_ADDRESS, type AddressValue } from "@/components/Ad
 import { OrderItemsEditor, type EditorLine } from "@/components/OrderItemsEditor";
 import { AGENT_EDITABLE_STATUSES, LEAD_STATUS_LABELS, PACKAGING_STATUS } from "@/lib/validation";
 import { packagingProblems } from "@/lib/lead-workflow";
+import { blockImplicitSubmit } from "@/lib/form-keys";
 
 interface ProductOption {
   id: string;
@@ -123,6 +124,7 @@ export function LeadForm({
   return (
     <form
       action={action}
+      onKeyDown={blockImplicitSubmit}
       onSubmit={(e) => {
         if (problems.length > 0) {
           e.preventDefault();

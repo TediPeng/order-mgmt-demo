@@ -7,6 +7,7 @@ import { Alert } from "@/components/ui/Alert";
 import { OrderItemsEditor, type EditorLine, type EditorProduct } from "@/components/OrderItemsEditor";
 import { AddressSelect } from "@/components/AddressSelect";
 import { LEAD_STATUS_LABELS, LEAD_STATUSES, PAYMENT_METHOD_SUGGESTIONS, ORDER_TAGS, selectableStatuses } from "@/lib/validation";
+import { blockImplicitSubmit } from "@/lib/form-keys";
 import type { Order, Profile } from "@/lib/types";
 
 interface FormState {
@@ -172,7 +173,7 @@ export function LeadEditForm({
   const err = (key: string) => (missing.includes(key) ? "border-red-400 focus:border-red-500 focus:ring-red-500" : "");
 
   return (
-    <form action={action} onSubmit={handleSubmit} className="space-y-4">
+    <form action={action} onSubmit={handleSubmit} onKeyDown={blockImplicitSubmit} className="space-y-4">
       {missing.length > 0 && (
         <Alert kind="error">
           Missing required fields for Packaging: {missing.map((k) => FIELD_LABELS[k] || k).join(", ")}
