@@ -55,6 +55,9 @@ export interface LeadFilters {
   status?: string;
   /** Free-text box. Agent and management views search slightly different sets. */
   q?: string;
+  /** Matched case-insensitively: previous_order_status is free text, so an
+   * import may have written DELIVERED, Delivered or delivered. */
+  prev_status?: string;
   order_number?: string;
   agent?: string;
   customer_name?: string;
@@ -113,6 +116,7 @@ export async function queryLeads(input: {
   query = applyScope(query, scope);
 
   if (filters.status) query = query.eq("status", filters.status);
+  if (filters.prev_status) query = query.ilike("previous_order_status", filters.prev_status);
 
   if (isAgentView) {
     // The agent's single box: their own leads, by any reference they might
@@ -247,4 +251,27 @@ export async function duplicatePhoneCount(scope: AgentScope): Promise<number> {
   });
   if (error) throw new Error(`Duplicate lead count failed: ${error.message}`);
   return Number(data ?? 0);
+}
+
+/**
+ * The PREV STATUS values that actually appear in the leads, with counts.
+ *
+ * Not the status enum. previous_order_status is free text — imports and the
+ * floor have written REJECT UPSELL, TRANSFERRED TO POS, "meron pa", "walang
+ * budget" into it, and REJECT UPSELL alone is on nearly five thousand leads
+ * while never having been a status this system has. A filter built from the
+ * enum would offer names that match nothing and hide the ones that matter.
+ *
+ * Folded to upper case in the function, so CANCEL and cancel are one line.
+ */
+export async function previousStatusCounts(
+  scope: AgentScope,
+  includeRegular = false
+): Promise<{ value: string; count: number }[]> {
+  const { data, error } = await supabaseAdmin.rpc("previous_status_counts", {
+    p_agent_ids: scope,
+    p_include_regular: includeRegular,
+  });
+  if (error) throw new Error(`Previous status counts failed: ${error.message}`);
+  return ((data || []) as { value: string; n: number }[]).map((r) => ({ value: r.value, count: Number(r.n) }));
 }

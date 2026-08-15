@@ -61,13 +61,23 @@ export function LeadStatusCards({
   counts,
   total,
   selected,
+  prevSelected,
+  prevStatusCounts = [],
   hrefFor,
+  prevHrefFor,
 }: {
   counts: StatusCount[];
   total: number;
   selected?: string;
+  /** The previous-order status being filtered on, if any. */
+  prevSelected?: string;
+  /** The PREV STATUS values actually present in the leads, with counts —
+   * read from the column, not from the status enum. */
+  prevStatusCounts?: { value: string; count: number }[];
   /** Builds the link for a card, so the caller keeps any other active filters. */
   hrefFor: (status?: string) => string;
+  /** Same, for the Prev Status filter. Omit to leave that filter off the page. */
+  prevHrefFor?: (status?: string) => string;
 }) {
   const byStatus = new Map(counts.map((c) => [c.status, c.count]));
 
@@ -121,8 +131,35 @@ export function LeadStatusCards({
       {/* Every other status, with its count, in the space the cards no longer
           fill. It sits in the same row so the two are read as one control: the
           five you watch, and the way to reach the rest. */}
-      <div className="flex items-center">
+      <div className="flex items-center gap-3">
         <StatusFilterSelect options={options} value={selected ?? ""} />
+        {/* Where the lead came FROM, beside where it is. Its options are read
+            from the PREV STATUS column itself rather than from the status enum:
+            the column is free text, and its third largest value — REJECT
+            UPSELL, on nearly five thousand leads — was never a status this
+            system had. Built from the enum, the filter would have offered names
+            matching nothing and hidden the ones that matter. */}
+        {prevHrefFor && (
+          <StatusFilterSelect
+            label="Prev Status"
+            placeholder="Search previous status"
+            value={prevSelected ?? ""}
+            options={[
+              {
+                value: "",
+                label: "Any previous status",
+                href: prevHrefFor(undefined),
+                count: prevStatusCounts.reduce((n, p) => n + p.count, 0),
+              },
+              ...prevStatusCounts.map((p) => ({
+                value: p.value,
+                label: p.value,
+                href: prevHrefFor(p.value),
+                count: p.count,
+              })),
+            ]}
+          />
+        )}
       </div>
     </div>
   );

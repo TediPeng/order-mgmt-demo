@@ -10,7 +10,9 @@ export interface StatusFilterOption {
   value: string;
   label: string;
   href: string;
-  count: number;
+  /** Omitted where counting would cost another aggregate over 52,000 rows —
+   * the Prev Status filter. The row simply carries no number then. */
+  count?: number;
 }
 
 /**
@@ -26,7 +28,17 @@ export interface StatusFilterOption {
  * cards use, so choosing a status keeps whatever other filters are on the page.
  * This component only navigates.
  */
-export function StatusFilterSelect({ options, value }: { options: StatusFilterOption[]; value: string }) {
+export function StatusFilterSelect({
+  options,
+  value,
+  label = "Status",
+  placeholder = "Search status",
+}: {
+  options: StatusFilterOption[];
+  value: string;
+  label?: string;
+  placeholder?: string;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState("");
@@ -96,30 +108,36 @@ export function StatusFilterSelect({ options, value }: { options: StatusFilterOp
   }
 
   return (
-    <div ref={rootRef} className="relative" onKeyDown={onKeyDown}>
+    <div ref={rootRef} className="relative flex items-center gap-2" onKeyDown={onKeyDown}>
+      {/* Named on the outside. Two of these sit side by side — Status and Prev
+          Status — and a control whose only label is its current value cannot be
+          told apart from the one next to it at a glance. */}
+      <span className="whitespace-nowrap text-xs font-medium text-slate-500">{label}</span>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
+        aria-label={label}
         aria-expanded={open}
         className="flex min-w-[13rem] items-center justify-between gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 shadow-sm hover:border-slate-400 focus:border-[var(--brand-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--brand-primary)]"
       >
         <span className="truncate">
-          {selected?.label} ({selected?.count ?? 0})
+          {selected?.label}
+          {selected?.count != null ? ` (${selected.count})` : ""}
         </span>
         <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
       </button>
 
       {open && (
-        <div className="absolute left-0 z-40 mt-1 w-[16rem] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+        <div className="absolute left-0 top-full z-40 mt-1 w-[16rem] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
           <div className="flex items-center gap-2 border-b border-slate-100 px-2.5 py-2">
             <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
             <input
               ref={inputRef}
               value={term}
               onChange={(e) => setTerm(e.target.value)}
-              placeholder="Search status"
-              aria-label="Search status"
+              placeholder={placeholder}
+              aria-label={placeholder}
               className="w-full bg-transparent text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none"
             />
           </div>
@@ -150,7 +168,7 @@ export function StatusFilterSelect({ options, value }: { options: StatusFilterOp
                     {/* Dimmed: the count is context for the choice, not the
                         thing being chosen. A zero still shows — knowing a status
                         is empty is an answer. */}
-                    <span className="shrink-0 tabular-nums text-slate-400">{o.count}</span>
+                    {o.count != null && <span className="shrink-0 tabular-nums text-slate-400">{o.count}</span>}
                   </button>
                 </li>
               );
