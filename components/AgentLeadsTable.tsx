@@ -10,6 +10,7 @@ import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { useGridKeys } from "@/components/useGridKeys";
 import { useFrozenOffset } from "@/components/useFrozenOffset";
 import { LeadCallCell, LeadStatusCell } from "@/components/LeadStatusCell";
+import type { DuplicateWarning } from "@/components/DuplicateBlockDialog";
 import type { CallSession, Order, OrderStatus } from "@/lib/types";
 import { shortOrderId, isPendingOrderId } from "@/lib/types";
 
@@ -32,6 +33,8 @@ export interface CareStaff {
 export function AgentLeadsTable({
   orders,
   careStaffById,
+  duplicateWarningsByOrderId = {},
+  canTagRegular = false,
   productNameByOrderId,
   activeProducts,
   linesByOrder,
@@ -44,6 +47,10 @@ export function AgentLeadsTable({
 }: {
   orders: Order[];
   careStaffById: Record<string, CareStaff>;
+  /** Matches on another agent's regular customers. The agent is shown these
+   * now and cannot save past them; the same refusal is enforced server-side. */
+  duplicateWarningsByOrderId?: Record<string, DuplicateWarning[]>;
+  canTagRegular?: boolean;
   productNameByOrderId: Record<string, string>;
   activeProducts: {
     id: string;
@@ -292,6 +299,8 @@ export function AgentLeadsTable({
           // Agents get no fulfillment surface and cannot set fulfillment
           // statuses; both are also refused server-side.
           canSeeFulfillment={false}
+          duplicateWarnings={duplicateWarningsByOrderId[openOrder.id] || []}
+          canTagRegular={canTagRegular}
           canSetFulfillmentStatus={false}
           canManageIntegrations={false}
           // Agents must open a call before they can edit or change status;

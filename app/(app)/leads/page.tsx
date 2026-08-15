@@ -8,8 +8,8 @@ import { canonicalPhone, todayInTz } from "@/lib/utils";
 import { scheduledInstant } from "@/lib/attendance-logic";
 import { BreakControls } from "@/components/BreakControls";
 import { getActiveBioBreak } from "@/lib/bio-breaks";
-import { findDuplicates } from "@/lib/customers";
-import { leadScopeFor, leadStatusCounts, duplicatePhoneCount, regularCustomerOrderCount, queryLeads, orderForScope } from "@/lib/leads-query";
+import { findDuplicates, latestOrderDateByCustomer } from "@/lib/customers";
+import { leadScopeFor, leadStatusCounts, previousStatusCounts, duplicatePhoneCount, regularCustomerOrderCount, queryLeads, orderForScope } from "@/lib/leads-query";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
@@ -38,6 +38,7 @@ export default async function LeadsPage({
     city?: string;
     province?: string;
     product?: string;
+    prev_status?: string;
     prev_from?: string;
     prev_to?: string;
     page?: string;
@@ -89,8 +90,9 @@ export default async function LeadsPage({
   // beneath it is worse than either answer.
   const includeRegular = sp.include_regular === "1";
 
-  const [countsByStatus, duplicateCount, regularOrderCount, leadPage] = await Promise.all([
+  const [countsByStatus, prevStatusOptions, duplicateCount, regularOrderCount, leadPage] = await Promise.all([
     leadStatusCounts(scope, includeRegular),
+    previousStatusCounts(scope, includeRegular),
     duplicatePhoneCount(scope),
     regularCustomerOrderCount(scope),
     queryLeads({
@@ -100,9 +102,10 @@ export default async function LeadsPage({
       // internal navigation, not a search control, so status is honoured for
       // everyone. Every other filter stays Agent-rejected (Section 3).
       filters: isAgent
-        ? { status: sp.status, q: sp.q, phone: sp.phone }
+        ? { status: sp.status, prev_status: sp.prev_status, q: sp.q, phone: sp.phone }
         : {
             status: sp.status,
+            prev_status: sp.prev_status,
             q: sp.q,
             order_number: sp.order_number,
             agent: sp.agent,
@@ -128,6 +131,7 @@ export default async function LeadsPage({
   const totalLeads = Array.from(countsByStatus.values()).reduce((n, c) => n + c, 0);
   const statusCounts = QUICK_FILTER_STATUSES.map((s) => ({ status: s, count: countsByStatus.get(s) ?? 0 }));
   const statusHref = (status?: string) => qs({ status, page: undefined });
+  const prevStatusHref = (prev_status?: string) => qs({ prev_status, page: undefined });
 
   // Whether this list is narrowed by anything, which is what decides if Clear
   // is worth offering. The old filter names stay in the check: the query layer
@@ -135,7 +139,7 @@ export default async function LeadsPage({
   // was removed keeps working — and a list narrowed by one of them would
   // otherwise have no way back.
   const searchNarrowed = Boolean(
-    sp.q || sp.order_number || sp.agent || sp.customer_name || sp.phone || sp.city || sp.province ||
+    sp.q || sp.prev_status || sp.order_number || sp.agent || sp.customer_name || sp.phone || sp.city || sp.province ||
       sp.product || sp.date_from || sp.date_to || sp.prev_from || sp.prev_to
   );
 
@@ -205,15 +209,20 @@ export default async function LeadsPage({
   // page. Loaded here so a reopened popup restores its timer from the server
   // rather than restarting the count.
   const canViewRegularCustomers = can(user.role, "regular_customers", "view", db.role_permissions);
+  // Same grant as the Add Regular Customer button — tagging from a lead and
+  // adding one outright both create a regular customer.
+  const canTagRegular = can(user.role, "regular_customers", "create", db.role_permissions);
 
-  // Duplicate warnings are computed for Management/Team Lead only. Agents are
-  // never given them: the detector spans every agent's customers by design, so
-  // surfacing a match would leak exactly what their scoping withholds.
-  const canSeeDuplicateWarnings = seesBeyondOwnLeads;
+  // Shown to the agent too now. The scoping argument against it was real — the
+  // detector spans every agent's customers — but the agent is the one person
+  // who can still stop before working somebody else's customer, and being told
+  // to raise it with a Team Lead is no use to the people who already knew.
+  const canSeeDuplicateWarnings = true;
   const duplicateWarningsByOrderId: Record<
     string,
-    { name: string; phone: string; agent: string; fields: string[]; confidence: string }[]
+    { name: string; phone: string; agent: string; lastOrderAt: string | null; fields: string[]; confidence: string }[]
   > = {};
+  const findingsByOrderId = new Map<string, Awaited<ReturnType<typeof findDuplicates>>>();
   if (canSeeDuplicateWarnings) {
     for (const o of pageOrders) {
       if (!o.customer_phone.trim()) continue;
@@ -225,15 +234,27 @@ export default async function LeadsPage({
         city: o.city,
         province: o.province,
       });
-      if (findings.length > 0) {
-        duplicateWarningsByOrderId[o.id] = findings.map((d) => ({
-          name: d.matched.full_name,
-          phone: d.matched.phone_raw,
-          agent: agentCallNameById[d.matched.owner_agent_id] || "—",
-          fields: d.fields,
-          confidence: d.confidence,
-        }));
-      }
+      if (findings.length > 0) findingsByOrderId.set(o.id, findings);
+    }
+
+    // When the other agent last sold to them, in one query for every match on
+    // the page rather than one per row. A match from eight months ago and one
+    // from yesterday are not the same conversation, and that is the whole
+    // reason the date is worth showing.
+    const matchedIds = Array.from(
+      new Set(Array.from(findingsByOrderId.values()).flat().map((d) => d.matched.id))
+    );
+    const lastOrderByCustomerId = await latestOrderDateByCustomer(matchedIds);
+
+    for (const [orderId, findings] of findingsByOrderId) {
+      duplicateWarningsByOrderId[orderId] = findings.map((d) => ({
+        name: d.matched.full_name,
+        phone: d.matched.phone_raw,
+        agent: agentCallNameById[d.matched.owner_agent_id] || "—",
+        lastOrderAt: lastOrderByCustomerId.get(d.matched.id) ?? null,
+        fields: d.fields,
+        confidence: d.confidence,
+      }));
     }
   }
 
@@ -397,13 +418,23 @@ export default async function LeadsPage({
         </div>
       )}
 
-      <LeadStatusCards counts={statusCounts} total={totalLeads} selected={sp.status} hrefFor={statusHref} />
+      <LeadStatusCards
+        counts={statusCounts}
+        total={totalLeads}
+        selected={sp.status}
+        hrefFor={statusHref}
+        prevStatusCounts={prevStatusOptions}
+        prevSelected={sp.prev_status}
+        prevHrefFor={prevStatusHref}
+      />
 
 
       {isAgent ? (
         <AgentLeadsTable
           orders={pageOrders}
           careStaffById={careStaffById}
+          duplicateWarningsByOrderId={duplicateWarningsByOrderId}
+          canTagRegular={canTagRegular}
           productNameByOrderId={productNameByOrderId}
           activeProducts={activeProducts}
           linesByOrder={linesByOrder}
@@ -426,6 +457,7 @@ export default async function LeadsPage({
         canManageIntegrations={canManageIntegrations}
         canSetFulfillmentStatus={isFullAccess(user.role)}
         duplicateWarningsByOrderId={duplicateWarningsByOrderId}
+        canTagRegular={canTagRegular}
         requiresCallSession={!isFullAccess(user.role)}
         callSessionsByOrderId={callSessionsByOrderId}
         agentNameById={agentCallNameById}

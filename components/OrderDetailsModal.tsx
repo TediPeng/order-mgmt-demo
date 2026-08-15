@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, ChevronRight, ChevronUp, Copy, Maximize2, Minimize2 } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, ChevronUp, Copy, Maximize2, Minimize2, Star } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
@@ -17,9 +17,11 @@ import { isPendingOrderId, PANCAKE_SYNC_SOURCE_LABELS, shortOrderId, type Pancak
 import { AddressSelect } from "@/components/AddressSelect";
 import { CallingPanel } from "@/components/CallingPanel";
 import { CallHistory } from "@/components/CallHistory";
+import { DuplicateBlockDialog, type DuplicateWarning } from "@/components/DuplicateBlockDialog";
 import { validateForPancake as computePancakeCheck } from "@/lib/pancake/validate";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 import { buildRawFromOrder } from "@/lib/lead-payload";
+import { tagRegularCustomerAction } from "@/lib/actions/regular-customers";
 import type { CallSession, Order, OrderStatus } from "@/lib/types";
 
 interface EditForm {
@@ -107,6 +109,8 @@ export function OrderDetailsModal({
   canSeeFulfillment = false,
   canSetFulfillmentStatus = false,
   duplicateWarnings = [],
+  canOverrideDuplicate = false,
+  canTagRegular = false,
   requiresCallSession = false,
   callSessions = [],
   agentNameById = {},
@@ -135,10 +139,14 @@ export function OrderDetailsModal({
   canSeeFulfillment?: boolean;
   /** Full-access users may set Pancake-owned fulfillment statuses by hand. */
   canSetFulfillmentStatus?: boolean;
-  /** Possible duplicates for this customer. Management/Team Lead only — an
-   * agent is never told a match exists, since it would reveal records outside
-   * their own scope. */
-  duplicateWarnings?: { name: string; phone: string; agent: string; fields: string[]; confidence: string }[];
+  /** Team Lead and above may save past a duplicate; an agent may not. */
+  canOverrideDuplicate?: boolean;
+  /** Whether to offer Make Regular Customer in the footer. */
+  canTagRegular?: boolean;
+  /** Possible duplicates for this customer. Shown to the agent too now: they
+   * are the one person who can still stop before a second agent works a
+   * customer somebody else already has. */
+  duplicateWarnings?: DuplicateWarning[];
   /** Agents must have a calling session open before editing; Management does not. */
   requiresCallSession?: boolean;
   callSessions?: CallSession[];
@@ -161,6 +169,7 @@ export function OrderDetailsModal({
   const [copiedId, setCopiedId] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(true);
   const [historyMaximized, setHistoryMaximized] = useState(false);
+  const [duplicateBlock, setDuplicateBlock] = useState(false);
 
   // The sync panel appears once the order has reached Packaging (Section 4
   // step 5) — before that there is nothing to sync and nothing to report.
@@ -351,7 +360,19 @@ export function OrderDetailsModal({
     }
   }
 
-  function handleSaveEdit() {
+  /** What Save Changes presses. Stops at the duplicate dialog when there is one
+   * to show — the server refuses the same save for the same reason, so letting
+   * it through would only produce a red error a moment later. */
+  function attemptSave() {
+    if (duplicateWarnings.length > 0) {
+      setDuplicateBlock(true);
+      return;
+    }
+    saveNow();
+  }
+
+  /** Save, having already passed or dismissed the duplicate check. */
+  function saveNow() {
     submit(
       buildRawFromOrder(order, {
         customer_name: form.customer_name,
@@ -402,6 +423,21 @@ export function OrderDetailsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={requestClose}>
+      {/* Above the popup's own backdrop (z-50) and stopping its click-to-close,
+          so pressing anywhere in the warning cannot dismiss the order behind it. */}
+      {duplicateBlock && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <DuplicateBlockDialog
+            warnings={duplicateWarnings}
+            canOverride={canOverrideDuplicate}
+            onBack={() => setDuplicateBlock(false)}
+            onOverride={() => {
+              setDuplicateBlock(false);
+              saveNow();
+            }}
+          />
+        </div>
+      )}
       <div
         className="dense-form max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
@@ -996,6 +1032,29 @@ export function OrderDetailsModal({
               Close
             </Button>
 
+            {/* Making this customer a regular is a decision that comes out of
+                the call, so it belongs with the controls the call ends on —
+                not eleven fields up where it used to sit. Offered only where
+                it can do anything: the order needs a number to key a customer
+                on, and one already tagged has nothing left to do. */}
+            {canTagRegular && !order.is_regular_customer && order.customer_phone.trim() && (
+              <form action={tagRegularCustomerAction.bind(null, order.id)}>
+                {/* Amber, matching the star it carries: making a customer a
+                    regular is a promotion, and it read as one more grey button
+                    beside Close. Near-black text rather than white — white on
+                    amber-400 is below the contrast this app holds elsewhere.
+                    Kept on one line, so it stops wrapping to two. */}
+                <Button
+                  type="submit"
+                  variant="secondary"
+                  disabled={saving}
+                  className="whitespace-nowrap bg-amber-400 text-amber-950 hover:bg-amber-500"
+                >
+                  <Star className="h-4 w-4" /> Make Regular Customer
+                </Button>
+              </form>
+            )}
+
             {/* Calling lives here rather than in a strip at the top of the form.
                 It is a control, and the controls are in the bar that is always
                 on screen — an agent who scrolled to the address no longer has to
@@ -1027,7 +1086,7 @@ export function OrderDetailsModal({
             )}
 
             {editing && (
-              <Button type="button" onClick={handleSaveEdit} disabled={saving}>
+              <Button type="button" onClick={attemptSave} disabled={saving}>
                 {saving ? "Saving…" : "Save Changes"}
               </Button>
             )}

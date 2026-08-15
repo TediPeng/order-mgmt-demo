@@ -10,6 +10,7 @@ import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { useGridKeys } from "@/components/useGridKeys";
 import { useFrozenOffset } from "@/components/useFrozenOffset";
 import { LeadCallCell, LeadStatusCell } from "@/components/LeadStatusCell";
+import type { DuplicateWarning } from "@/components/DuplicateBlockDialog";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 import type { CallSession, Order, OrderStatus } from "@/lib/types";
 import { shortOrderId, isPendingOrderId } from "@/lib/types";
@@ -25,6 +26,7 @@ export function LeadsTable({
   canManageIntegrations = false,
   canSetFulfillmentStatus = false,
   duplicateWarningsByOrderId = {},
+  canTagRegular = false,
   requiresCallSession = false,
   callSessionsByOrderId = {},
   agentNameById = {},
@@ -52,7 +54,8 @@ export function LeadsTable({
   canEdit: boolean;
   canManageIntegrations?: boolean;
   canSetFulfillmentStatus?: boolean;
-  duplicateWarningsByOrderId?: Record<string, { name: string; phone: string; agent: string; fields: string[]; confidence: string }[]>;
+  duplicateWarningsByOrderId?: Record<string, DuplicateWarning[]>;
+  canTagRegular?: boolean;
   requiresCallSession?: boolean;
   callSessionsByOrderId?: Record<string, CallSession[]>;
   agentNameById?: Record<string, string>;
@@ -292,6 +295,9 @@ export function LeadsTable({
           canManageIntegrations={canManageIntegrations}
           canSetFulfillmentStatus={canSetFulfillmentStatus}
           duplicateWarnings={duplicateWarningsByOrderId[openOrder.id] || []}
+          // Team Lead and above decide duplicates, so they may save past one.
+          canOverrideDuplicate
+          canTagRegular={canTagRegular}
           requiresCallSession={requiresCallSession}
           callSessions={callSessionsByOrderId[openOrder.id] || []}
           agentNameById={agentNameById}
