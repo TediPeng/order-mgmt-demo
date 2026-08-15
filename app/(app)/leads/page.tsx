@@ -5,7 +5,6 @@ import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { listItemsFor } from "@/lib/order-items";
 import { canonicalPhone, todayInTz } from "@/lib/utils";
-import { scheduledInstant } from "@/lib/attendance-logic";
 import { BreakControls } from "@/components/BreakControls";
 import { BackToCallButton } from "@/components/BackToCallButton";
 import { getActiveBioBreak } from "@/lib/bio-breaks";
@@ -273,15 +272,8 @@ export default async function LeadsPage({
   // sending them to the clock page to start a break meant losing their place.
   const ownAttendance = db.attendance.find((a) => a.user_id === user.id && a.work_date === todayInTz());
   const ownBioBreak = ownAttendance?.time_in && !ownAttendance.time_out ? await getActiveBioBreak(user.id) : null;
-  // The end of this agent's shift as an instant. Their own scheduled_time_out
-  // where the roster set one, the company default otherwise, resolved against
-  // the configured timezone here rather than in the browser — a laptop set to
-  // the wrong timezone would otherwise raise the notice hours early or late.
-  const ownScheduledTimeOut = ownAttendance?.scheduled_time_out || db.work_schedule.work_end;
-  const dutyEndsAt =
-    ownAttendance?.time_in && !ownAttendance.time_out
-      ? scheduledInstant(todayInTz(), ownScheduledTimeOut.slice(0, 5), db.work_schedule.timezone).toISOString()
-      : null;
+  // The end of shift is worked out in the app layout now, once, for every page —
+  // see ShiftWatcher. This page keeps only the break buttons.
 
   const qs = (overrides: Record<string, string | undefined>) => {
     const params = new URLSearchParams();
@@ -322,8 +314,6 @@ export default async function LeadsPage({
             allowanceMinutes={db.work_schedule.break_minutes}
             bioStartedAt={ownBioBreak?.started_at ?? null}
             canBreak={!!ownAttendance?.time_in && !ownAttendance.time_out}
-            dutyEndsAt={dutyEndsAt}
-            scheduledTimeOut={ownScheduledTimeOut.slice(0, 5)}
             redirectTo="/leads"
           />
           {/* Here too, and not redundantly: the order holding the call may be on

@@ -11,6 +11,9 @@ import { cookies } from "next/headers";
 import { AppShell } from "@/components/AppShell";
 import { SIDEBAR_COOKIE } from "@/lib/ui-prefs";
 import { CallSessionProvider } from "@/components/CallSessionProvider";
+import { ShiftWatcher } from "@/components/ShiftWatcher";
+import { scheduledInstant } from "@/lib/attendance-logic";
+import { todayInTz } from "@/lib/utils";
 import { getActiveSession } from "@/lib/call-sessions";
 import { listUpdateLogs } from "@/lib/update-logs";
 
@@ -56,8 +59,31 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const collapsed = (await cookies()).get(SIDEBAR_COOKIE)?.value === "1";
   const releases = await listUpdateLogs({ publishedOnly: true });
 
+  // The shift warnings watch from here, so they reach whatever page the agent is
+  // on. Everything they need is already in `db` — this layout reads it on every
+  // request — so app-wide costs no extra query.
+  //
+  // The end of shift is resolved to an instant here rather than in the browser:
+  // scheduled_time_out is a Postgres `time` and arrives as "17:00:00", and the
+  // company timezone is the one that decides what that means.
+  const ownAttendance = db.attendance.find((a) => a.user_id === user.id && a.work_date === todayInTz());
+  const onTheClock = Boolean(ownAttendance?.time_in && !ownAttendance.time_out);
+  const ownScheduledTimeOut = (ownAttendance?.scheduled_time_out || db.work_schedule.work_end).slice(0, 5);
+  const dutyEndsAt = onTheClock
+    ? scheduledInstant(todayInTz(), ownScheduledTimeOut, db.work_schedule.timezone).toISOString()
+    : null;
+
   return (
     <CallSessionProvider initialSession={activeCallSession} serverNow={Date.now()}>
+      <ShiftWatcher
+        breakStart={ownAttendance?.break_start ?? null}
+        breakEnd={ownAttendance?.break_end ?? null}
+        allowanceMinutes={db.work_schedule.break_minutes}
+        dutyEndsAt={dutyEndsAt}
+        scheduledTimeOut={ownScheduledTimeOut}
+        onTheClock={onTheClock}
+        redirectTo={pathname || "/leads"}
+      />
       <AppShell
         user={user}
         roleName={roleName}

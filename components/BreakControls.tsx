@@ -1,14 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Coffee, Utensils } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { startBreakAction, endBreakAction, checkOverBreakAction } from "@/lib/actions/attendance";
+import { startBreakAction, endBreakAction } from "@/lib/actions/attendance";
 import { startBioBreakAction, endBioBreakAction } from "@/lib/actions/bio-breaks";
 import { useCallSession } from "@/components/CallSessionProvider";
-import { OverBreakDialog } from "@/components/OverBreakDialog";
-import { AfterDutyDialog } from "@/components/AfterDutyDialog";
 
 /**
  * Compact break controls for a page header.
@@ -35,8 +32,6 @@ export function BreakControls({
   allowanceMinutes,
   bioStartedAt,
   canBreak,
-  dutyEndsAt,
-  scheduledTimeOut,
   redirectTo,
 }: {
   breakStart: string | null;
@@ -45,13 +40,8 @@ export function BreakControls({
   bioStartedAt: string | null;
   /** Timed in and not yet timed out. */
   canBreak: boolean;
-  /** End of shift as an instant, resolved server-side. Null when off the clock. */
-  dutyEndsAt?: string | null;
-  scheduledTimeOut?: string | null;
   redirectTo: string;
 }) {
-  const router = useRouter();
-  const [, startTransition] = useTransition();
   // Read from the app-wide provider rather than a server prop, so the Bio Break
   // button disables the moment a call starts instead of waiting for a refresh —
   // and the page avoids another query. Its shared tick only runs during a call,
@@ -61,73 +51,13 @@ export function BreakControls({
   const [now, setNow] = useState(() => clock());
   const onBreak = !!breakStart && !breakEnd;
   const onBio = !!bioStartedAt;
-  const alertedRef = useRef(false);
-  const [overBreakOpen, setOverBreakOpen] = useState(false);
-  const [afterDutyOpen, setAfterDutyOpen] = useState(false);
-  const [afterDutySeen, setAfterDutySeen] = useState(false);
 
   useEffect(() => {
-    // Ticks for the shift-end watch too, not only the two break timers — the
-    // dialog has to arrive at the scheduled minute for an agent who has taken
-    // no break at all.
-    if (!onBreak && !onBio && !dutyEndsAt) return;
+    if (!onBreak && !onBio) return;
     const id = setInterval(() => setNow(clock()), 1000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onBreak, onBio, dutyEndsAt]);
-
-  // Same over-break alert the clock page raises, so taking a break from here is
-  // not a way to miss it. Fires once, and never retroactively for a threshold
-  // already crossed before this page loaded.
-  useEffect(() => {
-    if (!onBreak || !breakStart) return;
-    const allowanceSec = allowanceMinutes * 60;
-    const elapsed = Math.floor((clock() - new Date(breakStart).getTime()) / 1000);
-    alertedRef.current = allowanceSec - elapsed <= 0;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onBreak, breakStart, allowanceMinutes]);
-
-  useEffect(() => {
-    if (!onBreak || !breakStart) return;
-    const allowanceSec = allowanceMinutes * 60;
-    const elapsed = Math.floor((now - new Date(breakStart).getTime()) / 1000);
-    if (!alertedRef.current && allowanceSec - elapsed <= 0) {
-      alertedRef.current = true;
-      setOverBreakOpen(true);
-    }
-  }, [now, onBreak, breakStart, allowanceMinutes]);
-
-  // Ending the break takes the dialog with it, so a re-render mid-submit cannot
-  // leave it hanging over a break that is already closed.
-  useEffect(() => {
-    if (!onBreak) setOverBreakOpen(false);
-  }, [onBreak]);
-
-  // The shift end. Raised once per page load: dismissing it is a decision, and
-  // re-raising it every second would make that decision impossible to keep.
-  // A shift that had already ended before this page loaded still raises it —
-  // unlike the break alert — because arriving on the page after hours is
-  // exactly the case worth catching.
-  useEffect(() => {
-    if (!dutyEndsAt || afterDutySeen) return;
-    if (now >= new Date(dutyEndsAt).getTime()) {
-      setAfterDutySeen(true);
-      setAfterDutyOpen(true);
-    }
-  }, [now, dutyEndsAt, afterDutySeen]);
-
-  // Keeps the over-60-minute flag and its notification firing without the agent
-  // having to open the clock page.
-  useEffect(() => {
-    if (!onBreak) return;
-    const id = setInterval(() => {
-      if (document.hidden) return;
-      startTransition(() => {
-        checkOverBreakAction().then(() => router.refresh());
-      });
-    }, 20000);
-    return () => clearInterval(id);
-  }, [onBreak, router, startTransition]);
+  }, [onBreak, onBio]);
 
   if (!canBreak) return null;
 
@@ -137,22 +67,6 @@ export function BreakControls({
 
   return (
     <div className="flex items-center gap-2">
-      {overBreakOpen && onBreak && breakStart && (
-        <OverBreakDialog
-          breakStart={breakStart}
-          allowanceMinutes={allowanceMinutes}
-          redirectTo={redirectTo}
-          onDismiss={() => setOverBreakOpen(false)}
-        />
-      )}
-      {afterDutyOpen && dutyEndsAt && (
-        <AfterDutyDialog
-          dutyEndsAt={dutyEndsAt}
-          scheduledTimeOut={scheduledTimeOut || ""}
-          redirectTo={redirectTo}
-          onDismiss={() => setAfterDutyOpen(false)}
-        />
-      )}
       {onBreak ? (
         <form action={endBreakAction} className="flex items-center gap-1.5">
           <input type="hidden" name="redirect_to" value={redirectTo} />
