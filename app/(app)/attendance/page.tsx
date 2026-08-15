@@ -108,21 +108,27 @@ export default async function AttendancePage({
   const dayByUserId: Record<string, Attendance> = Object.fromEntries(
     db.attendance.filter((a) => a.work_date === dayDate).map((a) => [a.user_id, a])
   );
-  // Whoever timed in, earliest first, then everybody who did not. An absence is
-  // as much of an answer as a time, so the people with no row are listed rather
-  // than left out.
-  const dayRoster = pickableEmployees
-    .filter((p) => p.is_active && !p.is_deleted)
+  // Whoever timed in, earliest first.
+  const activeEmployees = pickableEmployees.filter((p) => p.is_active && !p.is_deleted);
+  // Only people who actually have a record for the day. Listing everybody else
+  // underneath meant the table opened on a block of dashes — every account that
+  // does not work the floor, every rest day, every not-yet — and the four lines
+  // worth reading were above a screenful of nothing. How many are missing is
+  // still said, in the line above the table, where it costs one sentence
+  // instead of twenty rows.
+  const dayRoster = activeEmployees
     .map((p) => ({ person: p, record: dayByUserId[p.id] as Attendance | undefined }))
+    .filter((r): r is { person: (typeof activeEmployees)[number]; record: Attendance } => Boolean(r.record))
     .sort((a, b) => {
-      const at = a.record?.time_in || "";
-      const bt = b.record?.time_in || "";
+      const at = a.record.time_in || "";
+      const bt = b.record.time_in || "";
       if (at && bt) return at.localeCompare(bt);
       if (at) return -1;
       if (bt) return 1;
       return a.person.full_name.localeCompare(b.person.full_name);
     });
-  const timedInCount = dayRoster.filter((r) => r.record?.time_in).length;
+  const timedInCount = dayRoster.filter((r) => r.record.time_in).length;
+  const noRecordCount = activeEmployees.length - dayRoster.length;
   const monthLabel = new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
 
   const qs = (overrides: Record<string, string | undefined>) => {
@@ -257,9 +263,14 @@ export default async function AttendancePage({
         <div className="rounded-lg border border-slate-200 bg-white">
           <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-slate-100 px-4 py-3">
             <p className="text-sm font-medium text-slate-700">
-              {timedInCount} of {dayRoster.length} timed in
+              {timedInCount} timed in
+              {noRecordCount > 0 && (
+                <span className="ml-2 font-normal text-slate-400">
+                  · {noRecordCount} with no record for this day
+                </span>
+              )}
             </p>
-            <p className="text-xs text-slate-400">Earliest first. Anyone with no record is listed last.</p>
+            <p className="text-xs text-slate-400">Earliest first.</p>
           </div>
           <div className="max-h-[70vh] overflow-auto">
             <table className="w-full min-w-[900px] text-left text-sm">
@@ -277,35 +288,27 @@ export default async function AttendancePage({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {dayRoster.map(({ person, record }) => (
-                  <tr key={person.id} className={record?.time_in ? undefined : "bg-slate-50/60"}>
+                  <tr key={person.id} className={record.time_in ? undefined : "bg-slate-50/60"}>
                     <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-800">
                       {person.full_name}
                       {person.id === user.id && <span className="ml-1 text-xs font-normal text-slate-400">(You)</span>}
                     </td>
-                    <td className="px-4 py-3">{record?.time_in ? formatTime(record.time_in) : "—"}</td>
-                    <td className="px-4 py-3">{record?.time_out ? formatTime(record.time_out) : "—"}</td>
+                    <td className="px-4 py-3">{record.time_in ? formatTime(record.time_in) : "—"}</td>
+                    <td className="px-4 py-3">{record.time_out ? formatTime(record.time_out) : "—"}</td>
                     <td className="px-4 py-3 text-slate-500">
-                      {record?.break_start ? `${formatTime(record.break_start)} – ${formatTime(record.break_end)}` : "—"}
-                      {record?.break_minutes != null && <span className="ml-1 text-xs">({record.break_minutes}m)</span>}
+                      {record.break_start ? `${formatTime(record.break_start)} – ${formatTime(record.break_end)}` : "—"}
+                      {record.break_minutes != null && <span className="ml-1 text-xs">({record.break_minutes}m)</span>}
                     </td>
-                    <td className="px-4 py-3">{record?.total_hours ?? "—"}</td>
-                    <td className="px-4 py-3">{record && record.overtime_hours > 0 ? record.overtime_hours : "—"}</td>
+                    <td className="px-4 py-3">{record.total_hours ?? "—"}</td>
+                    <td className="px-4 py-3">{record.overtime_hours > 0 ? record.overtime_hours : "—"}</td>
                     <td className="px-4 py-3">
-                      {/* No row at all is not the same as a status. Saying "No
-                          record" rather than badging it Absent leaves the
-                          judgement to whoever is reading — the sweep that marks
-                          absences runs later in the day. */}
-                      {record ? (
-                        <AttendanceStatusBadge status={record.status} />
-                      ) : (
-                        <span className="text-xs text-slate-400">No record</span>
-                      )}
+                      <AttendanceStatusBadge status={record.status} />
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
-                        {record && <LateFlag minutesLate={record.minutes_late} />}
-                        {record && <OverBreakFlag minutes={record.over_break_minutes} />}
-                        {record?.overridden && (
+                        <LateFlag minutesLate={record.minutes_late} />
+                        <OverBreakFlag minutes={record.over_break_minutes} />
+                        {record.overridden && (
                           <span className="inline-flex rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">
                             Overridden
                           </span>
