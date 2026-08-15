@@ -6,12 +6,26 @@ type Variant = "primary" | "secondary" | "outline" | "ghost" | "danger";
 type Size = "sm" | "md" | "lg";
 
 const variantClasses: Record<Variant, string> = {
-  primary: "bg-[var(--brand-primary)] text-white hover:bg-[var(--brand-primary-hover)] disabled:opacity-50",
+  primary: "bg-[var(--brand-primary)] text-white hover:bg-[var(--brand-primary-hover)]",
   secondary: "bg-slate-100 text-slate-900 hover:bg-slate-200",
   outline: "border border-slate-300 text-slate-700 hover:bg-slate-50 bg-white",
   ghost: "text-slate-600 hover:bg-slate-100",
-  danger: "bg-red-600 text-white hover:bg-red-700 disabled:bg-red-300",
+  danger: "bg-red-600 text-white hover:bg-red-700",
 };
+
+/** How a disabled button looks, for every variant.
+ *
+ * It used to be per-variant, and only two of the five had any: primary faded and
+ * danger went pale, while secondary, outline and ghost looked exactly as they do
+ * when they work. On the Time In / Out card that meant somebody who had already
+ * timed out saw a Time Out button indistinguishable from a live one, pressed it,
+ * and got nothing — the button was disabled, it just never said so.
+ *
+ * pointer-events-none is what kills the hover colour change as well; without it
+ * a disabled button still lights up under the cursor, which is the strongest
+ * "press me" signal there is. The cursor is set on a wrapper instead, since an
+ * element with no pointer events cannot show a cursor of its own. */
+const DISABLED = "disabled:pointer-events-none disabled:opacity-40 disabled:shadow-none";
 
 const sizeClasses: Record<Size, string> = {
   sm: "px-2.5 py-1.5 text-control",
@@ -30,9 +44,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         className={cn(
-          "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors disabled:cursor-not-allowed",
+          "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors",
           variantClasses[variant],
           sizeClasses[size],
+          DISABLED,
           className
         )}
         {...props}

@@ -55,20 +55,30 @@ export async function AttendanceWidget({
           </div>
         )}
         <p className="mb-4 text-sm">{status}</p>
-        <div className="flex gap-2">
-          <form action={timeInAction}>
-            <input type="hidden" name="redirect_to" value={redirectTo} />
-            <Button type="submit" disabled={!!record}>
-              Time In
-            </Button>
-          </form>
-          <form action={timeOutAction}>
-            <input type="hidden" name="redirect_to" value={redirectTo} />
-            <Button type="submit" variant="secondary" disabled={!record || !!record?.time_out}>
-              Time Out
-            </Button>
-          </form>
-        </div>
+        {/* The day is over: both buttons would be dead, and two dead buttons are
+            worse than none — they invite a press that does nothing and leave the
+            reader to work out why. The card already says Completed above this,
+            with the hours and the badge. */}
+        {record?.time_out ? (
+          <p className="text-sm text-slate-400">
+            Your day is recorded. Ask Management for an override if something here is wrong.
+          </p>
+        ) : (
+          <div className="flex gap-2">
+            <form action={timeInAction}>
+              <input type="hidden" name="redirect_to" value={redirectTo} />
+              <Button type="submit" disabled={!!record}>
+                Time In
+              </Button>
+            </form>
+            <form action={timeOutAction}>
+              <input type="hidden" name="redirect_to" value={redirectTo} />
+              <Button type="submit" variant="secondary" disabled={!record}>
+                Time Out
+              </Button>
+            </form>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
