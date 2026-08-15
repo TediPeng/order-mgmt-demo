@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/Badge";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { Input } from "@/components/ui/Field";
 import { Button, LinkButton } from "@/components/ui/Button";
+import { BackToCallButton } from "@/components/BackToCallButton";
 import { untagRegularCustomerAction } from "@/lib/actions/regular-customers";
 
 export default async function RegularCustomersPage({
@@ -119,6 +120,16 @@ export default async function RegularCustomersPage({
               )}
             </Link>
           )}
+          {/* The way back. This page is reached from the Leads screen — from the
+              count in its header, or from a customer who was just tagged — and
+              until now the only route back was the sidebar. */}
+          <LinkButton href="/leads" variant="outline" size="sm">
+            ← Back to Leads
+          </LinkButton>
+          {/* Only while a call is actually running. One call is open at a time,
+              and the popup that ends it lives in the leads table, so an agent
+              who came here mid-call had to remember which lead it was on. */}
+          <BackToCallButton />
           {canCreate && <LinkButton href="/regular-customers/new">Add Regular Customer</LinkButton>}
         </div>
       </div>
