@@ -4,6 +4,7 @@ import { orderNumbersByIds } from "@/lib/orders-lookup";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { todayInTz } from "@/lib/utils";
+import { activeSuspensionOn } from "@/lib/schedule-access";
 import { displayUserName } from "@/lib/types";
 import { getActiveSessions, callTotalsForDay } from "@/lib/call-sessions";
 import { getActiveBioBreaks, bioBreakTotalsForDay } from "@/lib/bio-breaks";
@@ -71,7 +72,24 @@ export default async function AgentMonitorPage() {
     let state: MonitorState;
     let sinceIso: string | null;
     if (!attendance?.time_in) {
-      state = "not_in";
+      // Not on the clock — but say WHY. "Not timed in" reads as a problem, and
+      // for somebody on approved leave or a rostered rest day it is not one; a
+      // supervisor scanning the board had to go and look up which it was for
+      // every grey row.
+      //
+      // The attendance row is asked first because leave approval, suspension and
+      // the absence sweep all write their answer into it. The schedule is the
+      // fallback for a rest day nothing has stamped a row for yet.
+      const suspension = activeSuspensionOn(db, agent.id, today, today);
+      const restDayRostered = db.schedules.some(
+        (s) => s.agent_id === agent.id && s.schedule_date === today && s.is_rest_day
+      );
+
+      if (suspension || attendance?.status === "suspended") state = "suspended";
+      else if (attendance?.status === "on_leave") state = "on_leave";
+      else if (attendance?.status === "rest_day" || restDayRostered) state = "rest_day";
+      else state = "not_in";
+
       sinceIso = null;
     } else if (attendance.time_out) {
       state = "timed_out";
@@ -136,7 +154,7 @@ export default async function AgentMonitorPage() {
   return (
     <div>
       <div className="mb-4">
-        <h1 className="text-page-title text-slate-900">Agent Monitor</h1>
+        <h1 className="text-page-title text-slate-900">Agent Monitoring</h1>
         <p className="text-sm text-slate-500">
           {isTeamLead ? "Your agents" : "All agents"} for {today}. Standby is shift time that is not a call and not a
           break.

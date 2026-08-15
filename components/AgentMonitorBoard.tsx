@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Phone, Coffee, Utensils, Hourglass, LogOut, Minus } from "lucide-react";
+import { Phone, Coffee, Utensils, Hourglass, LogOut, Minus, Plane, CalendarOff, Ban } from "lucide-react";
 import { StatWidget, type StatTone } from "@/components/StatCard";
 
 /** How often the board pulls fresh server state. Faster than the shell's own
@@ -12,7 +12,20 @@ import { StatWidget, type StatTone } from "@/components/StatCard";
  * server tree all night for nobody. */
 const REFRESH_MS = 20000;
 
-export type MonitorState = "on_call" | "bio_break" | "break" | "standby" | "timed_out" | "not_in";
+export type MonitorState =
+  | "on_call"
+  | "bio_break"
+  | "break"
+  | "standby"
+  | "timed_out"
+  // Why somebody is not on the clock, rather than only that they are not.
+  // "Not timed in" reads as a problem, and for an agent on approved leave or a
+  // rostered rest day it is not one — the supervisor scanning this board had to
+  // go and look up which it was.
+  | "on_leave"
+  | "rest_day"
+  | "suspended"
+  | "not_in";
 
 export interface MonitorRow {
   agentId: string;
@@ -46,7 +59,10 @@ const STATE_META: Record<
   break: { label: "On break", icon: Utensils, cls: "bg-orange-50 text-orange-700", dot: "bg-orange-500", tone: "brand" },
   standby: { label: "Standby", icon: Hourglass, cls: "bg-slate-100 text-slate-600", dot: "bg-slate-400", tone: "blue" },
   timed_out: { label: "Timed out", icon: LogOut, cls: "bg-slate-50 text-slate-400", dot: "bg-slate-300", tone: "slate" },
-  not_in: { label: "Not timed in", icon: Minus, cls: "bg-slate-50 text-slate-400", dot: "bg-slate-200", tone: "slate" },
+  on_leave: { label: "On leave", icon: Plane, cls: "bg-blue-50 text-blue-700", dot: "bg-blue-400", tone: "blue" },
+  rest_day: { label: "Rest day", icon: CalendarOff, cls: "bg-slate-100 text-slate-500", dot: "bg-slate-300", tone: "slate" },
+  suspended: { label: "Suspended", icon: Ban, cls: "bg-red-50 text-red-700", dot: "bg-red-400", tone: "maroon" },
+  not_in: { label: "Not timed in", icon: Minus, cls: "bg-amber-50 text-amber-700", dot: "bg-amber-400", tone: "amber" },
 };
 
 function hms(totalSeconds: number): string {
@@ -103,7 +119,7 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
           the URL because the board reloads itself every twenty seconds, and a
           filter that survives that is the whole point. */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
-        {(["on_call", "standby", "bio_break", "break", "timed_out", "not_in"] as MonitorState[]).map((s) => (
+        {(["on_call", "standby", "bio_break", "break", "timed_out", "not_in", "on_leave", "rest_day", "suspended"] as MonitorState[]).map((s) => (
           <StatWidget
             key={s}
             label={STATE_META[s].label}

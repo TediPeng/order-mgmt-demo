@@ -107,7 +107,7 @@ export function Sidebar({
       items: [
         { href: "/attendance", label: "Attendance", icon: Clock, show: true },
         { href: "/attendance/clock", label: "Time In / Out", icon: Timer, show: true },
-        { href: "/attendance/monitor", label: "Agent Monitor", icon: Activity, show: canMonitor },
+        { href: "/attendance/monitor", label: "Agent Monitoring", icon: Activity, show: canMonitor },
         // Same audience and same gate as the monitor — the live board and its
         // historical counterpart belong next to each other.
         { href: "/attendance/activity", label: "Activity Report", icon: BarChart3, show: canMonitor },
