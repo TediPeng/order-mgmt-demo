@@ -217,8 +217,13 @@ export default async function RegularCustomersPage({
                 </td>
                 <td className="px-4 py-3 text-slate-600">{customer.regular_since ? formatDate(customer.regular_since) : "—"}</td>
                 {(
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-2">
+                  <td className="whitespace-nowrap px-4 py-3">
+                    {/* One line, not three. These were wrapping because the
+                        column is narrower than the three controls, which made
+                        the Actions rows three times the height of every other
+                        row and left the table looking ragged. The table already
+                        scrolls sideways, so the width costs nothing. */}
+                    <div className="flex flex-nowrap items-center gap-2">
                       {/* Their record and every order on it. The table shows
                           two orders and a count; this is where the rest of it
                           lives, and it is reachable even for a customer who
@@ -236,7 +241,15 @@ export default async function RegularCustomersPage({
                       )}
                       {canManage && (
                         <form action={untagRegularCustomerAction.bind(null, customer.id)}>
-                          <ConfirmSubmitButton confirmMessage="Return this customer to the active Leads list?">
+                          {/* Styled like Details beside it. It carried no
+                              classes at all, so it rendered as bare text next
+                              to two proper buttons — the one control here that
+                              changes something looked the least like a control. */}
+                          <ConfirmSubmitButton
+                            confirmTitle="Return to Leads?"
+                            confirmMessage={`Return ${customer.full_name} to the active Leads list?`}
+                            confirmLabel="Return to Leads"
+                          >
                             Return to Leads
                           </ConfirmSubmitButton>
                         </form>
