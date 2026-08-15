@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { Clock, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { useCallSession } from "@/components/CallSessionProvider";
 import { acknowledgeUnpaidOvertimeAction, timeOutAction } from "@/lib/actions/attendance";
 
 function hhmmss(totalSeconds: number): string {
@@ -42,12 +43,15 @@ export function AfterDutyDialog({
   redirectTo: string;
   onDismiss: () => void;
 }) {
-  const [now, setNow] = useState(() => Date.now());
+  const { clock } = useCallSession();
+  const [now, setNow] = useState(() => clock());
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
+    const id = setInterval(() => setNow(clock()), 1000);
     return () => clearInterval(id);
+    // clock is stable — it reads a ref, so it never changes identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const over = Math.max(0, Math.floor((now - new Date(dutyEndsAt).getTime()) / 1000));

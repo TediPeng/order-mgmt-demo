@@ -56,9 +56,9 @@ export function BreakControls({
   // button disables the moment a call starts instead of waiting for a refresh —
   // and the page avoids another query. Its shared tick only runs during a call,
   // so break timers keep their own interval below.
-  const { session } = useCallSession();
+  const { session, clock } = useCallSession();
   const onCall = !!session;
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(() => clock());
   const onBreak = !!breakStart && !breakEnd;
   const onBio = !!bioStartedAt;
   const alertedRef = useRef(false);
@@ -71,8 +71,9 @@ export function BreakControls({
     // dialog has to arrive at the scheduled minute for an agent who has taken
     // no break at all.
     if (!onBreak && !onBio && !dutyEndsAt) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
+    const id = setInterval(() => setNow(clock()), 1000);
     return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onBreak, onBio, dutyEndsAt]);
 
   // Same over-break alert the clock page raises, so taking a break from here is
@@ -81,8 +82,9 @@ export function BreakControls({
   useEffect(() => {
     if (!onBreak || !breakStart) return;
     const allowanceSec = allowanceMinutes * 60;
-    const elapsed = Math.floor((Date.now() - new Date(breakStart).getTime()) / 1000);
+    const elapsed = Math.floor((clock() - new Date(breakStart).getTime()) / 1000);
     alertedRef.current = allowanceSec - elapsed <= 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onBreak, breakStart, allowanceMinutes]);
 
   useEffect(() => {

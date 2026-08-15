@@ -33,6 +33,8 @@ interface CallSessionContextValue {
   session: CallSession | null;
   /** Shared 1s tick. Every timer on the page reads the same instant. */
   now: number;
+  /** The server-corrected clock, for anything that needs a reading between ticks. */
+  clock: () => number;
   startCall: (orderId: string) => Promise<StartCallResult>;
   endCall: () => Promise<void>;
   /** Drops the local session after a save that closed it server-side. */
@@ -53,13 +55,31 @@ const CallSessionContext = createContext<CallSessionContextValue | null>(null);
  */
 export function CallSessionProvider({
   initialSession,
+  serverNow,
   children,
 }: {
   initialSession: CallSession | null;
+  /** The server's clock at render, in epoch ms. */
+  serverNow: number;
   children: React.ReactNode;
 }) {
   const [session, setSession] = useState<CallSession | null>(initialSession);
-  const [now, setNow] = useState(() => Date.now());
+  // Every elapsed figure in the app is measured against this, and it is the
+  // SERVER's clock, not the device's.
+  //
+  // A machine on the floor was running about sixteen hours fast. Its call timer
+  // read 16:02:17 for a call two minutes old, and the end-of-shift notice fired
+  // at half past two in the afternoon claiming the shift had ended thirteen
+  // hours earlier — over an order, mid-call, with the agent unable to get past
+  // it. Nothing was wrong with the record; the browser simply believed the
+  // wrong time, and every timer here believed the browser.
+  //
+  // The offset is measured once, against the timestamp the server rendered
+  // with, and every tick is corrected by it. A device an hour or a day out now
+  // shows the same figures as everyone else.
+  const skewRef = useRef(serverNow - Date.now());
+  const clock = useCallback(() => Date.now() + skewRef.current, []);
+  const [now, setNow] = useState(() => serverNow);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refresh = useCallback(async () => {
@@ -80,19 +100,21 @@ export function CallSessionProvider({
       tickRef.current = null;
       return;
     }
-    setNow(Date.now());
-    tickRef.current = setInterval(() => setNow(Date.now()), 1000);
+    setNow(clock());
+    tickRef.current = setInterval(() => setNow(clock()), 1000);
     return () => {
       if (tickRef.current) clearInterval(tickRef.current);
       tickRef.current = null;
     };
+    // clock reads a ref and never changes identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
   // Resync whenever the tab could have missed something.
   useEffect(() => {
     void refresh();
     const onFocus = () => {
-      setNow(Date.now());
+      setNow(clock());
       void refresh();
     };
     const onVisible = () => {
@@ -104,6 +126,7 @@ export function CallSessionProvider({
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisible);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh]);
 
   const startCall = useCallback(async (orderId: string): Promise<StartCallResult> => {
@@ -124,11 +147,12 @@ export function CallSessionProvider({
         };
       }
       setSession(json.session as CallSession);
-      setNow(Date.now());
+      setNow(clock());
       return { ok: true };
     } catch {
       return { ok: false, error: "Network error. Please try again." };
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const endCall = useCallback(async () => {
@@ -142,7 +166,7 @@ export function CallSessionProvider({
   const clearSession = useCallback(() => setSession(null), []);
 
   return (
-    <CallSessionContext.Provider value={{ session, now, startCall, endCall, clearSession, refresh }}>
+    <CallSessionContext.Provider value={{ session, now, clock, startCall, endCall, clearSession, refresh }}>
       {children}
     </CallSessionContext.Provider>
   );

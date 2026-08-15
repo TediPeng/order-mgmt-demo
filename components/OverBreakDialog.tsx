@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Utensils } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { useCallSession } from "@/components/CallSessionProvider";
 import { endBreakAction } from "@/lib/actions/attendance";
 
 function mmss(totalSeconds: number): string {
@@ -39,11 +40,14 @@ export function OverBreakDialog({
   redirectTo: string;
   onDismiss: () => void;
 }) {
-  const [now, setNow] = useState(() => Date.now());
+  const { clock } = useCallSession();
+  const [now, setNow] = useState(() => clock());
 
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
+    const id = setInterval(() => setNow(clock()), 1000);
     return () => clearInterval(id);
+    // clock is stable — it reads a ref, so it never changes identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const elapsed = Math.floor((now - new Date(breakStart).getTime()) / 1000);

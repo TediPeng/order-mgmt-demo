@@ -279,7 +279,7 @@ export default async function LeadsPage({
   const ownScheduledTimeOut = ownAttendance?.scheduled_time_out || db.work_schedule.work_end;
   const dutyEndsAt =
     ownAttendance?.time_in && !ownAttendance.time_out
-      ? scheduledInstant(todayInTz(), ownScheduledTimeOut, db.work_schedule.timezone).toISOString()
+      ? scheduledInstant(todayInTz(), ownScheduledTimeOut.slice(0, 5), db.work_schedule.timezone).toISOString()
       : null;
 
   const qs = (overrides: Record<string, string | undefined>) => {
@@ -322,7 +322,7 @@ export default async function LeadsPage({
             bioStartedAt={ownBioBreak?.started_at ?? null}
             canBreak={!!ownAttendance?.time_in && !ownAttendance.time_out}
             dutyEndsAt={dutyEndsAt}
-            scheduledTimeOut={ownScheduledTimeOut}
+            scheduledTimeOut={ownScheduledTimeOut.slice(0, 5)}
             redirectTo="/leads"
           />
           {/* The primary action here is now ordering for someone the agent

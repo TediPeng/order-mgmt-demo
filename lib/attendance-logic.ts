@@ -21,7 +21,10 @@ function getTzOffsetMinutes(date: Date, timeZone: string): number {
 
 /** Absolute instant corresponding to `HH:mm` on `workDate` (YYYY-MM-DD), in `timeZone`. */
 export function scheduledInstant(workDate: string, hhmm: string, timeZone: string): Date {
-  const naiveUTC = new Date(`${workDate}T${hhmm}:00Z`);
+  // Trimmed to HH:mm. scheduled_time_out is a Postgres  column and arrives
+  // as "17:00:00", which would build "…T17:00:00:00Z" — an invalid date, and one
+  // that fails silently as NaN rather than throwing anywhere useful.
+  const naiveUTC = new Date(`${workDate}T${hhmm.slice(0, 5)}:00Z`);
   const offsetMin = getTzOffsetMinutes(naiveUTC, timeZone);
   return new Date(naiveUTC.getTime() - offsetMin * 60000);
 }

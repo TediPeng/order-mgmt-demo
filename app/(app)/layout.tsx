@@ -57,7 +57,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const releases = await listUpdateLogs({ publishedOnly: true });
 
   return (
-    <CallSessionProvider initialSession={activeCallSession}>
+    <CallSessionProvider initialSession={activeCallSession} serverNow={Date.now()}>
       <AppShell
         user={user}
         roleName={roleName}
