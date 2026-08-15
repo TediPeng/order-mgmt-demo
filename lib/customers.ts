@@ -411,3 +411,35 @@ export async function ordersForCustomer(customer: Customer, allOrders: Order[]):
     .filter((o) => o.customer_id === customer.id || canonicalPhone(o.customer_phone) === target)
     .sort((a, b) => (b.order_date || b.created_at).localeCompare(a.order_date || a.created_at));
 }
+
+/**
+ * The most recent order date for each of a set of customers, in one query.
+ *
+ * The duplicate warning says who the customer belongs to; this says when that
+ * agent last sold to them, which is what decides whether the match is a live
+ * relationship or a record from last year. Batched because the warning is built
+ * per row on a page of twenty-five, and a query per match would be worse than
+ * the detection itself.
+ *
+ * Reads order_date where the order has one and falls back to created_at, since
+ * order_date is only stamped once an order reaches Packaging.
+ */
+export async function latestOrderDateByCustomer(customerIds: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (customerIds.length === 0) return out;
+
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .select("customer_id, order_date, created_at")
+    .in("customer_id", customerIds);
+  if (error) throw new Error(`orders read failed: ${error.message}`);
+
+  for (const row of data || []) {
+    const id = String(row.customer_id);
+    const when = String(row.order_date || row.created_at || "");
+    if (!when) continue;
+    const held = out.get(id);
+    if (!held || when > held) out.set(id, when);
+  }
+  return out;
+}

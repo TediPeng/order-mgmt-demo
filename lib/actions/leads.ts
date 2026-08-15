@@ -15,7 +15,7 @@ import { leadFormSchema, leadImportRowSchema, normalizePreviousStatus, parseOrde
 import { listItems, replaceItems, summarizeItems, totalsFor } from "@/lib/order-items";
 import type { OrderItemInput } from "@/lib/types";
 import { matchAgentByCallName } from "@/lib/agent-match";
-import { todayInTz, restoreTrunkZero } from "@/lib/utils";
+import { todayInTz, restoreTrunkZero, canonicalPhone } from "@/lib/utils";
 import {
   validatePackaging,
   restrictedStatusBlockReason,
@@ -28,13 +28,13 @@ import {
   canSetOrderTag,
 } from "@/lib/lead-workflow";
 import { timeInBlockReason } from "@/lib/time-in-gate";
-import { findRegularCustomerByPhone, getCustomer, recordCustomerOrder } from "@/lib/customers";
+import { findDuplicates, findRegularCustomerByPhone, getCustomer, recordCustomerOrder } from "@/lib/customers";
 import { forwardOrderToPancake } from "@/lib/pancake/forward";
 import { computeOrderTotal, validateForPancake } from "@/lib/pancake/validate";
 import { verifyOrderAddress } from "@/lib/pancake/verifyAddress";
 import { insertSyncLog } from "@/lib/pancake/store";
 import type { DbShape, Order, Profile } from "@/lib/types";
-import { ORDER_PANCAKE_DEFAULTS } from "@/lib/types";
+import { ORDER_PANCAKE_DEFAULTS, displayCallName } from "@/lib/types";
 
 /**
  * The unit price the Packaging gate asks about, from a set of posted lines.
@@ -374,7 +374,7 @@ export type ApplyLeadUpdateResult =
        * save was not about the products and the existing lines stand. */
       items: OrderItemInput[] | null;
     }
-  | { ok: false; code: "not_found" | "forbidden" | "validation"; error: string };
+  | { ok: false; code: "not_found" | "forbidden" | "validation" | "duplicate"; error: string };
 
 /** Core of a lead edit/status-update: validation, RTS gating, field writes, and
  * activity logging -- shared by the full-page form action (which redirects)
@@ -409,6 +409,43 @@ export async function applyLeadUpdate(
   // Processing an order or moving its status requires being timed in (Section 2).
   const notTimedIn = timeInBlockReason(db, user);
   if (notTimedIn) return { ok: false, code: "forbidden", error: notTimedIn };
+
+  // An agent may not save an order for somebody who is already another agent's
+  // regular customer. The popup says so before they press Save, but a dialog is
+  // not a rule: this is the check a crafted request also meets.
+  //
+  // Only for roles scoped to their own leads. A Team Lead or Administrator is
+  // who the agent is being sent to, and blocking them would leave the pair with
+  // nobody able to act on it.
+  //
+  // Scoped to matches owned by SOMEBODY ELSE. An agent re-saving their own
+  // regular customer's order is ordinary work, and refusing it would make every
+  // repeat order unsaveable by the person who owns the relationship.
+  const scopedToOwnLeads = !isFullAccess(user.role) && user.role !== "team_lead";
+  if (scopedToOwnLeads) {
+    const phone = canonicalPhone(String(raw.customer_phone ?? order.customer_phone ?? ""));
+    if (phone) {
+      const findings = await findDuplicates({
+        full_name: String(raw.customer_name ?? order.customer_name ?? ""),
+        phone_normalized: phone,
+        purok: String(raw.purok ?? order.purok ?? ""),
+        barangay: String(raw.barangay ?? order.barangay ?? ""),
+        city: String(raw.city ?? order.city ?? ""),
+        province: String(raw.province ?? order.province ?? ""),
+      });
+      const foreign = findings.filter((f) => f.matched.owner_agent_id !== user.id);
+      if (foreign.length > 0) {
+        const owner = db.profiles.find((p) => p.id === foreign[0].matched.owner_agent_id);
+        return {
+          ok: false,
+          code: "duplicate",
+          error:
+            `This customer is already a regular customer of ${owner ? displayCallName(owner) : "another agent"}. ` +
+            `Please contact your Team Lead for this concern.`,
+        };
+      }
+    }
+  }
 
   const requestedAgentId = String(raw.agent_id || order.agent_id);
   raw.agent_id = isFullAccess(user.role) ? requestedAgentId : order.agent_id;
