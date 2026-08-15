@@ -7,6 +7,7 @@ import { listItemsFor } from "@/lib/order-items";
 import { canonicalPhone, todayInTz } from "@/lib/utils";
 import { scheduledInstant } from "@/lib/attendance-logic";
 import { BreakControls } from "@/components/BreakControls";
+import { BackToCallButton } from "@/components/BackToCallButton";
 import { getActiveBioBreak } from "@/lib/bio-breaks";
 import { findDuplicates, latestOrderDateByCustomer } from "@/lib/customers";
 import { leadScopeFor, leadStatusCounts, previousStatusCounts, duplicatePhoneCount, regularCustomerOrderCount, queryLeads, orderForScope } from "@/lib/leads-query";
@@ -325,6 +326,11 @@ export default async function LeadsPage({
             scheduledTimeOut={ownScheduledTimeOut.slice(0, 5)}
             redirectTo="/leads"
           />
+          {/* Here too, and not redundantly: the order holding the call may be on
+              another page of this list, or behind whatever filter is on, or a
+              regular customer's — which this list leaves out entirely. Being on
+              the leads page is not the same as being able to find the lead. */}
+          <BackToCallButton />
           {/* The primary action here is now ordering for someone the agent
               already keeps: pick them by phone number, then the order form
               opens on their saved details. A role that cannot see Regular
