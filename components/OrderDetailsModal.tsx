@@ -22,6 +22,7 @@ import { validateForPancake as computePancakeCheck } from "@/lib/pancake/validat
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 import { buildRawFromOrder } from "@/lib/lead-payload";
 import { tagRegularCustomerAction } from "@/lib/actions/regular-customers";
+import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import type { CallSession, Order, OrderStatus } from "@/lib/types";
 
 interface EditForm {
@@ -1025,35 +1026,42 @@ export function OrderDetailsModal({
         <div className="sticky bottom-0 z-20 flex items-center justify-between gap-2 rounded-b-xl border-t border-slate-200 bg-white px-5 py-3 shadow-[0_-2px_6px_-2px_rgba(15,23,42,0.12)]">
           <div>{fullPageHref && <Link href={fullPageHref} className="text-xs font-medium text-[var(--brand-primary)] hover:underline">Open full page</Link>}</div>
           <div className="flex items-center gap-2">
+            {/* Making this customer a regular is a decision that comes out of
+                the call, so it belongs with the controls the call ends on —
+                not eleven fields up where it used to sit. Offered only where
+                it can do anything: the order needs a number to key a customer
+                on, and one already tagged has nothing left to do.
+
+                It leads the group, ahead of Close: it is the only thing here
+                that changes what this lead IS, and it sat behind the button
+                that walks away from it. */}
+            {canTagRegular && !order.is_regular_customer && order.customer_phone.trim() && (
+              <form action={tagRegularCustomerAction.bind(null, order.id)}>
+                {/* Amber, matching the star it carries: making a customer a
+                    regular is a promotion, and it read as one more grey button
+                    beside Close. Near-black text rather than white — white on
+                    amber-400 is below the contrast this app holds elsewhere. */}
+                <ConfirmSubmitButton
+                  disabled={saving}
+                  confirmTitle="Make Regular Customer?"
+                  confirmMessage={`Confirm ${order.customer_name}${
+                    order.customer_phone ? ` · ${order.customer_phone}` : ""
+                  } to Regular Customer?`}
+                  confirmLabel="Make Regular Customer"
+                  danger={false}
+                  className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-amber-400 px-4 py-2 text-control font-medium text-amber-950 transition-colors hover:bg-amber-500 disabled:pointer-events-none disabled:opacity-40"
+                >
+                  <Star className="h-4 w-4" /> Make Regular Customer
+                </ConfirmSubmitButton>
+              </form>
+            )}
+
             {/* No Edit Order and no Cancel. There is nothing to switch into —
                 the form is the popup — and requestClose already asks before
                 dropping unsaved work, which is all Cancel ever did. */}
             <Button type="button" variant="outline" onClick={requestClose} disabled={saving}>
               Close
             </Button>
-
-            {/* Making this customer a regular is a decision that comes out of
-                the call, so it belongs with the controls the call ends on —
-                not eleven fields up where it used to sit. Offered only where
-                it can do anything: the order needs a number to key a customer
-                on, and one already tagged has nothing left to do. */}
-            {canTagRegular && !order.is_regular_customer && order.customer_phone.trim() && (
-              <form action={tagRegularCustomerAction.bind(null, order.id)}>
-                {/* Amber, matching the star it carries: making a customer a
-                    regular is a promotion, and it read as one more grey button
-                    beside Close. Near-black text rather than white — white on
-                    amber-400 is below the contrast this app holds elsewhere.
-                    Kept on one line, so it stops wrapping to two. */}
-                <Button
-                  type="submit"
-                  variant="secondary"
-                  disabled={saving}
-                  className="whitespace-nowrap bg-amber-400 text-amber-950 hover:bg-amber-500"
-                >
-                  <Star className="h-4 w-4" /> Make Regular Customer
-                </Button>
-              </form>
-            )}
 
             {/* Calling lives here rather than in a strip at the top of the form.
                 It is a control, and the controls are in the bar that is always
@@ -1086,7 +1094,7 @@ export function OrderDetailsModal({
             )}
 
             {editing && (
-              <Button type="button" onClick={attemptSave} disabled={saving}>
+              <Button type="button" onClick={attemptSave} disabled={saving} className="whitespace-nowrap">
                 {saving ? "Saving…" : "Save Changes"}
               </Button>
             )}
