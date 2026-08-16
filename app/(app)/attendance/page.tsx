@@ -7,6 +7,7 @@ import { formatDate, formatTime, todayInTz } from "@/lib/utils";
 import { AttendanceWidget } from "@/components/AttendanceWidget";
 import { AttendanceCalendar } from "@/components/AttendanceCalendar";
 import { RequestLeaveButton } from "@/components/RequestLeaveButton";
+import { leaveCountsByDate } from "@/lib/leave";
 import { BackToCallButton } from "@/components/BackToCallButton";
 import { AttendanceStatusBadge, LateFlag, OverBreakFlag } from "@/components/ui/AttendanceBadge";
 import { Alert } from "@/components/ui/Alert";
@@ -26,6 +27,12 @@ function monthRange(year: number, month: number): { from: string; to: string } {
   const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const to = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
   return { from, to };
+}
+
+function addFortnight(date: string): string {
+  const d = new Date(date + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + 13);
+  return d.toISOString().slice(0, 10);
 }
 
 function shiftMonth(year: number, month: number, delta: number): string {
@@ -99,6 +106,10 @@ export default async function AttendancePage({
     totalOverBreak += r.over_break_minutes || 0;
   }
 
+  // The next fortnight, for the availability panel in the leave form: long
+  // enough to plan against, short enough to read without scrolling.
+  const leaveDays = leaveCountsByDate(db, todayStr, addFortnight(todayStr));
+
   const isTableView = sp.view === "table";
   // Everyone, for one day. The other two views answer "this person, this
   // month", which means picking a name from a dropdown before the page can
@@ -162,7 +173,7 @@ export default async function AttendancePage({
               in the leads table, so without this the way back is to remember
               which lead it was on. Renders nothing when no call is running. */}
           <BackToCallButton />
-          {canFileLeave && <RequestLeaveButton action={fileLeaveAction} today={todayStr} />}
+          {canFileLeave && <RequestLeaveButton action={fileLeaveAction} today={todayStr} leaveDays={leaveDays} />}
           {canManage && (
             <LinkButton href="/attendance/manage" variant="outline" size="sm">
               Manage Attendance

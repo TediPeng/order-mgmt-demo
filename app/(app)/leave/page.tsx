@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/Button";
 import { LeaveDetailsButton } from "@/components/LeaveDetailsButton";
 import { LeaveRequestForm } from "@/components/LeaveRequestForm";
 import { RequestLeaveButton } from "@/components/RequestLeaveButton";
+import { leaveCountsByDate } from "@/lib/leave";
 import { fileLeaveAction, cancelLeaveAction, resubmitLeaveAction, reviewLeaveAction } from "@/lib/actions/leave";
 
 export default async function LeavePage({
@@ -113,6 +114,10 @@ export default async function LeavePage({
     : [];
 
   const today = todayInTz();
+  // The next fortnight, for the availability panel in the leave form.
+  const fortnightEnd = new Date(today + "T00:00:00Z");
+  fortnightEnd.setUTCDate(fortnightEnd.getUTCDate() + 13);
+  const leaveDays = leaveCountsByDate(db, today, fortnightEnd.toISOString().slice(0, 10));
 
   return (
     <div className="space-y-6">
@@ -121,7 +126,7 @@ export default async function LeavePage({
         {/* Filing now happens through the popup (Section 5) -- also available
             from the Attendance module. Resubmitting a returned request stays
             an inline flow below since it's tied to a specific existing request. */}
-        {canFile && !resubmitTarget && <RequestLeaveButton action={fileLeaveAction} today={today} />}
+        {canFile && !resubmitTarget && <RequestLeaveButton action={fileLeaveAction} today={today} leaveDays={leaveDays} />}
       </div>
 
       {sp.error && <Alert kind="error">{sp.error}</Alert>}

@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { LeaveAvailability } from "@/components/LeaveAvailability";
+import type { LeaveDayCount } from "@/lib/leave";
 import { Input, Label, Select, Textarea } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 
@@ -25,11 +27,14 @@ const WARNING_MESSAGE = "Leave requests must be submitted at least three days be
 export function LeaveRequestForm({
   action,
   today,
+  leaveDays = [],
   defaults,
   submitLabel = "Submit Request",
 }: {
   action: (formData: FormData) => void;
   today: string;
+  /** Per-day counts for the window the panel shows. Empty hides it. */
+  leaveDays?: LeaveDayCount[];
   defaults?: { leave_start?: string; leave_end?: string; leave_type?: string; reason?: string };
   submitLabel?: string;
 }) {
@@ -60,6 +65,11 @@ export function LeaveRequestForm({
         <div>
           <Label htmlFor="leave_end">Leave end date</Label>
           <Input id="leave_end" name="leave_end" type="date" value={end} onChange={(e) => setEnd(e.target.value)} required />
+        </div>
+        {/* Between the dates and the rest of the form: it is read while the
+            dates are being chosen, not after. */}
+        <div className="sm:col-span-2">
+          <LeaveAvailability days={leaveDays} start={start} end={end} />
         </div>
         <div>
           <Label htmlFor="leave_type">Leave type</Label>

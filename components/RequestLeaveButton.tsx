@@ -4,15 +4,18 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { LeaveRequestForm } from "@/components/LeaveRequestForm";
+import type { LeaveDayCount } from "@/lib/leave";
 
 /** Popup entry point for filing a leave request (Section 5) -- the Attendance
  * module's primary way to file; also reused on /leave so filing still works there. */
 export function RequestLeaveButton({
   action,
   today,
+  leaveDays = [],
 }: {
   action: (formData: FormData) => void;
   today: string;
+  leaveDays?: LeaveDayCount[];
 }) {
   const [open, setOpen] = useState(false);
 
@@ -37,6 +40,7 @@ export function RequestLeaveButton({
                   action(formData);
                 }}
                 today={today}
+                leaveDays={leaveDays}
               />
               <p className="mt-3 text-xs text-slate-400">
                 Unpaid and Sick leave must be filed at least 3 days in advance. Emergency leave may be filed within 3
