@@ -16,6 +16,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   "file-uploads": "File Uploads",
   performance: "Performance",
   agents: "Agent Performance",
+  "remaining-leads": "Remaining Leads",
   team: "Team Performance",
   sales: "Daily Sales",
   ranking: "Agent Ranking",

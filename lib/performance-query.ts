@@ -15,6 +15,28 @@ import { SALE_STATUSES } from "@/lib/validation";
  */
 
 /**
+ * How many leads each agent has never called, keyed by agent id.
+ *
+ * Unranged on purpose. A backlog is a standing quantity: how much work is
+ * waiting does not become a different question because a date filter moved,
+ * and a queue that shrank when the dates narrowed would read as progress.
+ *
+ * Only agents with something waiting come back.
+ */
+export async function agentRemainingLeads(agentIds: string[]): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  if (agentIds.length === 0) return counts;
+
+  const { data, error } = await supabaseAdmin.rpc("agent_remaining_leads", { p_agent_ids: agentIds });
+  if (error) throw new Error(`Remaining leads query failed: ${error.message}`);
+
+  for (const row of (data || []) as { agent_id: string; leads: number | string }[]) {
+    counts.set(row.agent_id, Number(row.leads));
+  }
+  return counts;
+}
+
+/**
  * How many leads each agent holds at each status, over a date range.
  *
  * Ranged on created_at rather than order_date, unlike everything else in this
