@@ -43,8 +43,8 @@ export function RequestLeaveButton({
                 leaveDays={leaveDays}
               />
               <p className="mt-3 text-xs text-slate-400">
-                Dapat isumite ang day off nang hindi bababa sa 3 araw bago ang petsa. Kung kailangan ito nang mas maaga,
-                ang Team Lead ang makakapag-ayos.
+                A day off must be filed at least 3 days before the date. If you need it sooner than that,
+                raise it with your Team Lead.
               </p>
             </div>
           </div>

@@ -134,7 +134,7 @@ export function CallingPanel({
         {confirmEnd && (
           <ConfirmDialog
             title="End this call?"
-            message="Wala pang status update na maitatala para sa tawag na ito. Matatapos pa rin ang tawag at mananatili sa call history."
+            message="No status update will be recorded for this call. The call still ends and stays in the call history."
             confirmLabel="End call"
             cancelLabel="Keep calling"
             busy={busy}
@@ -206,7 +206,7 @@ export function CallingPanel({
         {confirmEnd && (
           <ConfirmDialog
             title="End this call?"
-            message="Wala pang status update na maitatala para sa tawag na ito. Matatapos pa rin ang tawag at mananatili sa call history."
+            message="No status update will be recorded for this call. The call still ends and stays in the call history."
             confirmLabel="End call"
             cancelLabel="Keep calling"
             busy={busy}

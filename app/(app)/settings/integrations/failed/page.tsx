@@ -213,7 +213,7 @@ export default async function SyncFailedPage({
                       <th className="px-3 py-2">Amount</th>
                       <th className="px-3 py-2">Attempts</th>
                       <th className="px-3 py-2">Last attempt</th>
-                      <th className="px-3 py-2 text-right">Action</th>
+                      <th className="whitespace-nowrap px-3 py-2 text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -242,14 +242,25 @@ export default async function SyncFailedPage({
                           <td className="px-3 py-2 text-slate-500">
                             {o.pancake_last_sync_attempt_at ? formatDateTime(o.pancake_last_sync_attempt_at) : "—"}
                           </td>
-                          <td className="px-3 py-2 text-right">
-                            {canRetry && (
-                              <form action={retryOne} className="inline-flex">
-                                <Button type="submit" size="sm" variant="outline">
-                                  Retry
-                                </Button>
-                              </form>
-                            )}
+                          <td className="whitespace-nowrap px-3 py-2 text-right">
+                            {/* Retry is a decision, and the row alone is not
+                                enough to make it: what the order holds, what it
+                                last sent and what Pancake said back are all in
+                                the popup. The order id has always linked there;
+                                a named button says so, next to the action it is
+                                supposed to inform. */}
+                            <div className="inline-flex items-center gap-2">
+                              <LinkButton href={`/leads?open_id=${o.id}`} variant="outline" size="sm">
+                                Details
+                              </LinkButton>
+                              {canRetry && (
+                                <form action={retryOne} className="inline-flex">
+                                  <Button type="submit" size="sm" variant="outline">
+                                    Retry
+                                  </Button>
+                                </form>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );

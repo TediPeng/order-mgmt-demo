@@ -38,7 +38,7 @@ export function LeaveAvailability({
 
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Ilan ang naka-leave</p>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Who is already off</p>
 
       <ul className="max-h-48 space-y-1 overflow-auto">
         {days.map((d) => {
@@ -63,7 +63,7 @@ export function LeaveAvailability({
               <span className="font-medium">{label(d.date)}</span>
               <span className="flex items-center gap-1.5">
                 {total === 0 ? (
-                  <span className="font-medium">Walang naka-leave</span>
+                  <span className="font-medium">Nobody is off</span>
                 ) : (
                   <>
                     {d.approved > 0 && (
@@ -83,8 +83,8 @@ export function LeaveAvailability({
       </ul>
 
       <p className="mt-2 text-xs text-slate-400">
-        Kasama ang mga nakabinbin pa — maaari pa silang maaprubahan bago ang sa iyo. Hindi ito humaharang; gabay lang
-        ito sa pagpili ng petsa.
+        Pending requests are included — they may still be approved before yours. This does not block anything; it is
+        here to help you choose a date.
       </p>
     </div>
   );

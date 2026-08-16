@@ -107,7 +107,7 @@ export function LeaveRequestForm({
             <h3 className="text-base font-semibold text-slate-900">Leave request too close to the date</h3>
             <p className="mt-2 text-sm text-slate-600">{WARNING_MESSAGE}</p>
             <p className="mt-2 text-xs text-slate-400">
-              Kung kailangan talaga ngayon, ipaalam sa Team Lead — sila ang makakapag-ayos nito.
+              If you need the time sooner than that, raise it with your Team Lead.
             </p>
             <div className="mt-5 flex justify-end">
               <Button variant="outline" size="sm" onClick={() => setShowWarning(false)}>

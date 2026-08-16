@@ -87,17 +87,17 @@ export function AfterDutyDialog({
           </div>
 
           <p className="text-sm text-slate-700">
-            Natapos ang shift mo nang <span className="font-medium text-slate-900">{scheduledTimeOut}</span>. Pwede kang
-            mag-time out ngayon.
+            Your shift was scheduled to end at{" "}
+            <span className="font-medium text-slate-900">{scheduledTimeOut}</span>. You can time out now.
           </p>
 
           {/* Said here as well as in the notification. The notification is the
               record; this is the part that has to be read before the hours are
               worked, not after. */}
           <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-            Kung magpapatuloy ka, tandaan: <span className="font-medium">hindi bayad ang oras na lampas sa scheduled
-            time out</span> maliban kung may naunang aprubado ang Team Lead o Management. Kung kailangan talaga ang
-            trabahong ito, humingi muna ng approval para maitala at mabayaran nang tama ang oras.
+            If you continue, please note: <span className="font-medium">hours worked beyond your scheduled time out are
+            not paid</span> unless overtime was approved in advance by your Team Lead or Management. If this work is
+            required, request approval first so the hours can be recorded and paid correctly.
           </p>
 
           <div className="flex flex-col gap-2">
@@ -119,7 +119,7 @@ export function AfterDutyDialog({
           </div>
 
           <p className="text-center text-xs text-slate-400">
-            Ipapadala sa notifications mo ang paalalang ito bilang talaan.
+            This reminder is sent to your notifications as a record.
           </p>
         </div>
       </div>

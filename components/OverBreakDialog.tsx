@@ -81,9 +81,10 @@ export function OverBreakDialog({
           </div>
 
           <p className="text-sm text-slate-700">
-            Lampas na ang {allowanceMinutes}-minutong break mo
-            {overMinutes >= 1 ? ` ng ${overMinutes} minuto` : ""}. Ang sobra ay naitatala sa attendance mo bilang{" "}
-            <span className="font-medium text-slate-900">Over Break</span>, at nakikita ito ng team lead mo.
+            Your {allowanceMinutes}-minute break is over
+            {overMinutes >= 1 ? ` by ${overMinutes} minute${overMinutes === 1 ? "" : "s"}` : ""}. The overage is
+            recorded on your attendance as <span className="font-medium text-slate-900">Over Break</span>, and your
+            team lead can see it.
           </p>
 
           <div className="flex flex-col gap-2">
@@ -105,7 +106,7 @@ export function OverBreakDialog({
           {/* Dismissing hides the dialog, not the fact. The header timer stays
               red and counting for as long as the break is open. */}
           <p className="text-center text-xs text-slate-400">
-            Patuloy ang bilang hangga&apos;t hindi natatapos ang break.
+            The count keeps running until the break is ended.
           </p>
         </div>
       </div>
