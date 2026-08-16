@@ -358,6 +358,7 @@ function seedDb(): DbShape {
   return {
     schema_version: SCHEMA_VERSION,
     attendance_sweep_cursor: null,
+    auto_time_out_cursor: null,
     profiles,
     roles: SYSTEM_ROLE_DEFS,
     orders,
@@ -575,6 +576,7 @@ async function readDbUncached(withOrders: boolean): Promise<DbShape> {
   const shape: DbShape = {
     schema_version: SCHEMA_VERSION,
     attendance_sweep_cursor: settings.attendance_sweep_cursor,
+    auto_time_out_cursor: settings.auto_time_out_cursor ?? null,
     profiles: (profilesRes.data || []) as unknown as DbShape["profiles"],
     roles: (rolesRes.data || []) as unknown as DbShape["roles"],
     orders: (ordersRes.data || []).map(mapOrderRow) as unknown as DbShape["orders"],
@@ -769,6 +771,7 @@ export async function writeDb(db: DbShape): Promise<void> {
     .from("app_settings")
     .update({
       attendance_sweep_cursor: db.attendance_sweep_cursor,
+      auto_time_out_cursor: db.auto_time_out_cursor,
       work_start: db.work_schedule.work_start,
       work_end: db.work_schedule.work_end,
       break_minutes: db.work_schedule.break_minutes,
