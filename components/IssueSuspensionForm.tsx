@@ -23,20 +23,65 @@ export function IssueSuspensionForm({
   const [duration, setDuration] = useState("3");
   const endDate = useMemo(() => addDaysToYmd(startDate, Number(duration) - 1), [startDate, duration]);
 
+  /**
+   * Narrowing the list, not replacing the control.
+   *
+   * The floor is long enough that finding a name meant scrolling a dropdown,
+   * and suspension is not something to pick by scrolling past. The select
+   * itself stays exactly what it was -- a native control the form submits and
+   * the keyboard already knows -- and this only decides which options are in
+   * it.
+   */
+  const [query, setQuery] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const matches = q ? employees.filter((e) => e.full_name.toLowerCase().includes(q)) : employees;
+    // Whoever is chosen stays in the list whatever is typed. Filtering them out
+    // would drop the option the select holds its value in, and the choice would
+    // vanish without anybody touching it.
+    if (employeeId && !matches.some((e) => e.id === employeeId)) {
+      const chosen = employees.find((e) => e.id === employeeId);
+      if (chosen) return [chosen, ...matches];
+    }
+    return matches;
+  }, [employees, query, employeeId]);
+
   return (
     <form action={action} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <div>
         <Label htmlFor="employee_id">Employee Name</Label>
-        <Select id="employee_id" name="employee_id" defaultValue="" required>
+        <Input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search employee"
+          aria-label="Search the employee list"
+          aria-controls="employee_id"
+          className="mb-1.5"
+        />
+        <Select
+          id="employee_id"
+          name="employee_id"
+          value={employeeId}
+          onChange={(e) => setEmployeeId(e.target.value)}
+          required
+        >
           <option value="" disabled>
-            Select employee
+            {visible.length === 0 ? "No employee matches that search" : "Select employee"}
           </option>
-          {employees.map((e) => (
+          {visible.map((e) => (
             <option key={e.id} value={e.id}>
               {e.full_name}
             </option>
           ))}
         </Select>
+        {query.trim() !== "" && (
+          <p className="mt-1 text-xs text-slate-500">
+            {visible.length} of {employees.length} shown
+          </p>
+        )}
       </div>
       <div>
         <Label htmlFor="start_date">Start Date</Label>
