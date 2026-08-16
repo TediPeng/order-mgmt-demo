@@ -41,6 +41,7 @@ export function AppShell({
   // record, and must not also expose everyone else's break timers. The page
   // enforces the same rule server-side; this only decides whether the link shows.
   const canMonitor = isFullAccess(user.role) || user.role === "team_lead";
+  const canSeeRemainingLeads = isFullAccess(user.role);
 
   // No websocket backend, so "real-time" dashboard stats, attendance widgets and
   // notifications are refreshed by re-running the server components in place —
@@ -108,7 +109,7 @@ export function AppShell({
   return (
     <div className="flex h-screen" style={{ background: "var(--surface-muted)" }}>
       <div className="hidden lg:block">
-        <Sidebar access={access} canMonitor={canMonitor} collapsed={collapsed} />
+        <Sidebar access={access} canMonitor={canMonitor} canSeeRemainingLeads={canSeeRemainingLeads} collapsed={collapsed} />
       </div>
 
       {drawerOpen && (
@@ -119,7 +120,7 @@ export function AppShell({
             onClick={() => setDrawerOpen(false)}
           />
           <div className="relative z-10">
-            <Sidebar access={access} canMonitor={canMonitor} onNavigate={() => setDrawerOpen(false)} />
+            <Sidebar access={access} canMonitor={canMonitor} canSeeRemainingLeads={canSeeRemainingLeads} onNavigate={() => setDrawerOpen(false)} />
           </div>
           <button
             className="absolute right-4 top-4 z-10 cursor-pointer rounded-md bg-white p-1.5 shadow"

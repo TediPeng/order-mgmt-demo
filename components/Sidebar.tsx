@@ -14,6 +14,7 @@ import {
   UserCheck,
   TrendingUp,
   Trophy,
+  ListTodo,
   LineChart,
   Clock,
   Timer,
@@ -61,6 +62,7 @@ interface NavGroup {
 export function Sidebar({
   access,
   canMonitor = false,
+  canSeeRemainingLeads = false,
   collapsed = false,
   onNavigate,
 }: {
@@ -70,6 +72,10 @@ export function Sidebar({
    * what lets an agent see their OWN record — it should not also hand them a
    * board of everyone else's break timers. */
   canMonitor?: boolean;
+  /** The size of the floor's queue is a management number, so this is
+   * Administrators and Management only -- narrower than performance.view,
+   * which every Team Lead holds for their own team. */
+  canSeeRemainingLeads?: boolean;
   collapsed?: boolean;
   /** Lets the mobile drawer close itself when a destination is chosen. */
   onNavigate?: () => void;
@@ -100,6 +106,7 @@ export function Sidebar({
         { href: "/performance/team", label: "Team Performance", icon: TrendingUp, show: access.performance },
         { href: "/performance/sales", label: "Daily Sales", icon: LineChart, show: access.performance },
         { href: "/performance/ranking", label: "Agent Ranking", icon: Trophy, show: access.ranking },
+        { href: "/performance/remaining-leads", label: "Remaining Leads", icon: ListTodo, show: canSeeRemainingLeads },
       ],
     },
     {

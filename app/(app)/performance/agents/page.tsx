@@ -4,7 +4,7 @@ import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { scopeAgentsForUser, computeDailyAgentStats, aggregateByPeriod, resolveDateRange, type Granularity } from "@/lib/performance";
-import { agentDailyOrderStats, agentLeadStatusCounts } from "@/lib/performance-query";
+import { agentDailyOrderStats } from "@/lib/performance-query";
 
 import { countCompletedSessions } from "@/lib/call-sessions";
 import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
@@ -47,23 +47,6 @@ export default async function AgentPerformancePage({ searchParams }: { searchPar
     countCompletedSessions(agentIds, range.from, range.to, db.operations.min_call_seconds),
     agentDailyOrderStats(agentIds, range.from, range.to),
   ]);
-  // Administrators and Management only. A Team Lead's page stops at their own
-  // team's performance; how much work is left unstarted across the whole floor
-  // is a management view.
-  const canSeeLeadBreakdown = isFullAccess(user.role);
-  const leadCounts = canSeeLeadBreakdown
-    ? await agentLeadStatusCounts(agentIds, range.from, range.to, db.work_schedule.timezone)
-    : new Map<string, number>();
-
-  // Remaining means still at `new`: taken, assigned, and not yet called. Every
-  // other status is a lead somebody has already reached, whatever came of it,
-  // so counting them here would answer a different question.
-  const leadRows = scopedAgents
-    .map((a) => ({ id: a.id, name: a.full_name, remaining: leadCounts.get(`${a.id}|new`) || 0 }))
-    .filter((r) => r.remaining > 0)
-    .sort((a, b) => b.remaining - a.remaining || a.name.localeCompare(b.name));
-  const remainingTotal = leadRows.reduce((sum, r) => sum + r.remaining, 0);
-
   const daily = computeDailyAgentStats(db, agentIds, range.from, range.to, sessionCounts, orderStats);
   const rows = aggregateByPeriod(daily, granularity);
 
@@ -108,37 +91,6 @@ export default async function AgentPerformancePage({ searchParams }: { searchPar
       <div className="mb-4">
         <DateRangeFilter />
       </div>
-
-      {canSeeLeadBreakdown && (
-        <div className="mb-4 rounded-lg border border-slate-200 bg-white">
-          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-slate-100 px-4 py-3">
-            <h2 className="text-section-title text-slate-900">Remaining Leads by Agent</h2>
-            <p className="text-xs text-slate-500">
-              {formatDate(range.from)} – {formatDate(range.to)} · still to be called
-            </p>
-          </div>
-          {leadRows.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-slate-500">Nobody has leads left to call in this range.</p>
-          ) : (
-            <ul className="divide-y divide-slate-100">
-              {leadRows.map((r) => (
-                <li key={r.id} className="flex items-center justify-between gap-4 px-4 py-2">
-                  <span className="truncate text-table font-medium text-slate-700">{r.name}</span>
-                  <span className="num shrink-0 text-table font-semibold text-slate-900">
-                    {r.remaining.toLocaleString()}
-                  </span>
-                </li>
-              ))}
-              <li className="flex items-center justify-between gap-4 border-t border-slate-200 bg-slate-50 px-4 py-2">
-                <span className="text-table font-semibold text-slate-900">All agents</span>
-                <span className="num shrink-0 text-table font-semibold text-slate-900">
-                  {remainingTotal.toLocaleString()}
-                </span>
-              </li>
-            </ul>
-          )}
-        </div>
-      )}
 
       <form className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
         <div className="flex flex-wrap items-center gap-3">
