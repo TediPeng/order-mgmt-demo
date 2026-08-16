@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { can } from "@/lib/permissions";
+import { can, isFullAccess } from "@/lib/permissions";
 import { scopeAgentsForSchedule, scopeSuspensions, effectiveSuspensionStatus } from "@/lib/schedule-access";
 import { formatDate, todayInTz } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -32,7 +32,14 @@ export default async function SuspensionsPage({
   const isAgentView = user.role === "agent";
 
   const today = todayInTz();
-  const employees = scopeAgentsForSchedule(db, user);
+  // Who can actually be suspended: the floor, and only the floor.
+  //
+  // scopeAgentsForSchedule answers "whose schedule may this person see", which
+  // is a wider question -- it includes Administrators and Management, because
+  // they appear on rosters. Nobody suspends an Administrator from this form,
+  // and the test account is not a person at all, so both are dropped here
+  // rather than in the shared helper the Schedule module also relies on.
+  const employees = scopeAgentsForSchedule(db, user).filter((p) => !isFullAccess(p.role) && !p.is_test_account);
   const byId = new Map(db.profiles.map((p) => [p.id, p]));
 
   const suspensions = scopeSuspensions(user, db.suspensions, db).sort((a, b) => b.created_at.localeCompare(a.created_at));

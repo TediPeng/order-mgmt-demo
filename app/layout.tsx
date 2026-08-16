@@ -15,10 +15,13 @@ const geistMono = localFont({
   weight: "100 900",
 });
 
+// The favicon is app/icon.png, by file convention -- no `icons` entry here.
+// It used to point at /brand-logo.png, which is the 900x637 image the sidebar
+// and the login page draw: 140 KB to render at sixteen pixels in a tab. icon.png
+// is that same logo at 64x64 and 4.5 KB.
 export const metadata: Metadata = {
   title: APP_FULL_NAME,
   description: "Retention order management and agent performance monitoring for 4S ROMA",
-  icons: { icon: "/brand-logo.png" },
 };
 
 // "system" can only be resolved in the browser, so it is applied by this
