@@ -10,7 +10,7 @@ import { notify, supervisorRecipients } from "@/lib/notifications";
 import { requireUserLite, requirePermission } from "./guards";
 import { leaveRequestSchema, leaveReviewSchema } from "@/lib/validation";
 import { todayInTz } from "@/lib/utils";
-import { MAX_APPROVED_PER_DAY, fullDates } from "@/lib/leave";
+import { maxApprovedPerDay, fullDates } from "@/lib/leave";
 import type { DbShape, LeaveRequest, LeaveStatus } from "@/lib/types";
 import { describeParseFailure } from "@/lib/zod-error";
 
@@ -51,6 +51,7 @@ function closeRequestsBlockedBy(
   info: Record<string, unknown>
 ) {
   if (newlyFull.size === 0) return;
+  const cap = maxApprovedPerDay(db);
 
   for (const other of db.leave_requests) {
     if (other.status !== "pending") continue;
@@ -59,7 +60,7 @@ function closeRequestsBlockedBy(
     if (!firstFull) continue;
 
     const before = { ...other };
-    const dayWord = `${firstFull} already has ${MAX_APPROVED_PER_DAY} people approved off, which is the daily limit`;
+    const dayWord = `${firstFull} already has ${cap} people approved off, which is the daily limit`;
 
     if (firstFull === other.leave_start) {
       other.status = "rejected";
@@ -154,7 +155,7 @@ export async function fileLeaveAction(formData: FormData) {
   if (alreadyFull.length > 0) {
     redirect(
       `/leave?error=${encodeURIComponent(
-        `${alreadyFull.join(", ")} already ${alreadyFull.length === 1 ? "has" : "have"} ${MAX_APPROVED_PER_DAY} people approved off, which is the daily limit. Please pick another date.`
+        `${alreadyFull.join(", ")} already ${alreadyFull.length === 1 ? "has" : "have"} ${maxApprovedPerDay(db)} people approved off, which is the daily limit. Please pick another date.`
       )}`
     );
   }
@@ -264,6 +265,19 @@ export async function resubmitLeaveAction(formData: FormData) {
     redirect(`/leave?error=${encodeURIComponent(describeParseFailure(parsed.error))}`);
   }
   const data = parsed.data;
+
+  // Resubmitting sets fresh dates, so it meets the cap on the same terms as
+  // filing does. Without this the returned-for-revision route is a way round it.
+  const resubmitFull = fullDates(db, request!.id);
+  const resubmitBlocked = eachDate(data.leave_start, data.leave_end).filter((d) => resubmitFull.has(d));
+  if (resubmitBlocked.length > 0) {
+    redirect(
+      `/leave?error=${encodeURIComponent(
+        `${resubmitBlocked.join(", ")} already ${resubmitBlocked.length === 1 ? "has" : "have"} ${maxApprovedPerDay(db)} people approved off, which is the daily limit. Please pick another date.`
+      )}`
+    );
+  }
+
   const before = { ...request! };
 
   request!.leave_start = data.leave_start;
@@ -327,7 +341,7 @@ export async function reviewLeaveAction(formData: FormData) {
       // Nothing of this request fits, so there is no approval to be had.
       redirect(
         `/leave?error=${encodeURIComponent(
-          `Cannot approve: ${firstFull} already has ${MAX_APPROVED_PER_DAY} people approved off, which is the daily limit. Cancel an approved leave on that day, or reject this request.`
+          `Cannot approve: ${firstFull} already has ${maxApprovedPerDay(db)} people approved off, which is the daily limit. Cancel an approved leave on that day, or reject this request.`
         )}`
       );
     }
@@ -412,7 +426,7 @@ export async function reviewLeaveAction(formData: FormData) {
     "Leave Request Update",
     `Your leave request for ${request!.leave_start}${request!.leave_start !== request!.leave_end ? ` – ${request!.leave_end}` : ""} was ${label}.${
       trimmedAt
-        ? ` It originally ran to ${before.leave_end}, but ${trimmedAt} already has ${MAX_APPROVED_PER_DAY} people approved off, so that day and the ones after it were removed before approval.`
+        ? ` It originally ran to ${before.leave_end}, but ${trimmedAt} already has ${maxApprovedPerDay(db)} people approved off, so that day and the ones after it were removed before approval.`
         : ""
     }`,
     "/leave"

@@ -17,12 +17,21 @@ export async function updateWorkScheduleAction(formData: FormData) {
   const breakMinutes = Number(formData.get("break_minutes"));
   const autoMarkAbsent = formData.get("auto_mark_absent") === "on";
   const requireAttachmentForSick = formData.get("require_attachment_for_sick_leave") === "on";
+  const maxLeavePerDay = Number(formData.get("max_approved_leave_per_day"));
 
   if (!HHMM_RE.test(workStart) || !HHMM_RE.test(workEnd)) {
     redirect(`/settings/system?error=${encodeURIComponent("Scheduled time in/out must be a valid time (HH:mm).")}`);
   }
   if (!Number.isFinite(breakMinutes) || breakMinutes <= 0 || breakMinutes > 240) {
     redirect(`/settings/system?error=${encodeURIComponent("Break allowance must be between 1 and 240 minutes.")}`);
+  }
+  // Whole numbers from one up. Zero would close every day for everybody, which
+  // is a way of switching leave off rather than a limit on it, and is not what
+  // anybody reaches for this field to do.
+  if (!Number.isInteger(maxLeavePerDay) || maxLeavePerDay < 1 || maxLeavePerDay > 100) {
+    redirect(
+      `/settings/system?error=${encodeURIComponent("Agents allowed off per day must be a whole number between 1 and 100.")}`
+    );
   }
 
   const before = { ...db.work_schedule };
@@ -33,6 +42,7 @@ export async function updateWorkScheduleAction(formData: FormData) {
     break_minutes: breakMinutes,
     auto_mark_absent: autoMarkAbsent,
     require_attachment_for_sick_leave: requireAttachmentForSick,
+    max_approved_leave_per_day: maxLeavePerDay,
   };
 
   const info = await getRequestInfo();

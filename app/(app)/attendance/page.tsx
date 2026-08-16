@@ -7,7 +7,7 @@ import { formatDate, formatTime, todayInTz } from "@/lib/utils";
 import { AttendanceWidget } from "@/components/AttendanceWidget";
 import { AttendanceCalendar } from "@/components/AttendanceCalendar";
 import { RequestLeaveButton } from "@/components/RequestLeaveButton";
-import { leaveCountsByDate, leavePickerWindow } from "@/lib/leave";
+import { leaveCountsByDate, leavePickerWindow, maxApprovedPerDay } from "@/lib/leave";
 import { BackToCallButton } from "@/components/BackToCallButton";
 import { AttendanceStatusBadge, LateFlag, OverBreakFlag } from "@/components/ui/AttendanceBadge";
 import { Alert } from "@/components/ui/Alert";
@@ -167,7 +167,7 @@ export default async function AttendancePage({
               in the leads table, so without this the way back is to remember
               which lead it was on. Renders nothing when no call is running. */}
           <BackToCallButton />
-          {canFileLeave && <RequestLeaveButton action={fileLeaveAction} today={todayStr} leaveDays={leaveDays} />}
+          {canFileLeave && <RequestLeaveButton action={fileLeaveAction} today={todayStr} leaveDays={leaveDays} cap={maxApprovedPerDay(db)} />}
           {canManage && (
             <LinkButton href="/attendance/manage" variant="outline" size="sm">
               Manage Attendance

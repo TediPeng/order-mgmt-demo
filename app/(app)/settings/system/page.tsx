@@ -114,6 +114,24 @@ export default async function SystemSettingsPage({
                 required
               />
             </div>
+            <div>
+              <Label htmlFor="max_approved_leave_per_day">Agents allowed off per day</Label>
+              <Input
+                id="max_approved_leave_per_day"
+                name="max_approved_leave_per_day"
+                type="number"
+                min={1}
+                max={100}
+                defaultValue={db.work_schedule.max_approved_leave_per_day}
+                disabled={!canManage}
+                required
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Floor-wide, counting approved leave only. A Team Lead cannot approve past this, and the approval that
+                reaches it closes the day — pending requests reaching into that day are shortened or rejected, and their
+                agents told why. Lowering it never touches leave already approved.
+              </p>
+            </div>
             <div className="sm:col-span-2 space-y-2">
               <label className="flex items-center gap-2 text-sm text-slate-700">
                 <input

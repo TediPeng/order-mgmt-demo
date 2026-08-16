@@ -12,10 +12,13 @@ export function RequestLeaveButton({
   action,
   today,
   leaveDays = [],
+  cap,
 }: {
   action: (formData: FormData) => void;
   today: string;
   leaveDays?: LeaveDayCount[];
+  /** Settings › System: how many may be off per day. */
+  cap: number;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -41,6 +44,7 @@ export function RequestLeaveButton({
                 }}
                 today={today}
                 leaveDays={leaveDays}
+                cap={cap}
               />
               <p className="mt-3 text-xs text-slate-400">
                 A day off must be filed at least 3 days before the date. If you need it sooner than that,
