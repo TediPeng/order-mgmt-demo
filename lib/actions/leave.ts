@@ -26,20 +26,123 @@ function daysInclusive(start: string, end: string): number {
   return Math.round((dateOnlyUTC(end) - dateOnlyUTC(start)) / 86400000) + 1;
 }
 
-function addDaysIso(date: string, delta: number): string {
-  return new Date(dateOnlyUTC(date) + delta * 86400000).toISOString().slice(0, 10);
+
+/**
+ * The stretches of a requested range that the cap leaves room for.
+ *
+ * A full day used to end the request: everything from it onwards was cut, so
+ * somebody asking for the 1st to the 3rd with only the 2nd full lost the 3rd as
+ * well -- a day the floor could have given and nobody had a reason to refuse.
+ * The range is split around the full days instead, and each surviving stretch
+ * becomes leave.
+ *
+ * Empty when every requested day is full: there is nothing to give.
+ */
+function freeRuns(start: string, end: string, full: Set<string>): { start: string; end: string }[] {
+  const runs: { start: string; end: string }[] = [];
+  let open: { start: string; end: string } | null = null;
+
+  for (const day of eachDate(start, end)) {
+    if (full.has(day)) {
+      open = null;
+      continue;
+    }
+    if (open) open.end = day;
+    else {
+      open = { start: day, end: day };
+      runs.push(open);
+    }
+  }
+  return runs;
+}
+
+/**
+ * A second (or third) row for the stretches beyond the first.
+ *
+ * The agent filed one request and ends up holding more than one, which is worth
+ * being careful about: each carries the original's reason, type and supervisor,
+ * says in its own remarks that it was split and why, and is logged against the
+ * person whose decision split it. Nothing is invented except the boundary the
+ * cap forced.
+ */
+function splitOff(
+  db: DbShape,
+  original: LeaveRequest,
+  run: { start: string; end: string },
+  status: LeaveStatus,
+  actorId: string,
+  note: string,
+  info: Record<string, unknown>
+): LeaveRequest {
+  const copy: LeaveRequest = {
+    ...original,
+    id: uuid(),
+    leave_start: run.start,
+    leave_end: run.end,
+    leave_days: daysInclusive(run.start, run.end),
+    status,
+    management_remarks: note,
+    reviewed_by: status === "pending" ? null : actorId,
+    reviewed_at: status === "pending" ? null : nowIso(),
+    created_at: original.created_at,
+    updated_at: nowIso(),
+  };
+  db.leave_requests.push(copy);
+  logActivity(db, actorId, "LEAVE_SPLIT", "leave_request", copy.id, {
+    split_from: original.id,
+    dates: `${run.start}..${run.end}`,
+    status,
+  }, { module: "leave", updated_value: copy, ...info });
+  return copy;
+}
+
+/** Marks the days of an approved request as on_leave. */
+function markOnLeave(db: DbShape, request: LeaveRequest, actorId: string) {
+  for (const date of eachDate(request.leave_start, request.leave_end)) {
+    const att = db.attendance.find((a) => a.user_id === request.agent_id && a.work_date === date);
+    if (att) {
+      att.status = "on_leave";
+      att.updated_by = actorId;
+      att.updated_at = nowIso();
+      continue;
+    }
+    db.attendance.push({
+      id: uuid(),
+      user_id: request.agent_id,
+      work_date: date,
+      time_in: null,
+      time_out: null,
+      total_hours: null,
+      overridden: false,
+      override_reason: null,
+      overridden_by: null,
+      break_start: null,
+      break_end: null,
+      break_minutes: null,
+      scheduled_time_in: db.work_schedule.work_start,
+      scheduled_time_out: db.work_schedule.work_end,
+      minutes_late: 0,
+      over_break_minutes: 0,
+      overtime_hours: 0,
+      status: "on_leave",
+      remarks: `Approved leave request (${request.leave_type})`,
+      attachment_path: null,
+      created_by: actorId,
+      updated_by: actorId,
+      updated_at: nowIso(),
+    });
+  }
 }
 
 /**
  * Close every pending request that reaches into a day the cap just filled.
  *
- * A request is one row holding one continuous range, so a full day in the
- * middle cannot be cut out and leave the days on either side -- the request is
- * truncated at the first full day it meets, and the days beyond it go too. When
- * the very first day is the full one there is nothing left to keep and the
- * request is rejected outright. Either way the agent is told which day filled
- * and what became of their request; nobody should find this out by noticing
- * their dates changed.
+ * The full days are cut out and the stretches either side survive, each as its
+ * own row, so a Tuesday filling costs the Tuesday rather than the rest of the
+ * week behind it. When every day asked for is full there is nothing to keep and
+ * the request is rejected outright. Either way the agent is told which days
+ * filled and what became of their request; nobody should find this out by
+ * noticing their dates changed.
  *
  * The Team Lead who approved is recorded as the actor, because this is their
  * approval taking effect and not a separate decision by anyone else.
@@ -53,23 +156,26 @@ function closeRequestsBlockedBy(
   if (newlyFull.size === 0) return;
   const cap = maxApprovedPerDay(db);
 
-  for (const other of db.leave_requests) {
+  // Snapshotted: splitting appends rows, and a pending row created by this loop
+  // must not then be walked by the same loop.
+  for (const other of [...db.leave_requests]) {
     if (other.status !== "pending") continue;
 
-    const firstFull = eachDate(other.leave_start, other.leave_end).find((d) => newlyFull.has(d));
-    if (!firstFull) continue;
+    const hitDays = eachDate(other.leave_start, other.leave_end).filter((d) => newlyFull.has(d));
+    if (hitDays.length === 0) continue;
 
     const before = { ...other };
-    const dayWord = `${firstFull} already has ${cap} people approved off, which is the daily limit`;
+    const runs = freeRuns(other.leave_start, other.leave_end, newlyFull);
+    const dayWord = `${hitDays.join(", ")} ${hitDays.length === 1 ? "already has" : "already have"} ${cap} people approved off, which is the daily limit`;
 
-    if (firstFull === other.leave_start) {
+    if (runs.length === 0) {
       other.status = "rejected";
       other.management_remarks = `Automatically rejected: ${dayWord}.`;
       other.reviewed_by = actorId;
       other.reviewed_at = nowIso();
       other.updated_at = nowIso();
 
-      logActivity(db, actorId, "LEAVE_REJECTED", "leave_request", other.id, { reason: "daily_cap", date: firstFull }, {
+      logActivity(db, actorId, "LEAVE_REJECTED", "leave_request", other.id, { reason: "daily_cap", days: hitDays }, {
         module: "leave",
         previous_value: before,
         updated_value: other,
@@ -84,12 +190,22 @@ function closeRequestsBlockedBy(
         "/leave"
       );
     } else {
-      other.leave_end = addDaysIso(firstFull, -1);
-      other.leave_days = daysInclusive(other.leave_start, other.leave_end);
+      // The days that survive stay pending and stay whole: the request keeps
+      // the first stretch and the rest become rows of their own, so a full day
+      // in the middle costs that day and not everything after it.
+      other.leave_start = runs[0].start;
+      other.leave_end = runs[0].end;
+      other.leave_days = daysInclusive(runs[0].start, runs[0].end);
       other.management_remarks = `Shortened automatically: ${dayWord}.`;
       other.updated_at = nowIso();
 
-      logActivity(db, actorId, "LEAVE_SHORTENED", "leave_request", other.id, { reason: "daily_cap", date: firstFull }, {
+      const siblings = runs
+        .slice(1)
+        .map((run) =>
+          splitOff(db, other, run, "pending", actorId, `Split from the request for ${rangeLabel(before)}: ${dayWord}.`, info)
+        );
+
+      logActivity(db, actorId, "LEAVE_SHORTENED", "leave_request", other.id, { reason: "daily_cap", days: hitDays }, {
         module: "leave",
         previous_value: before,
         updated_value: other,
@@ -100,7 +216,7 @@ function closeRequestsBlockedBy(
         [other.agent_id],
         "leave_status",
         "Leave Request Shortened",
-        `Your leave request for ${before.leave_start} – ${before.leave_end} now covers ${other.leave_start}${other.leave_start !== other.leave_end ? ` – ${other.leave_end}` : ""} only. ${dayWord}, so that day and the ones after it were removed. It is still awaiting your Team Lead's decision.`,
+        `Your leave request for ${rangeLabel(before)} now covers ${[other, ...siblings].map(rangeLabel).join(" and ")}. ${dayWord}, so ${hitDays.length === 1 ? "that day was" : "those days were"} removed. What is left is still awaiting your Team Lead's decision.`,
         "/leave"
       );
     }
@@ -332,27 +448,32 @@ export async function reviewLeaveAction(formData: FormData) {
   // itself when its decision is revisited.
   const fullBefore = fullDates(db, request!.id);
   const before = { ...request! };
-  let trimmedAt: string | null = null;
+  /** Days the cap refused, and the extra rows the survivors were split into. */
+  let refused: string[] = [];
+  let extraRuns: { start: string; end: string }[] = [];
 
   if (data.decision === "approved") {
-    const firstFull = eachDate(request!.leave_start, request!.leave_end).find((d) => fullBefore.has(d));
+    refused = eachDate(request!.leave_start, request!.leave_end).filter((d) => fullBefore.has(d));
 
-    if (firstFull === request!.leave_start) {
-      // Nothing of this request fits, so there is no approval to be had.
-      redirect(
-        `/leave?error=${encodeURIComponent(
-          `Cannot approve: ${firstFull} already has ${maxApprovedPerDay(db)} people approved off, which is the daily limit. Cancel an approved leave on that day, or reject this request.`
-        )}`
-      );
-    }
+    if (refused.length > 0) {
+      const runs = freeRuns(request!.leave_start, request!.leave_end, fullBefore);
 
-    if (firstFull) {
-      // Part of it fits. Approving the part that fits beats refusing the whole
-      // request over a later day -- and it is the same cut the cap makes on
-      // everyone else's requests when a day fills, applied here by hand.
-      trimmedAt = firstFull;
-      request!.leave_end = addDaysIso(firstFull, -1);
-      request!.leave_days = daysInclusive(request!.leave_start, request!.leave_end);
+      if (runs.length === 0) {
+        // Every day asked for is full. There is no approval to be had.
+        redirect(
+          `/leave?error=${encodeURIComponent(
+            `Cannot approve: ${refused.join(", ")} already ${refused.length === 1 ? "has" : "have"} ${maxApprovedPerDay(db)} people approved off, which is the daily limit. Cancel an approved leave on one of those days, or reject this request.`
+          )}`
+        );
+      }
+
+      // The request keeps the first stretch the cap allows; the rest become
+      // rows of their own, so a full day in the middle costs that day alone
+      // instead of everything after it.
+      request!.leave_start = runs[0].start;
+      request!.leave_end = runs[0].end;
+      request!.leave_days = daysInclusive(runs[0].start, runs[0].end);
+      extraRuns = runs.slice(1);
     }
   }
 
@@ -365,48 +486,30 @@ export async function reviewLeaveAction(formData: FormData) {
   const info = await getRequestInfo();
   const actionName =
     data.decision === "approved" ? "LEAVE_APPROVED" : data.decision === "rejected" ? "LEAVE_REJECTED" : "LEAVE_RETURNED";
-  logActivity(db, user.id, actionName, "leave_request", request!.id, { decision: data.decision, ...(trimmedAt ? { shortened_at: trimmedAt, reason: "daily_cap" } : {}) }, {
+  logActivity(db, user.id, actionName, "leave_request", request!.id, { decision: data.decision, ...(refused.length ? { refused_days: refused, reason: "daily_cap" } : {}) }, {
     module: "leave",
     previous_value: before,
     updated_value: request,
     ...info,
   });
 
+  // The stretches beyond the first become rows of their own, then every
+  // approved day -- original and split alike -- is written to attendance.
+  const splitRows = extraRuns.map((run) =>
+    splitOff(
+      db,
+      request!,
+      run,
+      "approved",
+      user.id,
+      `Split from the request for ${before.leave_start} – ${before.leave_end}: ${refused.join(", ")} already had ${maxApprovedPerDay(db)} people approved off.`,
+      info
+    )
+  );
+
   if (data.decision === "approved") {
-    for (const date of eachDate(request!.leave_start, request!.leave_end)) {
-      const att = db.attendance.find((a) => a.user_id === request!.agent_id && a.work_date === date);
-      if (att) {
-        att.status = "on_leave";
-        att.updated_by = user.id;
-        att.updated_at = nowIso();
-      } else {
-        db.attendance.push({
-          id: uuid(),
-          user_id: request!.agent_id,
-          work_date: date,
-          time_in: null,
-          time_out: null,
-          total_hours: null,
-          overridden: false,
-          override_reason: null,
-          overridden_by: null,
-          break_start: null,
-          break_end: null,
-          break_minutes: null,
-          scheduled_time_in: db.work_schedule.work_start,
-          scheduled_time_out: db.work_schedule.work_end,
-          minutes_late: 0,
-          over_break_minutes: 0,
-          overtime_hours: 0,
-          status: "on_leave",
-          remarks: `Approved leave request (${request!.leave_type})`,
-          attachment_path: null,
-          created_by: user.id,
-          updated_by: user.id,
-          updated_at: nowIso(),
-        });
-      }
-    }
+    markOnLeave(db, request!, user.id);
+    for (const extra of splitRows) markOnLeave(db, extra, user.id);
   }
 
   // Whatever days this approval just filled now close for everybody else.
@@ -424,9 +527,13 @@ export async function reviewLeaveAction(formData: FormData) {
     [request!.agent_id],
     "leave_status",
     "Leave Request Update",
-    `Your leave request for ${request!.leave_start}${request!.leave_start !== request!.leave_end ? ` – ${request!.leave_end}` : ""} was ${label}.${
-      trimmedAt
-        ? ` It originally ran to ${before.leave_end}, but ${trimmedAt} already has ${maxApprovedPerDay(db)} people approved off, so that day and the ones after it were removed before approval.`
+    // Named by what was asked for, not by what survived, and then told exactly
+    // which days were kept and which were refused. An agent who asked for three
+    // days and reads "your request for the 1st was Approved" has been answered
+    // about a request they did not make.
+    `Your leave request for ${rangeLabel(before)} was ${label}.${
+      refused.length > 0
+        ? ` Approved for ${[request!, ...splitRows].map(rangeLabel).join(" and ")}. ${refused.join(", ")} could not be approved — already ${refused.length === 1 ? "has" : "have"} ${maxApprovedPerDay(db)} people off, which is the daily limit.`
         : ""
     }`,
     "/leave"
@@ -434,4 +541,9 @@ export async function reviewLeaveAction(formData: FormData) {
 
   await writeDb(db);
   redirect("/leave?reviewed=1");
+}
+
+/** "2026-09-01" for one day, "2026-09-01 – 2026-09-03" for more. */
+function rangeLabel(r: { leave_start: string; leave_end: string }): string {
+  return r.leave_start === r.leave_end ? r.leave_start : `${r.leave_start} – ${r.leave_end}`;
 }
