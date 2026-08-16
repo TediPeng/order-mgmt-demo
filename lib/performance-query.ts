@@ -14,6 +14,44 @@ import { SALE_STATUSES } from "@/lib/validation";
  * that file is pure, and the data it merges comes from its callers.
  */
 
+/**
+ * How many leads each agent holds at each status, over a date range.
+ *
+ * Ranged on created_at rather than order_date, unlike everything else in this
+ * file. order_date is set when a lead becomes an order, and most leads never
+ * get that far -- in production 51,907 of 52,344 rows have none, including
+ * every one of the 47,263 sitting at `new`. Ranging on it would answer "how
+ * many sales" while claiming to answer "how many leads".
+ *
+ * Keyed `agentId|status`. Only pairs that actually have leads come back: there
+ * are 26 statuses and no agent is in more than a handful, so a zero for every
+ * combination would be mostly noise to send and mostly noise to render.
+ */
+export async function agentLeadStatusCounts(
+  agentIds: string[],
+  from: string,
+  to: string,
+  timezone: string
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  if (agentIds.length === 0) return counts;
+
+  const { data, error } = await supabaseAdmin.rpc("agent_lead_status_counts", {
+    p_agent_ids: agentIds,
+    p_from: from,
+    p_to: to,
+    // The company timezone decides which day a lead was taken on, the same way
+    // it decides what a scheduled time means.
+    p_timezone: timezone,
+  });
+  if (error) throw new Error(`Agent lead status query failed: ${error.message}`);
+
+  for (const row of (data || []) as { agent_id: string; status: string; leads: number | string }[]) {
+    counts.set(`${row.agent_id}|${row.status}`, Number(row.leads));
+  }
+  return counts;
+}
+
 export interface DailyOrderStat {
   orders: number;
   quantity: number;
