@@ -107,10 +107,16 @@ export function LeaveAvailability({
                   isEdge ? "ring-2" : "",
                 ].join(" ")}
               >
-                {/* The 1st carries its month, so five weeks of squares never
-                    leave you counting forward to work out which one it is. */}
-                <span className={`font-semibold ${isSelected ? "text-[var(--brand-primary)]" : ""}`}>
-                  {isFirstOfMonth(d.date) ? shortMonth(d.date) + " " : ""}
+                {/* Every square carries its month, so a date read off this grid
+                    is never a bare number somebody has to place. The month drops
+                    on a phone, where the column is about 32px and "Aug 26" does
+                    not fit -- the span above the grid still names the months
+                    there, and the 1st is where the eye finds the turn. */}
+                <span
+                  className={`whitespace-nowrap font-semibold ${isSelected ? "text-[var(--brand-primary)]" : ""}`}
+                >
+                  <span className="hidden sm:inline">{shortMonth(d.date)} </span>
+                  <span className="sm:hidden">{isFirstOfMonth(d.date) ? shortMonth(d.date) + " " : ""}</span>
                   {dayOfMonth(d.date)}
                 </span>
                 {/* Each line names itself, so a figure is never left to be
