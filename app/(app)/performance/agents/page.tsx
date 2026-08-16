@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { scopeAgentsForUser, computeDailyAgentStats, aggregateByPeriod, resolveDateRange, type Granularity } from "@/lib/performance";
 import { agentDailyOrderStats, agentLeadStatusCounts } from "@/lib/performance-query";
-import { LEAD_STATUSES, LEAD_STATUS_LABELS } from "@/lib/validation";
+
 import { countCompletedSessions } from "@/lib/call-sessions";
 import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
@@ -48,25 +48,21 @@ export default async function AgentPerformancePage({ searchParams }: { searchPar
     agentDailyOrderStats(agentIds, range.from, range.to),
   ]);
   // Administrators and Management only. A Team Lead's page stops at their own
-  // team's performance; this is the whole floor's book of work, counted by
-  // where each lead currently stands, and that is a management view.
+  // team's performance; how much work is left unstarted across the whole floor
+  // is a management view.
   const canSeeLeadBreakdown = isFullAccess(user.role);
   const leadCounts = canSeeLeadBreakdown
     ? await agentLeadStatusCounts(agentIds, range.from, range.to, db.work_schedule.timezone)
     : new Map<string, number>();
 
-  // Only the statuses this range actually reached. There are 26 of them and a
-  // real range reaches perhaps two thirds — columns of zeros for the rest would
-  // push the ones that matter off the side of the screen.
-  const liveStatuses = LEAD_STATUSES.filter((s) => scopedAgents.some((a) => (leadCounts.get(`${a.id}|${s}`) || 0) > 0));
+  // Remaining means still at `new`: taken, assigned, and not yet called. Every
+  // other status is a lead somebody has already reached, whatever came of it,
+  // so counting them here would answer a different question.
   const leadRows = scopedAgents
-    .map((a) => {
-      const byStatus = liveStatuses.map((s) => leadCounts.get(`${a.id}|${s}`) || 0);
-      return { id: a.id, name: a.full_name, byStatus, total: byStatus.reduce((sum, n) => sum + n, 0) };
-    })
-    .filter((r) => r.total > 0)
-    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
-  const leadTotals = liveStatuses.map((_, i) => leadRows.reduce((sum, r) => sum + r.byStatus[i], 0));
+    .map((a) => ({ id: a.id, name: a.full_name, remaining: leadCounts.get(`${a.id}|new`) || 0 }))
+    .filter((r) => r.remaining > 0)
+    .sort((a, b) => b.remaining - a.remaining || a.name.localeCompare(b.name));
+  const remainingTotal = leadRows.reduce((sum, r) => sum + r.remaining, 0);
 
   const daily = computeDailyAgentStats(db, agentIds, range.from, range.to, sessionCounts, orderStats);
   const rows = aggregateByPeriod(daily, granularity);
@@ -116,57 +112,30 @@ export default async function AgentPerformancePage({ searchParams }: { searchPar
       {canSeeLeadBreakdown && (
         <div className="mb-4 rounded-lg border border-slate-200 bg-white">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-slate-100 px-4 py-3">
-            <h2 className="text-section-title text-slate-900">Leads by Agent</h2>
+            <h2 className="text-section-title text-slate-900">Remaining Leads by Agent</h2>
             <p className="text-xs text-slate-500">
-              {formatDate(range.from)} – {formatDate(range.to)} · counted by the status each lead stands at now
+              {formatDate(range.from)} – {formatDate(range.to)} · still to be called
             </p>
           </div>
           {leadRows.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-slate-500">No leads fall in this range.</p>
+            <p className="px-4 py-6 text-sm text-slate-500">Nobody has leads left to call in this range.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-table">
-                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="sticky left-0 z-10 bg-slate-50 px-4 py-2 font-semibold">Agent</th>
-                    <th className="px-3 py-2 text-right font-semibold">Total</th>
-                    {liveStatuses.map((s) => (
-                      <th key={s} className="whitespace-nowrap px-3 py-2 text-right font-semibold">
-                        {LEAD_STATUS_LABELS[s]}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {leadRows.map((r) => (
-                    <tr key={r.id} className="hover:bg-slate-50">
-                      <th className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-2 text-left font-medium text-slate-700">
-                        {r.name}
-                      </th>
-                      <td className="num px-3 py-2 font-semibold text-slate-900">{r.total.toLocaleString()}</td>
-                      {r.byStatus.map((n, i) => (
-                        // A zero in a column somebody else has leads in is worth
-                        // seeing, but not worth reading as hard as a real count.
-                        <td key={liveStatuses[i]} className={`num px-3 py-2 ${n === 0 ? "text-slate-300" : "text-slate-700"}`}>
-                          {n === 0 ? "—" : n.toLocaleString()}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-900">
-                  <tr>
-                    <th className="sticky left-0 z-10 bg-slate-50 px-4 py-2 text-left">All agents</th>
-                    <td className="num px-3 py-2">{leadTotals.reduce((s, n) => s + n, 0).toLocaleString()}</td>
-                    {leadTotals.map((n, i) => (
-                      <td key={liveStatuses[i]} className="num px-3 py-2">
-                        {n.toLocaleString()}
-                      </td>
-                    ))}
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+            <ul className="divide-y divide-slate-100">
+              {leadRows.map((r) => (
+                <li key={r.id} className="flex items-center justify-between gap-4 px-4 py-2">
+                  <span className="truncate text-table font-medium text-slate-700">{r.name}</span>
+                  <span className="num shrink-0 text-table font-semibold text-slate-900">
+                    {r.remaining.toLocaleString()}
+                  </span>
+                </li>
+              ))}
+              <li className="flex items-center justify-between gap-4 border-t border-slate-200 bg-slate-50 px-4 py-2">
+                <span className="text-table font-semibold text-slate-900">All agents</span>
+                <span className="num shrink-0 text-table font-semibold text-slate-900">
+                  {remainingTotal.toLocaleString()}
+                </span>
+              </li>
+            </ul>
           )}
         </div>
       )}
