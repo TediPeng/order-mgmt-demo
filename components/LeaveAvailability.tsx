@@ -3,89 +3,176 @@
 import type { LeaveDayCount } from "@/lib/leave";
 
 /**
- * How many people are already off, day by day, beside the date fields.
+ * How many people are already off, day by day, as a calendar you pick from.
  *
  * The question an agent asks before picking a date is whether anybody else is
  * already off then, and the only way to find out was to ask a Team Lead. This
- * answers it while they are choosing rather than after they have filed.
+ * answers it while they are choosing rather than after they have filed -- and
+ * because the answer is about dates, choosing happens here too: tap a day to
+ * set it, tap a second to stretch the range, tap the one picked day again to
+ * clear it. The date fields stay in step, so anyone who would rather type
+ * still can.
  *
  * Counts only, never names: how many are off is what the decision needs, and who
  * they are is their colleagues' business.
  *
- * Nothing here blocks anything. No rule in this system caps leave per day, so a
- * busy date is a thing to know rather than a thing forbidden — presenting it as
- * a limit would invent a policy the company has not set.
+ * Nothing here blocks anything except the past. No rule in this system caps leave
+ * per day, so a busy date is a thing to know rather than a thing forbidden --
+ * presenting it as a limit would invent a policy the company has not set. The
+ * three days' notice is still only warned about, on submit, where it was.
  */
 export function LeaveAvailability({
   days,
   start,
   end,
+  today,
+  onPick,
 }: {
   days: LeaveDayCount[];
-  /** The range currently typed into the form, for marking the rows it covers. */
+  /** The range currently in the form, for marking the days it covers. */
   start: string;
   end: string;
+  /** Earlier than this cannot be filed for, so it cannot be picked. */
+  today: string;
+  onPick: (date: string) => void;
 }) {
   if (days.length === 0) return null;
 
-  const label = (iso: string) =>
-    new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      weekday: "short",
-      timeZone: "UTC",
-    });
+  const selected = (iso: string) => Boolean(start && end && iso >= start && iso <= end);
 
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Who is already off</p>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Who is already off — tap to pick, tap again to clear
+      </p>
 
-      <ul className="max-h-48 space-y-1 overflow-auto">
-        {days.map((d) => {
-          const total = d.approved + d.pending;
-          // Inside the range being asked for. Those are the rows the agent is
-          // actually deciding about; the rest are context.
-          const picked = Boolean(start && end && d.date >= start && d.date <= end);
-          const tone =
-            total === 0
-              ? "border-green-200 bg-green-50 text-green-800"
-              : total === 1
-                ? "border-slate-200 bg-white text-slate-700"
-                : "border-amber-200 bg-amber-50 text-amber-900";
+      {/* Seven columns on a phone leave about 32px of readable width, which the
+          full words overrun. They shorten there rather than the calendar
+          sliding sideways: a month you have to drag to see is worse than a word
+          you have to expand. */}
+      <div>
+        <div className="grid grid-cols-7 gap-1 text-center">
+          {WEEKDAYS.map((w) => (
+            <div key={w} className="pb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              {w}
+            </div>
+          ))}
 
-          return (
-            <li
-              key={d.date}
-              className={`flex items-center justify-between gap-3 rounded-md border px-2.5 py-1.5 text-xs ${tone} ${
-                picked ? "ring-1 ring-[var(--brand-primary)]" : ""
-              }`}
-            >
-              <span className="font-medium">{label(d.date)}</span>
-              <span className="flex items-center gap-1.5">
-                {total === 0 ? (
-                  <span className="font-medium">Nobody is off</span>
-                ) : (
-                  <>
-                    {d.approved > 0 && (
-                      <span className="rounded-full bg-white/70 px-1.5 py-0.5 font-semibold">
-                        {d.approved} approved
-                      </span>
-                    )}
-                    {d.pending > 0 && (
-                      <span className="rounded-full bg-white/70 px-1.5 py-0.5 font-semibold">{d.pending} pending</span>
-                    )}
-                  </>
-                )}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
+          {/* The grid wraps at seven on its own, so the days go in as one list. */}
+          {days.map((d) => {
+            const total = d.approved + d.pending;
+            const past = d.date < today;
+            const isSelected = selected(d.date);
+            const isEdge = d.date === start || d.date === end;
 
-      <p className="mt-2 text-xs text-slate-400">
-        Pending requests are included — they may still be approved before yours. This does not block anything; it is
-        here to help you choose a date.
+            return (
+              <button
+                key={d.date}
+                type="button"
+                disabled={past}
+                onClick={() => onPick(d.date)}
+                aria-pressed={isSelected}
+                aria-label={`${longLabel(d.date)} — ${countSentence(d)}`}
+                className={[
+                  "flex h-14 flex-col items-center justify-center rounded-md border px-0.5 text-xs transition",
+                  past
+                    ? "cursor-default border-transparent text-slate-300"
+                    : // A free day is the answer the whole panel exists to give, so
+                      // it is the one the eye should catch without reading: the box
+                      // itself goes green. A day with people off keeps a plain box
+                      // and says so in words, because there the count is the point
+                      // and a tinted box would only shout over it.
+                      total === 0
+                      ? "border-green-200 bg-green-50 text-green-900 hover:border-green-400"
+                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-400",
+                  isSelected ? "ring-1 ring-[var(--brand-primary)]" : "",
+                  isEdge ? "ring-2" : "",
+                ].join(" ")}
+              >
+                {/* The 1st carries its month, so five weeks of squares never
+                    leave you counting forward to work out which one it is. */}
+                <span className={`font-semibold ${isSelected ? "text-[var(--brand-primary)]" : ""}`}>
+                  {isFirstOfMonth(d.date) ? shortMonth(d.date) + " " : ""}
+                  {dayOfMonth(d.date)}
+                </span>
+                {/* Each line names itself, so a figure is never left to be
+                    guessed at from its colour alone. */}
+                {!past &&
+                  (total === 0 ? (
+                    <span className="whitespace-nowrap text-[9px] font-medium leading-tight text-green-700">
+                      <Word short="Free" full="Available" />
+                    </span>
+                  ) : (
+                    <>
+                      {d.approved > 0 && (
+                        <span className="whitespace-nowrap text-[9px] font-semibold leading-tight text-green-700">
+                          {d.approved} <Word short="Appr" full="Approved" />
+                        </span>
+                      )}
+                      {d.pending > 0 && (
+                        <span className="whitespace-nowrap text-[9px] font-semibold leading-tight text-amber-600">
+                          {d.pending} <Word short="Pend" full="Pending" />
+                        </span>
+                      )}
+                    </>
+                  ))}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* No key any more: the squares spell out their own words. What is left is
+          the one thing they cannot say, which is what a pending count means for
+          a date being chosen now. */}
+      <p className="mt-2 text-[11px] text-slate-500">
+        Pending requests may still be approved before yours. Nothing here blocks a date; it is to help you choose one.
       </p>
     </div>
   );
+}
+
+/** The same label at two lengths, picked by the width there is to say it in. */
+function Word({ short, full }: { short: string; full: string }) {
+  return (
+    <>
+      <span className="sm:hidden">{short}</span>
+      <span className="hidden sm:inline">{full}</span>
+    </>
+  );
+}
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** All of these read the date in UTC, the timezone the strings were built in. */
+function utc(iso: string) {
+  return new Date(`${iso}T00:00:00Z`);
+}
+
+function dayOfMonth(iso: string): number {
+  return utc(iso).getUTCDate();
+}
+
+function isFirstOfMonth(iso: string): boolean {
+  return dayOfMonth(iso) === 1;
+}
+
+function shortMonth(iso: string): string {
+  return utc(iso).toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+}
+
+function longLabel(iso: string): string {
+  return utc(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    weekday: "short",
+    timeZone: "UTC",
+  });
+}
+
+function countSentence(d: LeaveDayCount): string {
+  const parts: string[] = [];
+  if (d.approved > 0) parts.push(`${d.approved} approved`);
+  if (d.pending > 0) parts.push(`${d.pending} pending`);
+  return parts.length === 0 ? "Nobody is off" : parts.join(", ");
 }

@@ -48,6 +48,21 @@ export function leaveCountsByDate(db: DbShape, from: string, to: string): LeaveD
   return Array.from(byDate.values());
 }
 
+/** Weeks the date picker draws, and therefore the window that needs counting.
+ *
+ * Whole weeks starting on the Sunday of this week: a calendar has to begin on a
+ * Sunday or the columns stop meaning anything, and the few already-past days
+ * that pulls in keep the grid aligned for the price of one row. Five weeks is
+ * the trade -- well past the three days' notice and far enough to plan around,
+ * while leaving the popup short enough that the Submit button stays in view.
+ */
+export function leavePickerWindow(today: string): { from: string; to: string } {
+  const sunday = new Date(`${today}T00:00:00Z`);
+  sunday.setUTCDate(sunday.getUTCDate() - sunday.getUTCDay());
+  const from = sunday.toISOString().slice(0, 10);
+  return { from, to: addDays(from, 34) };
+}
+
 /** One day on, in UTC so the arithmetic never lands on a daylight-saving edge. */
 function addDays(date: string, delta: number): string {
   const d = new Date(`${date}T00:00:00Z`);

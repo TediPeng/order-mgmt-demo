@@ -44,6 +44,27 @@ export function LeaveRequestForm({
   const days = useMemo(() => daysInclusive(start, end), [start, end]);
   const advance = useMemo(() => daysInAdvance(today, start), [today, start]);
 
+  /**
+   * One tap is a single day; a second tap on another day stretches it into a
+   * range, whichever side it falls. Tapping the one day already picked clears
+   * it again -- the way out of a wrong choice is the same gesture that made it.
+   * Once a range exists the next tap starts over, so there is never a
+   * half-picked state the form cannot submit.
+   */
+  function pickDate(date: string) {
+    if (start === end && date === start) {
+      setStart("");
+      setEnd("");
+    } else if (!start || !end || start !== end) {
+      setStart(date);
+      setEnd(date);
+    } else if (date > start) {
+      setEnd(date);
+    } else {
+      setStart(date);
+    }
+  }
+
   // Section 0.4: three days' notice, warned about here and enforced on the
   // server. The Emergency exemption went with the type picker — see the note
   // beside the hidden field below.
@@ -68,7 +89,7 @@ export function LeaveRequestForm({
         {/* Between the dates and the rest of the form: it is read while the
             dates are being chosen, not after. */}
         <div className="sm:col-span-2">
-          <LeaveAvailability days={leaveDays} start={start} end={end} />
+          <LeaveAvailability days={leaveDays} start={start} end={end} today={today} onPick={pickDate} />
         </div>
         {/* There is one kind of request now: a day off.
 
