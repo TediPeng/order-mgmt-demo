@@ -10,7 +10,8 @@ import { notify, supervisorRecipients } from "@/lib/notifications";
 import { requireUserLite, requirePermission } from "./guards";
 import { leaveRequestSchema, leaveReviewSchema } from "@/lib/validation";
 import { todayInTz } from "@/lib/utils";
-import type { LeaveRequest, LeaveStatus } from "@/lib/types";
+import { MAX_APPROVED_PER_DAY, fullDates } from "@/lib/leave";
+import type { DbShape, LeaveRequest, LeaveStatus } from "@/lib/types";
 import { describeParseFailure } from "@/lib/zod-error";
 
 const MAX_SIZE = 5 * 1024 * 1024;
@@ -23,6 +24,86 @@ function dateOnlyUTC(d: string): number {
 
 function daysInclusive(start: string, end: string): number {
   return Math.round((dateOnlyUTC(end) - dateOnlyUTC(start)) / 86400000) + 1;
+}
+
+function addDaysIso(date: string, delta: number): string {
+  return new Date(dateOnlyUTC(date) + delta * 86400000).toISOString().slice(0, 10);
+}
+
+/**
+ * Close every pending request that reaches into a day the cap just filled.
+ *
+ * A request is one row holding one continuous range, so a full day in the
+ * middle cannot be cut out and leave the days on either side -- the request is
+ * truncated at the first full day it meets, and the days beyond it go too. When
+ * the very first day is the full one there is nothing left to keep and the
+ * request is rejected outright. Either way the agent is told which day filled
+ * and what became of their request; nobody should find this out by noticing
+ * their dates changed.
+ *
+ * The Team Lead who approved is recorded as the actor, because this is their
+ * approval taking effect and not a separate decision by anyone else.
+ */
+function closeRequestsBlockedBy(
+  db: DbShape,
+  actorId: string,
+  newlyFull: Set<string>,
+  info: Record<string, unknown>
+) {
+  if (newlyFull.size === 0) return;
+
+  for (const other of db.leave_requests) {
+    if (other.status !== "pending") continue;
+
+    const firstFull = eachDate(other.leave_start, other.leave_end).find((d) => newlyFull.has(d));
+    if (!firstFull) continue;
+
+    const before = { ...other };
+    const dayWord = `${firstFull} already has ${MAX_APPROVED_PER_DAY} people approved off, which is the daily limit`;
+
+    if (firstFull === other.leave_start) {
+      other.status = "rejected";
+      other.management_remarks = `Automatically rejected: ${dayWord}.`;
+      other.reviewed_by = actorId;
+      other.reviewed_at = nowIso();
+      other.updated_at = nowIso();
+
+      logActivity(db, actorId, "LEAVE_REJECTED", "leave_request", other.id, { reason: "daily_cap", date: firstFull }, {
+        module: "leave",
+        previous_value: before,
+        updated_value: other,
+        ...info,
+      });
+      notify(
+        db,
+        [other.agent_id],
+        "leave_status",
+        "Leave Request Not Approved",
+        `Your leave request for ${before.leave_start}${before.leave_start !== before.leave_end ? ` – ${before.leave_end}` : ""} was not approved. ${dayWord}. Please pick another date.`,
+        "/leave"
+      );
+    } else {
+      other.leave_end = addDaysIso(firstFull, -1);
+      other.leave_days = daysInclusive(other.leave_start, other.leave_end);
+      other.management_remarks = `Shortened automatically: ${dayWord}.`;
+      other.updated_at = nowIso();
+
+      logActivity(db, actorId, "LEAVE_SHORTENED", "leave_request", other.id, { reason: "daily_cap", date: firstFull }, {
+        module: "leave",
+        previous_value: before,
+        updated_value: other,
+        ...info,
+      });
+      notify(
+        db,
+        [other.agent_id],
+        "leave_status",
+        "Leave Request Shortened",
+        `Your leave request for ${before.leave_start} – ${before.leave_end} now covers ${other.leave_start}${other.leave_start !== other.leave_end ? ` – ${other.leave_end}` : ""} only. ${dayWord}, so that day and the ones after it were removed. It is still awaiting your Team Lead's decision.`,
+        "/leave"
+      );
+    }
+  }
 }
 
 function eachDate(start: string, end: string): string[] {
@@ -62,6 +143,19 @@ export async function fileLeaveAction(formData: FormData) {
   if (data.leave_type !== "emergency" && daysInAdvance < 3) {
     redirect(
       `/leave?error=${encodeURIComponent("Leave requests must be submitted at least three days before the requested leave date.")}`
+    );
+  }
+
+  // The calendar greys these days out, so reaching here means the form was
+  // bypassed. Refused rather than filed and auto-closed later: a request that
+  // cannot be approved is not worth a Team Lead's attention.
+  const full = fullDates(db);
+  const alreadyFull = eachDate(data.leave_start, data.leave_end).filter((d) => full.has(d));
+  if (alreadyFull.length > 0) {
+    redirect(
+      `/leave?error=${encodeURIComponent(
+        `${alreadyFull.join(", ")} already ${alreadyFull.length === 1 ? "has" : "have"} ${MAX_APPROVED_PER_DAY} people approved off, which is the daily limit. Please pick another date.`
+      )}`
     );
   }
 
@@ -219,7 +313,35 @@ export async function reviewLeaveAction(formData: FormData) {
     redirect(`/leave?error=${encodeURIComponent("You can only review requests for your own team.")}`);
   }
 
+  // The cap is enforced here rather than only warned about. Measured without
+  // this request, so a request already approved is never counted against
+  // itself when its decision is revisited.
+  const fullBefore = fullDates(db, request!.id);
   const before = { ...request! };
+  let trimmedAt: string | null = null;
+
+  if (data.decision === "approved") {
+    const firstFull = eachDate(request!.leave_start, request!.leave_end).find((d) => fullBefore.has(d));
+
+    if (firstFull === request!.leave_start) {
+      // Nothing of this request fits, so there is no approval to be had.
+      redirect(
+        `/leave?error=${encodeURIComponent(
+          `Cannot approve: ${firstFull} already has ${MAX_APPROVED_PER_DAY} people approved off, which is the daily limit. Cancel an approved leave on that day, or reject this request.`
+        )}`
+      );
+    }
+
+    if (firstFull) {
+      // Part of it fits. Approving the part that fits beats refusing the whole
+      // request over a later day -- and it is the same cut the cap makes on
+      // everyone else's requests when a day fills, applied here by hand.
+      trimmedAt = firstFull;
+      request!.leave_end = addDaysIso(firstFull, -1);
+      request!.leave_days = daysInclusive(request!.leave_start, request!.leave_end);
+    }
+  }
+
   request!.status = data.decision as LeaveStatus;
   request!.management_remarks = data.management_remarks || null;
   request!.reviewed_by = user.id;
@@ -229,7 +351,7 @@ export async function reviewLeaveAction(formData: FormData) {
   const info = await getRequestInfo();
   const actionName =
     data.decision === "approved" ? "LEAVE_APPROVED" : data.decision === "rejected" ? "LEAVE_REJECTED" : "LEAVE_RETURNED";
-  logActivity(db, user.id, actionName, "leave_request", request!.id, { decision: data.decision }, {
+  logActivity(db, user.id, actionName, "leave_request", request!.id, { decision: data.decision, ...(trimmedAt ? { shortened_at: trimmedAt, reason: "daily_cap" } : {}) }, {
     module: "leave",
     previous_value: before,
     updated_value: request,
@@ -273,13 +395,26 @@ export async function reviewLeaveAction(formData: FormData) {
     }
   }
 
+  // Whatever days this approval just filled now close for everybody else.
+  // Only the days it filled -- a day that was already at the cap closed when it
+  // got there, and reopening that decision here would make one approval answer
+  // for another's consequences.
+  if (data.decision === "approved") {
+    const newlyFull = new Set([...fullDates(db)].filter((d) => !fullBefore.has(d)));
+    closeRequestsBlockedBy(db, user.id, newlyFull, info);
+  }
+
   const label = data.decision === "returned_for_revision" ? "Returned for Revision" : data.decision[0].toUpperCase() + data.decision.slice(1);
   notify(
     db,
     [request!.agent_id],
     "leave_status",
     "Leave Request Update",
-    `Your leave request for ${request!.leave_start}${request!.leave_start !== request!.leave_end ? ` – ${request!.leave_end}` : ""} was ${label}.`,
+    `Your leave request for ${request!.leave_start}${request!.leave_start !== request!.leave_end ? ` – ${request!.leave_end}` : ""} was ${label}.${
+      trimmedAt
+        ? ` It originally ran to ${before.leave_end}, but ${trimmedAt} already has ${MAX_APPROVED_PER_DAY} people approved off, so that day and the ones after it were removed before approval.`
+        : ""
+    }`,
     "/leave"
   );
 

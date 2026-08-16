@@ -1,6 +1,16 @@
 import type { DbShape } from "@/lib/types";
 
 
+/**
+ * How many people may be off on one day, floor-wide.
+ *
+ * This is a real cap, not a guide: a Team Lead cannot approve past it, and the
+ * second approval on a day closes that day for everybody else. It is floor-wide
+ * because coverage is, which means one team's approval can close a date on
+ * another team's agent.
+ */
+export const MAX_APPROVED_PER_DAY = 2;
+
 export interface LeaveDayCount {
   /** YYYY-MM-DD */
   date: string;
@@ -18,9 +28,10 @@ export interface LeaveDayCount {
  * to find out was to ask a Team Lead. Counts only — who is off is their
  * colleagues' business, and the number is what the decision needs.
  *
- * Floor-wide rather than per team. Nothing caps leave per day in this system, so
- * there is no quota to be measured against; the count is a signal about
- * coverage, and coverage is a floor-wide question.
+ * Floor-wide rather than per team, because MAX_APPROVED_PER_DAY is floor-wide.
+ * The approved figure is the one measured against that cap; pending is shown
+ * beside it because those requests may be approved before yours and take the
+ * last place, but they hold nothing on their own.
  *
  * A request spanning several days counts on every day it covers, which is why
  * this expands the range rather than counting rows.
@@ -61,6 +72,31 @@ export function leavePickerWindow(today: string): { from: string; to: string } {
   sunday.setUTCDate(sunday.getUTCDate() - sunday.getUTCDay());
   const from = sunday.toISOString().slice(0, 10);
   return { from, to: addDays(from, 34) };
+}
+
+/**
+ * The dates already at the cap, counting approved leave only.
+ *
+ * Unwindowed: the cap has to be checked against whatever dates a request
+ * actually covers, which is not the same span the picker happens to draw.
+ * `ignoreRequestId` leaves one request out, so a request can be measured
+ * against the day without counting itself.
+ */
+export function fullDates(db: DbShape, ignoreRequestId?: string): Set<string> {
+  const approved = new Map<string, number>();
+  for (const request of db.leave_requests) {
+    if (request.status !== "approved") continue;
+    if (ignoreRequestId && request.id === ignoreRequestId) continue;
+    for (let day = request.leave_start; day <= request.leave_end; day = addDays(day, 1)) {
+      approved.set(day, (approved.get(day) || 0) + 1);
+    }
+  }
+
+  const full = new Set<string>();
+  for (const [date, count] of approved) {
+    if (count >= MAX_APPROVED_PER_DAY) full.add(date);
+  }
+  return full;
 }
 
 /** One day on, in UTC so the arithmetic never lands on a daylight-saving edge. */
