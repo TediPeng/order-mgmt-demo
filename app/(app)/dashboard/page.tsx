@@ -202,7 +202,60 @@ export default async function DashboardPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader title={`Welcome back, ${user.full_name.split(" ")[0]}`} description={today} />
+      {/* The quick actions ride in the title row rather than in a card further
+          down. They are the first thing anybody opens this page to do, and a
+          card below the statistics meant scrolling past the numbers to reach
+          the buttons that act on them. */}
+      <PageHeader
+        title={`Welcome back, ${user.full_name.split(" ")[0]}`}
+        description={today}
+        actions={
+          <>
+            {/* Two separate actions on purpose: one creates a lead, the other a
+                regular customer. They are not the same thing.
+
+                Not offered to agents. Leads reach an agent by assignment, and
+                one they typed in themselves is a row nobody handed them —
+                counted in their queue, in their conversion, and traceable to no
+                source. Everyone else keeps it. */}
+            {!isAgent && (
+              <LinkButton href="/leads/new" variant="outline" size="sm">
+                <PlusCircle className="h-4 w-4" /> New Lead
+              </LinkButton>
+            )}
+            {/* Opens their own Regular Customers list, where each row can raise
+                an order from the customer's saved details. */}
+            {canViewRegularCustomers && (
+              <LinkButton href="/regular-customers" variant="outline" size="sm">
+                <UserCheck className="h-4 w-4" /> Regular Customers
+              </LinkButton>
+            )}
+            {canAddRegularCustomer && (
+              <LinkButton href="/regular-customers/new" variant="outline" size="sm">
+                <UserPlus className="h-4 w-4" /> Add Regular Customer
+              </LinkButton>
+            )}
+            {canImport && (
+              <LinkButton href="/leads/import" variant="outline" size="sm">
+                <FileSpreadsheet className="h-4 w-4" /> Import Excel
+              </LinkButton>
+            )}
+            {canUploadCallLogs && (
+              <LinkButton href="/call-logs" variant="outline" size="sm">
+                <PhoneCall className="h-4 w-4" /> Upload Call Log
+              </LinkButton>
+            )}
+            {/* Which numbers have already been rung today. Every other calling
+                figure in the app is a count; this is the list. */}
+            <LinkButton href="/calls" variant="outline" size="sm">
+              <PhoneCall className="h-4 w-4" /> Numbers Called
+            </LinkButton>
+            <LinkButton href="/attendance" variant="outline" size="sm">
+              <Clock3 className="h-4 w-4" /> View Attendance
+            </LinkButton>
+          </>
+        }
+      />
 
       {isAgent && agentStats ? (
         <>
@@ -378,49 +431,6 @@ export default async function DashboardPage({
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-3">
-              {/* Two separate actions on purpose: one creates a lead, the
-                  other a regular customer. They are not the same thing. */}
-              <LinkButton href="/leads/new" variant="outline">
-                <PlusCircle className="h-4 w-4" /> New Lead
-              </LinkButton>
-              {/* Opens their own Regular Customers list, where each row can
-                  raise an order from the customer's saved details. */}
-              {canViewRegularCustomers && (
-                <LinkButton href="/regular-customers" variant="outline">
-                  <UserCheck className="h-4 w-4" /> Regular Customers
-                </LinkButton>
-              )}
-              {canAddRegularCustomer && (
-                <LinkButton href="/regular-customers/new" variant="outline">
-                  <UserPlus className="h-4 w-4" /> Add Regular Customer
-                </LinkButton>
-              )}
-              {canImport && (
-                <LinkButton href="/leads/import" variant="outline">
-                  <FileSpreadsheet className="h-4 w-4" /> Import Excel
-                </LinkButton>
-              )}
-              {canUploadCallLogs && (
-                <LinkButton href="/call-logs" variant="outline">
-                  <PhoneCall className="h-4 w-4" /> Upload Call Log
-                </LinkButton>
-              )}
-              {/* Which numbers have already been rung today. Every other
-                  calling figure in the app is a count; this is the list. */}
-              <LinkButton href="/calls" variant="outline">
-                <PhoneCall className="h-4 w-4" /> Numbers Called
-              </LinkButton>
-              <LinkButton href="/attendance" variant="outline">
-                <Clock3 className="h-4 w-4" /> View Attendance
-              </LinkButton>
-            </CardContent>
-          </Card>
-
           {/* Audit-derived, so it follows audit_logs:view like every other
               audit surface. Agents were shown their own entries only, which is
               not a leak — but it is still the audit trail wearing a different

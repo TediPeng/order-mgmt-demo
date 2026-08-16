@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { ButtonHTMLAttributes, forwardRef } from "react";
 
-type Variant = "primary" | "secondary" | "outline" | "ghost" | "danger";
+type Variant = "primary" | "secondary" | "outline" | "ghost" | "danger" | "success";
 type Size = "sm" | "md" | "lg";
 
 const variantClasses: Record<Variant, string> = {
@@ -11,6 +11,11 @@ const variantClasses: Record<Variant, string> = {
   outline: "border border-slate-300 text-slate-700 hover:bg-slate-50 bg-white",
   ghost: "text-slate-600 hover:bg-slate-100",
   danger: "bg-red-600 text-white hover:bg-red-700",
+  /** The affirmative counterpart to danger. Approving leave was drawn with
+   * hand-rolled green classes at the one call site that needed it; a variant
+   * means it carries the same height, radius, focus ring and disabled state as
+   * every other button instead of only the colour being right. */
+  success: "bg-green-600 text-white hover:bg-green-700",
 };
 
 /** How a disabled button looks, for every variant.
