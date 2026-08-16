@@ -715,3 +715,17 @@ export function statusesMatching(term: string): (typeof LEAD_STATUSES)[number][]
     (s) => LEAD_STATUS_LABELS[s].toLowerCase().includes(t) || s.replace(/_/g, " ").includes(t)
   );
 }
+
+/**
+ * How a leave type reads on screen.
+ *
+ * There is one kind of request now — a day off — and `unpaid` is the value it
+ * stores, because that is what every request in this system's history already
+ * is. Sick and Emergency stay in the enum so no historical row has to be
+ * rewritten, and so a column that once meant something keeps meaning it.
+ */
+export const LEAVE_TYPE_LABELS: Record<(typeof LEAVE_TYPES)[number], string> = {
+  unpaid: "Day off",
+  sick: "Sick",
+  emergency: "Emergency",
+};

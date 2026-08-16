@@ -43,8 +43,8 @@ export function RequestLeaveButton({
                 leaveDays={leaveDays}
               />
               <p className="mt-3 text-xs text-slate-400">
-                Unpaid and Sick leave must be filed at least 3 days in advance. Emergency leave may be filed within 3
-                days but will be flagged for urgent review.
+                Dapat isumite ang day off nang hindi bababa sa 3 araw bago ang petsa. Kung kailangan ito nang mas maaga,
+                ang Team Lead ang makakapag-ayos.
               </p>
             </div>
           </div>

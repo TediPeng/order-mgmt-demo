@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/Button";
 import { LeaveDetailsButton } from "@/components/LeaveDetailsButton";
 import { LeaveRequestForm } from "@/components/LeaveRequestForm";
 import { RequestLeaveButton } from "@/components/RequestLeaveButton";
+import { LEAVE_TYPE_LABELS } from "@/lib/validation";
 import { leaveCountsByDate } from "@/lib/leave";
 import { fileLeaveAction, cancelLeaveAction, resubmitLeaveAction, reviewLeaveAction } from "@/lib/actions/leave";
 
@@ -218,7 +219,7 @@ export default async function LeavePage({
                       </td>
                       <td className="px-4 py-2">{r.leave_days}</td>
                       <td className="px-4 py-2 capitalize">
-                        {r.leave_type}
+                        {LEAVE_TYPE_LABELS[r.leave_type]}
                         {r.urgent_review && (
                           <Badge className="ml-1 bg-red-100 text-red-700">Urgent review</Badge>
                         )}
@@ -373,7 +374,7 @@ export default async function LeavePage({
                           </Link>
                         )}
                       </td>
-                      <td className="px-4 py-2 capitalize">{r.leave_type}</td>
+                      <td className="px-4 py-2">{LEAVE_TYPE_LABELS[r.leave_type]}</td>
                       {/* The reason opens the whole request. It used to be a
                           `title` tooltip: late, clipped at the window edge,
                           impossible to select, and gone as soon as the pointer

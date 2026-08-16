@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { LeaveAvailability } from "@/components/LeaveAvailability";
 import type { LeaveDayCount } from "@/lib/leave";
-import { Input, Label, Select, Textarea } from "@/components/ui/Field";
+import { Input, Label, Textarea } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 
 function daysInclusive(start: string, end: string): number | null {
@@ -40,16 +40,15 @@ export function LeaveRequestForm({
 }) {
   const [start, setStart] = useState(defaults?.leave_start || "");
   const [end, setEnd] = useState(defaults?.leave_end || "");
-  const [leaveType, setLeaveType] = useState(defaults?.leave_type || "unpaid");
   const [showWarning, setShowWarning] = useState(false);
   const days = useMemo(() => daysInclusive(start, end), [start, end]);
   const advance = useMemo(() => daysInAdvance(today, start), [today, start]);
 
-  // Section 0.4: within the 3-day window, only Emergency Leave (with a reason,
-  // already enforced by the textarea's `required`) may proceed -- Sick now
-  // follows the same rule as Unpaid, blocked with a modal warning.
+  // Section 0.4: three days' notice, warned about here and enforced on the
+  // server. The Emergency exemption went with the type picker — see the note
+  // beside the hidden field below.
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    if (leaveType !== "emergency" && advance !== null && advance < 3) {
+    if (advance !== null && advance < 3) {
       e.preventDefault();
       setShowWarning(true);
     }
@@ -71,14 +70,14 @@ export function LeaveRequestForm({
         <div className="sm:col-span-2">
           <LeaveAvailability days={leaveDays} start={start} end={end} />
         </div>
-        <div>
-          <Label htmlFor="leave_type">Leave type</Label>
-          <Select id="leave_type" name="leave_type" value={leaveType} onChange={(e) => setLeaveType(e.target.value)}>
-            <option value="sick">Sick</option>
-            <option value="emergency">Emergency</option>
-            <option value="unpaid">Unpaid</option>
-          </Select>
-        </div>
+        {/* There is one kind of request now: a day off.
+
+            Sick, Emergency and Unpaid were three names for the same form, and
+            in the whole history of this system every request ever filed was
+            Unpaid — nobody chose the other two. The column keeps that value so
+            no row has to be rewritten and no enum has to change; what the agent
+            no longer has is a choice that never meant anything to them. */}
+        <input type="hidden" name="leave_type" value="unpaid" />
         <div>
           <Label>Number of leave days</Label>
           <Input value={days ?? ""} disabled placeholder="Select dates" />
@@ -88,7 +87,7 @@ export function LeaveRequestForm({
           <Textarea id="reason" name="reason" rows={3} required defaultValue={defaults?.reason} placeholder="Explain the reason for your leave request" />
         </div>
         <div className="sm:col-span-2">
-          <Label htmlFor="attachment">Supporting document (optional for Emergency/Unpaid; may be required for Sick, PDF/JPG/PNG, max 5 MB)</Label>
+          <Label htmlFor="attachment">Supporting document (optional — PDF/JPG/PNG, max 5 MB)</Label>
           <input
             id="attachment"
             name="attachment"
@@ -108,7 +107,7 @@ export function LeaveRequestForm({
             <h3 className="text-base font-semibold text-slate-900">Leave request too close to the date</h3>
             <p className="mt-2 text-sm text-slate-600">{WARNING_MESSAGE}</p>
             <p className="mt-2 text-xs text-slate-400">
-              Only Emergency Leave (with a reason) may be filed within three days.
+              Kung kailangan talaga ngayon, ipaalam sa Team Lead — sila ang makakapag-ayos nito.
             </p>
             <div className="mt-5 flex justify-end">
               <Button variant="outline" size="sm" onClick={() => setShowWarning(false)}>
