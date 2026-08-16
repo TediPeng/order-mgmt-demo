@@ -1,6 +1,6 @@
 "use client";
 
-import type { LeaveDayCount } from "@/lib/leave";
+import { MAX_APPROVED_PER_DAY, type LeaveDayCount } from "@/lib/leave";
 
 /**
  * How many people are already off, day by day, as a calendar you pick from.
@@ -62,6 +62,10 @@ export function LeaveAvailability({
           {days.map((d) => {
             const total = d.approved + d.pending;
             const past = d.date < today;
+            // At the cap the day is closed, and a day you cannot be given is
+            // not a day to offer: it greys out with the past rather than
+            // letting someone pick a date the server will only refuse.
+            const isFull = d.approved >= MAX_APPROVED_PER_DAY;
             const isSelected = selected(d.date);
             const isEdge = d.date === start || d.date === end;
 
@@ -69,22 +73,24 @@ export function LeaveAvailability({
               <button
                 key={d.date}
                 type="button"
-                disabled={past}
+                disabled={past || isFull}
                 onClick={() => onPick(d.date)}
                 aria-pressed={isSelected}
-                aria-label={`${longLabel(d.date)} — ${countSentence(d)}`}
+                aria-label={`${longLabel(d.date)} — ${isFull ? "Full, nobody else can be off" : countSentence(d)}`}
                 className={[
                   "flex h-14 flex-col items-center justify-center rounded-md border px-0.5 text-xs transition",
                   past
                     ? "cursor-default border-transparent text-slate-300"
-                    : // A free day is the answer the whole panel exists to give, so
-                      // it is the one the eye should catch without reading: the box
-                      // itself goes green. A day with people off keeps a plain box
-                      // and says so in words, because there the count is the point
-                      // and a tinted box would only shout over it.
-                      total === 0
-                      ? "border-green-200 bg-green-50 text-green-900 hover:border-green-400"
-                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-400",
+                    : isFull
+                      ? "cursor-default border-slate-200 bg-slate-100 text-slate-400"
+                      : // A free day is the answer the whole panel exists to give, so
+                        // it is the one the eye should catch without reading: the box
+                        // itself goes green. A day with people off keeps a plain box
+                        // and says so in words, because there the count is the point
+                        // and a tinted box would only shout over it.
+                        total === 0
+                        ? "border-green-200 bg-green-50 text-green-900 hover:border-green-400"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-400",
                   isSelected ? "ring-1 ring-[var(--brand-primary)]" : "",
                   isEdge ? "ring-2" : "",
                 ].join(" ")}
@@ -98,7 +104,11 @@ export function LeaveAvailability({
                 {/* Each line names itself, so a figure is never left to be
                     guessed at from its colour alone. */}
                 {!past &&
-                  (total === 0 ? (
+                  (isFull ? (
+                    <span className="whitespace-nowrap text-[9px] font-semibold uppercase leading-tight tracking-wide">
+                      Full
+                    </span>
+                  ) : total === 0 ? (
                     <span className="whitespace-nowrap text-[9px] font-medium leading-tight text-green-700">
                       <Word short="Free" full="Available" />
                     </span>
@@ -126,7 +136,8 @@ export function LeaveAvailability({
           the one thing they cannot say, which is what a pending count means for
           a date being chosen now. */}
       <p className="mt-2 text-[11px] text-slate-500">
-        Pending requests may still be approved before yours. Nothing here blocks a date; it is to help you choose one.
+        Only {MAX_APPROVED_PER_DAY} people may be off per day. A day reading Full has reached that and cannot be
+        picked. Pending requests do not hold a place, but they may be approved before yours and take the last one.
       </p>
     </div>
   );
