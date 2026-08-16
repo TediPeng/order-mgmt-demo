@@ -1,6 +1,4 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Paperclip } from "lucide-react";
 import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
@@ -10,15 +8,19 @@ import { Alert } from "@/components/ui/Alert";
 import { LeaveStatusBadge } from "@/components/ui/Badge";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
-import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
-import { Input, Select } from "@/components/ui/Field";
-import { Button } from "@/components/ui/Button";
-import { LeaveDetailsButton } from "@/components/LeaveDetailsButton";
 import { LeaveRequestForm } from "@/components/LeaveRequestForm";
 import { RequestLeaveButton } from "@/components/RequestLeaveButton";
+import { LeaveQueueCalendar } from "@/components/LeaveQueueCalendar";
 import { LEAVE_TYPE_LABELS } from "@/lib/validation";
 import { leaveCountsByDate, leavePickerWindow, maxApprovedPerDay } from "@/lib/leave";
-import { fileLeaveAction, cancelLeaveAction, resubmitLeaveAction, reviewLeaveAction } from "@/lib/actions/leave";
+import { fileLeaveAction, cancelLeaveAction, resubmitLeaveAction } from "@/lib/actions/leave";
+
+/** One month either side of a YYYY-MM, in UTC. */
+function shiftMonth(month: string, delta: number): string {
+  const [y, m] = month.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
 
 export default async function LeavePage({
   searchParams,
@@ -29,13 +31,8 @@ export default async function LeavePage({
     cancelled?: string;
     reviewed?: string;
     resubmit?: string;
-    status?: string;
-    type?: string;
-    agent?: string;
-    /** "dates" orders the queue by when the leave starts, not when it was filed. */
-    sort?: string;
-    /** YYYY-MM-DD — narrows the queue to everyone off on that day. */
-    on?: string;
+    /** YYYY-MM — the month the queue calendar is showing. */
+    month?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -82,39 +79,65 @@ export default async function LeavePage({
   const clashesFor = (r: (typeof scopedQueue)[number]) =>
     clashPool.filter((other) => other.id !== r.id && overlaps(other, r));
 
-  let queue = [...scopedQueue];
-  if (sp.status) queue = queue.filter((r) => r.status === sp.status);
-  if (sp.type) queue = queue.filter((r) => r.leave_type === sp.type);
-  if (sp.agent) queue = queue.filter((r) => r.agent_id === sp.agent);
-  // "Who is off on this day" — the question the clash badge asks in one click.
-  if (sp.on) queue = queue.filter((r) => r.leave_start <= sp.on! && sp.on! <= r.leave_end);
-
-  // Filed order is right for working a backlog; leave-date order is right for
-  // seeing a week's cover, because it puts everyone asking for the same day
-  // next to each other.
-  const sortByDates = sp.sort === "dates";
-  queue.sort((a, b) =>
-    sortByDates
-      ? a.leave_start.localeCompare(b.leave_start) || a.leave_end.localeCompare(b.leave_end)
-      : b.created_at.localeCompare(a.created_at)
-  );
-
-  /** Keeps the other filters when one control changes. */
-  const queueHref = (overrides: Record<string, string | undefined>) => {
-    const params = new URLSearchParams();
-    const merged = { status: sp.status, type: sp.type, agent: sp.agent, sort: sp.sort, on: sp.on, ...overrides };
-    Object.entries(merged).forEach(([k, v]) => {
-      if (v) params.set(k, v);
-    });
-    const qs = params.toString();
-    return qs ? `?${qs}` : "?";
-  };
-
-  const queueAgents = canApprove
-    ? db.profiles.filter((p) => (isFullAccess(user.role) ? true : p.team_lead_id === user.id))
-    : [];
-
   const today = todayInTz();
+  // The month the queue calendar draws.
+  const queueMonth = /^\d{4}-\d{2}$/.test(sp.month || "") ? sp.month! : today.slice(0, 7);
+  const monthHref = (m: string) => `?month=${m}`;
+
+  /** Everything the details panel shows, formatted here so the panel and the
+   *  row it came from can never disagree about a date. */
+  const detailsFor = (r: (typeof scopedQueue)[number]) => ({
+    id: r.id,
+    agentName: byId.get(r.agent_id) || "—",
+    filedAt: formatDateTime(r.created_at),
+    dates: `${formatDate(r.leave_start)} – ${formatDate(r.leave_end)}`,
+    days: r.leave_days,
+    leaveType: r.leave_type,
+    reason: r.reason,
+    attachmentHref: r.attachment_path ? `/api/leave/${r.id}/attachment` : null,
+    status: r.status,
+    urgent: r.urgent_review,
+    supervisorName: r.supervisor_id ? byId.get(r.supervisor_id) || null : null,
+    remarks: r.management_remarks,
+    reviewedBy: r.reviewed_by ? byId.get(r.reviewed_by) || null : null,
+    reviewedAt: r.reviewed_at ? formatDateTime(r.reviewed_at) : null,
+    clashes: clashesFor(r).map((c) => ({
+      name: byId.get(c.agent_id) || "—",
+      dates: `${formatDate(c.leave_start)} – ${formatDate(c.leave_end)}`,
+      status: c.status,
+    })),
+  });
+
+  // The grid the queue calendar draws: whole weeks around the month, each day
+  // carrying the requests that land on it. Undecided ones are what an approver
+  // is here for; approved ones are counted for the cap.
+  const queueDays = (() => {
+    const [y, m] = queueMonth.split("-").map(Number);
+    const start = new Date(Date.UTC(y, m - 1, 1));
+    start.setUTCDate(start.getUTCDate() - start.getUTCDay());
+    const last = new Date(Date.UTC(y, m, 0));
+    const end = new Date(last);
+    end.setUTCDate(end.getUTCDate() + (6 - end.getUTCDay()));
+
+    const out = [];
+    for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+      const date = d.toISOString().slice(0, 10);
+      const onDay = scopedQueue.filter((r) => r.leave_start <= date && date <= r.leave_end);
+      out.push({
+        date,
+        requests: onDay.filter((r) => r.status === "pending").map(detailsFor),
+        // Everything settled, newest decision first, so the most recent answer
+        // on a contested day is the one read first.
+        decided: onDay
+          .filter((r) => r.status !== "pending")
+          .sort((a, b) => (b.reviewed_at || b.updated_at).localeCompare(a.reviewed_at || a.updated_at))
+          .map(detailsFor),
+        approved: onDay.filter((r) => r.status === "approved").length,
+      });
+    }
+    return out;
+  })();
+
   // The six weeks the leave form's calendar draws.
   const leaveWindow = leavePickerWindow(today);
   const leaveDays = leaveCountsByDate(db, leaveWindow.from, leaveWindow.to);
@@ -277,206 +300,21 @@ export default async function LeavePage({
             <CardTitle>Review Queue</CardTitle>
           </CardHeader>
           <CardContent>
-            <form className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-5">
-              {/* Carried through the filter form so changing a Select does not
-                  quietly drop the day being looked at. */}
-              {sp.on && <input type="hidden" name="on" value={sp.on} />}
-              <Select name="status" defaultValue={sp.status || ""}>
-                <option value="">All statuses</option>
-                <option value="pending">Pending</option>
-                <option value="approved">Approved</option>
-                <option value="rejected">Rejected</option>
-                <option value="cancelled">Cancelled</option>
-                <option value="returned_for_revision">Returned for Revision</option>
-              </Select>
-              <Select name="type" defaultValue={sp.type || ""}>
-                <option value="">All types</option>
-                <option value="sick">Sick</option>
-                <option value="emergency">Emergency</option>
-                <option value="unpaid">Unpaid</option>
-              </Select>
-              <Select name="agent" defaultValue={sp.agent || ""}>
-                <option value="">All agents</option>
-                {queueAgents.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.full_name}
-                  </option>
-                ))}
-              </Select>
-              {/* Filed order works a backlog; leave-date order shows a week's
-                  cover, because everyone asking for the same day lands together. */}
-              <Select name="sort" defaultValue={sp.sort || ""}>
-                <option value="">Sort: newest filed</option>
-                <option value="dates">Sort: leave date</option>
-              </Select>
-              <Button type="submit" variant="secondary">
-                Filter
-              </Button>
-            </form>
+            {/* The month first, the list under it. Which day is heavy is not a
+                thing a filed-order list can show, and it is the first thing an
+                approver needs to know. */}
+            <LeaveQueueCalendar
+              month={queueMonth}
+              days={queueDays}
+              today={today}
+              cap={maxApprovedPerDay(db)}
+              // Changing month drops the day filter: you have gone to look
+              // somewhere else, and a list still pinned to a date you can no
+              // longer see in the grid is a filter nobody remembers setting.
+              prevMonthHref={monthHref(shiftMonth(queueMonth, -1))}
+              nextMonthHref={monthHref(shiftMonth(queueMonth, 1))}
+            />
 
-            {sp.on && (
-              <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-                <span className="text-slate-500">
-                  Showing everyone off on <span className="font-medium text-slate-800">{formatDate(sp.on)}</span> —{" "}
-                  <span className="font-medium text-slate-800">{queue.length}</span> request
-                  {queue.length === 1 ? "" : "s"}.
-                </span>
-                <Link
-                  href={queueHref({ on: undefined })}
-                  className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                >
-                  Show all dates
-                </Link>
-              </div>
-            )}
-
-            <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200">
-              <table className="w-full min-w-[900px] text-left text-sm">
-                <thead className="sticky top-0 z-20 bg-slate-50 shadow-sm text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="px-4 py-2">Agent</th>
-                    <th className="px-4 py-2">Filed</th>
-                    <th className="px-4 py-2">Dates</th>
-                    <th className="px-4 py-2">Type</th>
-                    <th className="px-4 py-2">Reason</th>
-                    <th className="px-4 py-2">Status</th>
-                    <th className="px-4 py-2">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {queue.map((r) => {
-                    const clashes = clashesFor(r);
-                    return (
-                    <tr key={r.id}>
-                      <td className="px-4 py-2">
-                        {byId.get(r.agent_id) || "—"}
-                        {r.urgent_review && <Badge className="ml-1 bg-red-100 text-red-700">Urgent</Badge>}
-                      </td>
-                      <td className="px-4 py-2 text-slate-500">{formatDateTime(r.created_at)}</td>
-                      <td className="px-4 py-2">
-                        {formatDate(r.leave_start)} – {formatDate(r.leave_end)} ({r.leave_days}d)
-                        {/* How many others are already off across these days.
-                            The names are on the tooltip for a glance; the link
-                            narrows the queue to that day for the whole answer.
-                            Only on rows that could still be decided — telling
-                            somebody a cancelled request clashes is noise. */}
-                        {clashes.length > 0 && CLASHABLE.has(r.status) && (
-                          <Link
-                            href={queueHref({ on: r.leave_start, status: undefined })}
-                            title={clashes
-                              .map(
-                                (c) =>
-                                  `${byId.get(c.agent_id) || "—"}: ${formatDate(c.leave_start)} – ${formatDate(
-                                    c.leave_end
-                                  )} (${c.status})`
-                              )
-                              .join("\n")}
-                            className="ml-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-200"
-                          >
-                            +{clashes.length} same day{clashes.length === 1 ? "" : "s"}
-                          </Link>
-                        )}
-                      </td>
-                      <td className="px-4 py-2">{LEAVE_TYPE_LABELS[r.leave_type]}</td>
-                      {/* The reason opens the whole request. It used to be a
-                          `title` tooltip: late, clipped at the window edge,
-                          impossible to select, and gone as soon as the pointer
-                          moved — a poor way to read the sentence a day off is
-                          being decided on. */}
-                      <td className="px-4 py-2">
-                        <div className="flex items-center gap-1">
-                          <LeaveDetailsButton
-                            preview={r.reason}
-                            details={{
-                              agentName: byId.get(r.agent_id) || "—",
-                              filedAt: formatDateTime(r.created_at),
-                              dates: `${formatDate(r.leave_start)} – ${formatDate(r.leave_end)}`,
-                              days: r.leave_days,
-                              leaveType: r.leave_type,
-                              reason: r.reason,
-                              attachmentHref: r.attachment_path ? `/api/leave/${r.id}/attachment` : null,
-                              status: r.status,
-                              urgent: r.urgent_review,
-                              supervisorName: r.supervisor_id ? byId.get(r.supervisor_id) || null : null,
-                              remarks: r.management_remarks,
-                              reviewedBy: r.reviewed_by ? byId.get(r.reviewed_by) || null : null,
-                              reviewedAt: r.reviewed_at ? formatDateTime(r.reviewed_at) : null,
-                              clashes: clashes.map((c) => ({
-                                name: byId.get(c.agent_id) || "—",
-                                dates: `${formatDate(c.leave_start)} – ${formatDate(c.leave_end)}`,
-                                status: c.status,
-                              })),
-                            }}
-                          />
-                          {r.attachment_path && (
-                            <a
-                              href={`/api/leave/${r.id}/attachment`}
-                              title="Download the attachment"
-                              className="inline-flex shrink-0 text-[var(--brand-primary)]"
-                            >
-                              <Paperclip className="h-3 w-3" />
-                            </a>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2">
-                        <LeaveStatusBadge status={r.status} />
-                      </td>
-                      <td className="px-4 py-2">
-                        {r.status === "pending" ? (
-                          <form action={reviewLeaveAction} className="flex flex-wrap items-center gap-1">
-                            <input type="hidden" name="id" value={r.id} />
-                            <Input name="management_remarks" placeholder="Remarks (optional)" className="w-32 text-xs" />
-                            <button
-                              name="decision"
-                              value="approved"
-                              className="rounded bg-green-600 px-2 py-1 text-xs font-medium text-white hover:bg-green-700"
-                            >
-                              Approve
-                            </button>
-                            <ConfirmSubmitButton
-                              name="decision"
-                              value="rejected"
-                              confirmMessage="Reject this leave request? The agent will be notified."
-                              className="rounded bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700"
-                            >
-                              Reject
-                            </ConfirmSubmitButton>
-                            <button
-                              name="decision"
-                              value="returned_for_revision"
-                              className="rounded bg-orange-500 px-2 py-1 text-xs font-medium text-white hover:bg-orange-600"
-                            >
-                              Return
-                            </button>
-                          </form>
-                        ) : (
-                          <span className="text-xs text-slate-400">
-                            {r.reviewed_by ? `by ${byId.get(r.reviewed_by) || "—"}` : "—"}
-                          </span>
-                        )}
-                        {canViewHistory && (
-                          <a
-                            href={`/audit-logs?entity_id=${r.id}`}
-                            className="ml-2 text-xs font-medium text-slate-500 hover:underline"
-                          >
-                            History
-                          </a>
-                        )}
-                      </td>
-                    </tr>
-                    );
-                  })}
-                  {queue.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
-                        No leave requests match this filter.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
           </CardContent>
         </Card>
       )}
