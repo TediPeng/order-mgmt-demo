@@ -17,7 +17,7 @@ import { LeaveDetailsButton } from "@/components/LeaveDetailsButton";
 import { LeaveRequestForm } from "@/components/LeaveRequestForm";
 import { RequestLeaveButton } from "@/components/RequestLeaveButton";
 import { LEAVE_TYPE_LABELS } from "@/lib/validation";
-import { leaveCountsByDate } from "@/lib/leave";
+import { leaveCountsByDate, leavePickerWindow } from "@/lib/leave";
 import { fileLeaveAction, cancelLeaveAction, resubmitLeaveAction, reviewLeaveAction } from "@/lib/actions/leave";
 
 export default async function LeavePage({
@@ -115,10 +115,9 @@ export default async function LeavePage({
     : [];
 
   const today = todayInTz();
-  // The next fortnight, for the availability panel in the leave form.
-  const fortnightEnd = new Date(today + "T00:00:00Z");
-  fortnightEnd.setUTCDate(fortnightEnd.getUTCDate() + 13);
-  const leaveDays = leaveCountsByDate(db, today, fortnightEnd.toISOString().slice(0, 10));
+  // The six weeks the leave form's calendar draws.
+  const leaveWindow = leavePickerWindow(today);
+  const leaveDays = leaveCountsByDate(db, leaveWindow.from, leaveWindow.to);
 
   return (
     <div className="space-y-6">
