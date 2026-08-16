@@ -5,11 +5,18 @@ import type { DbShape } from "@/lib/types";
  * How many people may be off on one day, floor-wide.
  *
  * This is a real cap, not a guide: a Team Lead cannot approve past it, and the
- * second approval on a day closes that day for everybody else. It is floor-wide
+ * approval that reaches it closes that day for everybody else. It is floor-wide
  * because coverage is, which means one team's approval can close a date on
  * another team's agent.
+ *
+ * Set in Settings › System, so it is read from the database rather than fixed
+ * here. Everything that enforces the cap takes it as an argument instead of
+ * reaching for a constant, which is what keeps the answer the same in the
+ * calendar, on filing, and on approval within one request.
  */
-export const MAX_APPROVED_PER_DAY = 2;
+export function maxApprovedPerDay(db: DbShape): number {
+  return db.work_schedule.max_approved_leave_per_day;
+}
 
 export interface LeaveDayCount {
   /** YYYY-MM-DD */
@@ -28,7 +35,7 @@ export interface LeaveDayCount {
  * to find out was to ask a Team Lead. Counts only — who is off is their
  * colleagues' business, and the number is what the decision needs.
  *
- * Floor-wide rather than per team, because MAX_APPROVED_PER_DAY is floor-wide.
+ * Floor-wide rather than per team, because the cap is floor-wide.
  * The approved figure is the one measured against that cap; pending is shown
  * beside it because those requests may be approved before yours and take the
  * last place, but they hold nothing on their own.
@@ -92,9 +99,10 @@ export function fullDates(db: DbShape, ignoreRequestId?: string): Set<string> {
     }
   }
 
+  const cap = maxApprovedPerDay(db);
   const full = new Set<string>();
   for (const [date, count] of approved) {
-    if (count >= MAX_APPROVED_PER_DAY) full.add(date);
+    if (count >= cap) full.add(date);
   }
   return full;
 }

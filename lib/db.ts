@@ -29,6 +29,9 @@ function time5OrNull(v: unknown): string | null {
   return v === null || v === undefined ? null : String(v).slice(0, 5);
 }
 
+/** The cap a database that has never been configured starts from. */
+export const DEFAULT_MAX_APPROVED_LEAVE_PER_DAY = 2;
+
 const DEFAULT_WORK_SCHEDULE: WorkSchedule = {
   work_start: "08:00",
   work_end: "17:00",
@@ -36,6 +39,7 @@ const DEFAULT_WORK_SCHEDULE: WorkSchedule = {
   timezone: process.env.APP_TIMEZONE || "Asia/Manila",
   auto_mark_absent: false,
   require_attachment_for_sick_leave: false,
+  max_approved_leave_per_day: DEFAULT_MAX_APPROVED_LEAVE_PER_DAY,
 };
 
 const SYSTEM_ROLE_DEFS: RoleDef[] = [
@@ -612,6 +616,10 @@ async function readDbUncached(withOrders: boolean): Promise<DbShape> {
       timezone: settings.timezone,
       auto_mark_absent: settings.auto_mark_absent,
       require_attachment_for_sick_leave: settings.require_attachment_for_sick_leave,
+      // Falls back rather than trusting the column to be there: a database that
+      // has not taken the migration yet would otherwise read as a cap of zero,
+      // which closes every day for everybody.
+      max_approved_leave_per_day: num(settings.max_approved_leave_per_day ?? DEFAULT_MAX_APPROVED_LEAVE_PER_DAY),
     },
     // Empty on read, like activity_log: it carries only what this request asks
     // to delete.
@@ -767,6 +775,7 @@ export async function writeDb(db: DbShape): Promise<void> {
       timezone: db.work_schedule.timezone,
       auto_mark_absent: db.work_schedule.auto_mark_absent,
       require_attachment_for_sick_leave: db.work_schedule.require_attachment_for_sick_leave,
+      max_approved_leave_per_day: db.work_schedule.max_approved_leave_per_day,
       top_performer_min_ratio: db.performance_thresholds.top_performer_min_ratio,
       needs_improvement_max_ratio: db.performance_thresholds.needs_improvement_max_ratio,
       rts_warning_threshold_pct: db.performance_thresholds.rts_warning_threshold_pct,

@@ -17,7 +17,7 @@ import { LeaveDetailsButton } from "@/components/LeaveDetailsButton";
 import { LeaveRequestForm } from "@/components/LeaveRequestForm";
 import { RequestLeaveButton } from "@/components/RequestLeaveButton";
 import { LEAVE_TYPE_LABELS } from "@/lib/validation";
-import { leaveCountsByDate, leavePickerWindow } from "@/lib/leave";
+import { leaveCountsByDate, leavePickerWindow, maxApprovedPerDay } from "@/lib/leave";
 import { fileLeaveAction, cancelLeaveAction, resubmitLeaveAction, reviewLeaveAction } from "@/lib/actions/leave";
 
 export default async function LeavePage({
@@ -126,7 +126,7 @@ export default async function LeavePage({
         {/* Filing now happens through the popup (Section 5) -- also available
             from the Attendance module. Resubmitting a returned request stays
             an inline flow below since it's tied to a specific existing request. */}
-        {canFile && !resubmitTarget && <RequestLeaveButton action={fileLeaveAction} today={today} leaveDays={leaveDays} />}
+        {canFile && !resubmitTarget && <RequestLeaveButton action={fileLeaveAction} today={today} leaveDays={leaveDays} cap={maxApprovedPerDay(db)} />}
       </div>
 
       {sp.error && <Alert kind="error">{sp.error}</Alert>}
@@ -160,6 +160,8 @@ export default async function LeavePage({
             </div>
 
             <input type="hidden" name="id" value={resubmitTarget.id} />
+            {/* Resubmitting picks dates like filing does, and the cap applies the
+                same way, so it gets the same calendar to pick them in. */}
             <LeaveRequestForm
               action={async (formData) => {
                 "use server";
@@ -167,6 +169,8 @@ export default async function LeavePage({
                 await resubmitLeaveAction(formData);
               }}
               today={today}
+              leaveDays={leaveDays}
+              cap={maxApprovedPerDay(db)}
               defaults={{
                 leave_start: resubmitTarget.leave_start,
                 leave_end: resubmitTarget.leave_end,

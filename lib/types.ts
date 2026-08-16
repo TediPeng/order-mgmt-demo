@@ -521,6 +521,8 @@ export interface WorkSchedule {
   timezone: string;
   auto_mark_absent: boolean;
   require_attachment_for_sick_leave: boolean;
+  /** How many agents may be off on one day, floor-wide. See lib/leave.ts. */
+  max_approved_leave_per_day: number;
 }
 
 export const MODULES = [

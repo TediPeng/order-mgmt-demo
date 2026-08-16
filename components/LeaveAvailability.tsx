@@ -1,6 +1,6 @@
 "use client";
 
-import { MAX_APPROVED_PER_DAY, type LeaveDayCount } from "@/lib/leave";
+import type { LeaveDayCount } from "@/lib/leave";
 
 /**
  * How many people are already off, day by day, as a calendar you pick from.
@@ -26,6 +26,7 @@ export function LeaveAvailability({
   start,
   end,
   today,
+  cap,
   onPick,
 }: {
   days: LeaveDayCount[];
@@ -34,6 +35,9 @@ export function LeaveAvailability({
   end: string;
   /** Earlier than this cannot be filed for, so it cannot be picked. */
   today: string;
+  /** Settings › System. Passed in rather than imported: this runs in the
+   *  browser, where there is no database to ask. */
+  cap: number;
   onPick: (date: string) => void;
 }) {
   if (days.length === 0) return null;
@@ -42,9 +46,17 @@ export function LeaveAvailability({
 
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-        Who is already off — tap to pick, tap again to clear
-      </p>
+      {/* Five weeks of bare numbers begin at whatever day of the month today
+          happens to be, so the grid opens on something like "16" with nothing
+          saying which 16. The span carries the month names and the year; the
+          1st still carries its own month, which is what marks where one turns
+          into the next. */}
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Who is already off — tap to pick, tap again to clear
+        </p>
+        <p className="text-xs font-semibold text-slate-600">{monthSpan(days[0].date, days[days.length - 1].date)}</p>
+      </div>
 
       {/* Seven columns on a phone leave about 32px of readable width, which the
           full words overrun. They shorten there rather than the calendar
@@ -65,7 +77,7 @@ export function LeaveAvailability({
             // At the cap the day is closed, and a day you cannot be given is
             // not a day to offer: it greys out with the past rather than
             // letting someone pick a date the server will only refuse.
-            const isFull = d.approved >= MAX_APPROVED_PER_DAY;
+            const isFull = d.approved >= cap;
             const isSelected = selected(d.date);
             const isEdge = d.date === start || d.date === end;
 
@@ -136,7 +148,7 @@ export function LeaveAvailability({
           the one thing they cannot say, which is what a pending count means for
           a date being chosen now. */}
       <p className="mt-2 text-[11px] text-slate-500">
-        Only {MAX_APPROVED_PER_DAY} people may be off per day. A day reading Full has reached that and cannot be
+        Only {cap} {cap === 1 ? "person" : "people"} may be off per day. A day reading Full has reached that and cannot be
         picked. Pending requests do not hold a place, but they may be approved before yours and take the last one.
       </p>
     </div>
@@ -170,6 +182,23 @@ function isFirstOfMonth(iso: string): boolean {
 
 function shortMonth(iso: string): string {
   return utc(iso).toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+}
+
+/**
+ * "August 2026", or "August – September 2026" when the weeks cross a month.
+ *
+ * The year is only said once when both ends share it, and said twice when they
+ * do not, which is the only time it is in question.
+ */
+function monthSpan(from: string, to: string): string {
+  const a = utc(from);
+  const b = utc(to);
+  const month = (d: Date) => d.toLocaleDateString("en-US", { month: "long", timeZone: "UTC" });
+  const year = (d: Date) => d.getUTCFullYear();
+
+  if (year(a) !== year(b)) return `${month(a)} ${year(a)} – ${month(b)} ${year(b)}`;
+  if (month(a) !== month(b)) return `${month(a)} – ${month(b)} ${year(b)}`;
+  return `${month(a)} ${year(a)}`;
 }
 
 function longLabel(iso: string): string {
