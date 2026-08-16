@@ -679,6 +679,7 @@ export interface OperationsSettings {
 export interface DbShape {
   schema_version: number;
   attendance_sweep_cursor: string | null; // last work_date (YYYY-MM-DD) fully processed by the auto-absent sweep
+  auto_time_out_cursor: string | null; // same, for the auto time-out sweep; null until it first runs
   profiles: Profile[];
   roles: RoleDef[];
   orders: Order[];

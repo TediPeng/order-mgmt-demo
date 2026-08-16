@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { getCurrentUser } from "@/lib/auth";
 import { readDbLite, writeDb } from "@/lib/db";
 import { can } from "@/lib/permissions";
-import { sweepAutoAbsences } from "@/lib/attendance-sweep";
+import { sweepAutoAbsences, sweepAutoTimeOuts } from "@/lib/attendance-sweep";
 import { maybeSweepPancakeSync } from "@/lib/pancake/sweep";
 import { MODULES } from "@/lib/types";
 import type { ModuleKey } from "@/lib/types";
@@ -12,7 +12,7 @@ import { AppShell } from "@/components/AppShell";
 import { SIDEBAR_COOKIE } from "@/lib/ui-prefs";
 import { CallSessionProvider } from "@/components/CallSessionProvider";
 import { ShiftWatcher } from "@/components/ShiftWatcher";
-import { scheduledInstant } from "@/lib/attendance-logic";
+
 import { todayInTz } from "@/lib/utils";
 import { getActiveSession } from "@/lib/call-sessions";
 import { listUpdateLogs } from "@/lib/update-logs";
@@ -37,7 +37,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // roles, permissions and notifications — not the orders table, which on a
   // busy floor is tens of thousands of rows fetched to render a menu.
   const db = await readDbLite();
-  if (sweepAutoAbsences(db)) await writeDb(db);
+  // Two sweeps, one write: a forgotten shift and a missing day are both things
+  // the app notices on the next request rather than on a schedule it does not have.
+  const swept = sweepAutoTimeOuts(db);
+  if (sweepAutoAbsences(db) || swept) await writeDb(db);
   // Throttled, fire-and-forget: drives Pancake retries/polling without
   // depending on the Vercel Cron frequency available on the current plan.
   maybeSweepPancakeSync();
@@ -59,19 +62,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const collapsed = (await cookies()).get(SIDEBAR_COOKIE)?.value === "1";
   const releases = await listUpdateLogs({ publishedOnly: true });
 
-  // The shift warnings watch from here, so they reach whatever page the agent is
-  // on. Everything they need is already in `db` — this layout reads it on every
-  // request — so app-wide costs no extra query.
+  // The break warning watches from here, so it reaches whatever page the agent
+  // is on. Everything it needs is already in `db` — this layout reads it on
+  // every request — so app-wide costs no extra query.
   //
-  // The end of shift is resolved to an instant here rather than in the browser:
-  // scheduled_time_out is a Postgres `time` and arrives as "17:00:00", and the
-  // company timezone is the one that decides what that means.
+  // The end of shift is no longer watched. It used to raise a dialog after the
+  // scheduled time out, which only worked while somebody was looking at the
+  // screen; a shift is closed by sweepAutoTimeOuts now, whether anyone is
+  // looking or not.
   const ownAttendance = db.attendance.find((a) => a.user_id === user.id && a.work_date === todayInTz());
   const onTheClock = Boolean(ownAttendance?.time_in && !ownAttendance.time_out);
-  const ownScheduledTimeOut = (ownAttendance?.scheduled_time_out || db.work_schedule.work_end).slice(0, 5);
-  const dutyEndsAt = onTheClock
-    ? scheduledInstant(todayInTz(), ownScheduledTimeOut, db.work_schedule.timezone).toISOString()
-    : null;
 
   return (
     <CallSessionProvider initialSession={activeCallSession} serverNow={Date.now()}>
@@ -79,8 +79,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         breakStart={ownAttendance?.break_start ?? null}
         breakEnd={ownAttendance?.break_end ?? null}
         allowanceMinutes={db.work_schedule.break_minutes}
-        dutyEndsAt={dutyEndsAt}
-        scheduledTimeOut={ownScheduledTimeOut}
         onTheClock={onTheClock}
         redirectTo={pathname || "/leads"}
       />
