@@ -16,10 +16,10 @@ import type { LeaveDayCount } from "@/lib/leave";
  * Counts only, never names: how many are off is what the decision needs, and who
  * they are is their colleagues' business.
  *
- * Nothing here blocks anything except the past. No rule in this system caps leave
- * per day, so a busy date is a thing to know rather than a thing forbidden --
- * presenting it as a limit would invent a policy the company has not set. The
- * three days' notice is still only warned about, on submit, where it was.
+ * A day at the cap cannot be picked, because it cannot be given: the server
+ * would only refuse it. Everything short of that is offered, busy or not -- the
+ * count is a thing to know rather than a thing forbidden. The three days'
+ * notice is still only warned about, on submit, where it was.
  */
 export function LeaveAvailability({
   days,
@@ -46,11 +46,9 @@ export function LeaveAvailability({
 
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-      {/* Five weeks of bare numbers begin at whatever day of the month today
-          happens to be, so the grid opens on something like "16" with nothing
-          saying which 16. The span carries the month names and the year; the
-          1st still carries its own month, which is what marks where one turns
-          into the next. */}
+      {/* The squares carry their own month but not the year, and five weeks
+          starting mid-month can span two. The span says which months these are
+          and which year they fall in. */}
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Who is already off — tap to pick, tap again to clear
@@ -90,7 +88,9 @@ export function LeaveAvailability({
                 aria-pressed={isSelected}
                 aria-label={`${longLabel(d.date)} — ${isFull ? "Full, nobody else can be off" : countSentence(d)}`}
                 className={[
-                  "flex h-14 flex-col items-center justify-center rounded-md border px-0.5 text-xs transition",
+                  // Taller on a phone, where the month sits on its own line
+                  // above the number instead of beside it.
+                  "flex h-16 flex-col items-center justify-center rounded-md border px-0.5 text-xs transition sm:h-14",
                   past
                     ? "cursor-default border-transparent text-slate-300"
                     : isFull
@@ -108,16 +108,19 @@ export function LeaveAvailability({
                 ].join(" ")}
               >
                 {/* Every square carries its month, so a date read off this grid
-                    is never a bare number somebody has to place. The month drops
-                    on a phone, where the column is about 32px and "Aug 26" does
-                    not fit -- the span above the grid still names the months
-                    there, and the 1st is where the eye finds the turn. */}
+                    is never a bare number somebody has to place. A phone column
+                    is about 32px and cannot hold "Aug 26" on one line, so there
+                    the month goes above the number rather than being dropped. */}
                 <span
-                  className={`whitespace-nowrap font-semibold ${isSelected ? "text-[var(--brand-primary)]" : ""}`}
+                  className={`flex flex-col items-center whitespace-nowrap leading-none sm:block ${
+                    isSelected ? "text-[var(--brand-primary)]" : ""
+                  }`}
                 >
-                  <span className="hidden sm:inline">{shortMonth(d.date)} </span>
-                  <span className="sm:hidden">{isFirstOfMonth(d.date) ? shortMonth(d.date) + " " : ""}</span>
-                  {dayOfMonth(d.date)}
+                  <span className="text-[9px] font-medium opacity-80 sm:hidden">{shortMonth(d.date)}</span>
+                  <span className="font-semibold">
+                    <span className="hidden sm:inline">{shortMonth(d.date)} </span>
+                    {dayOfMonth(d.date)}
+                  </span>
                 </span>
                 {/* Each line names itself, so a figure is never left to be
                     guessed at from its colour alone. */}
@@ -182,9 +185,6 @@ function dayOfMonth(iso: string): number {
   return utc(iso).getUTCDate();
 }
 
-function isFirstOfMonth(iso: string): boolean {
-  return dayOfMonth(iso) === 1;
-}
 
 function shortMonth(iso: string): string {
   return utc(iso).toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
