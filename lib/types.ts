@@ -155,13 +155,18 @@ export type OrderStatus =
 /** Outbound sync state. "Needs review" is not a status of its own — it is the
  * sync_failed state once the retry budget is exhausted, rendered as
  * "Sync Failed — needs review". */
-export type PancakeSyncStatus = "not_synced" | "syncing" | "synced" | "sync_failed";
+export type PancakeSyncStatus = "not_synced" | "syncing" | "synced" | "sync_failed" | "resolved";
 
 export const PANCAKE_SYNC_STATUS_LABELS: Record<PancakeSyncStatus, string> = {
   not_synced: "Not Synced",
   syncing: "Syncing",
   synced: "Synced",
   sync_failed: "Sync Failed",
+  // Closed by a person rather than by a successful send. The order is not in
+  // Pancake and is not going to be, and somebody has said so — which is a
+  // different fact from never having tried, and the only one that keeps a
+  // failure out of the queue without pretending it succeeded.
+  resolved: "Resolved manually",
 };
 
 /** Field defaults for a brand-new order that has never been forwarded to
@@ -616,7 +621,11 @@ export type PancakeSyncAction =
   | "poll"
   | "manual_sync"
   | "retry"
-  | "duplicate_ignored";
+  | "duplicate_ignored"
+  // The three a person takes when a retry cannot end the failure itself.
+  | "manual_link"
+  | "hold_cleared"
+  | "resolved_manually";
 export type PancakeSyncSource =
   | "webhook"
   | "api_polling"

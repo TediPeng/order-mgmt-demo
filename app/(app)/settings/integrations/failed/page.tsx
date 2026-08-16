@@ -11,7 +11,13 @@ import { Card, CardContent } from "@/components/ui/Card";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { listOrdersWithFailedSync } from "@/lib/pancake/store";
 import { RETRY_BATCH } from "@/lib/pancake/config";
-import { retryFailedSyncsAction } from "@/lib/actions/pancake";
+import {
+  retryFailedSyncsAction,
+  linkExistingPancakeOrderAction,
+  clearDuplicateHoldAction,
+  resolveWithoutSyncAction,
+} from "@/lib/actions/pancake";
+import { SyncResolveMenu } from "@/components/SyncResolveMenu";
 import type { Order } from "@/lib/types";
 
 /** Retrying twenty orders is twenty conversations with somebody else's API. */
@@ -95,7 +101,7 @@ function causeOf(error: string | null): Cause {
 export default async function SyncFailedPage({
   searchParams,
 }: {
-  searchParams: Promise<{ retried?: string; fixed?: string; left?: string; error?: string }>;
+  searchParams: Promise<{ retried?: string; fixed?: string; left?: string; error?: string; linked?: string; cleared?: string; resolved?: string }>;
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
@@ -137,6 +143,19 @@ export default async function SyncFailedPage({
       </div>
 
       {sp.error && <Alert kind="error">{sp.error}</Alert>}
+      {sp.linked && (
+        <Alert kind="success">
+          {sp.linked} is linked to its Pancake order and marked synced.
+        </Alert>
+      )}
+      {sp.cleared && (
+        <Alert kind="info">
+          The hold on {sp.cleared} is cleared and its attempts reset. Press Retry when you are ready to send it.
+        </Alert>
+      )}
+      {sp.resolved && (
+        <Alert kind="info">{sp.resolved} was resolved without syncing and has left this queue.</Alert>
+      )}
       {sp.retried && (
         <Alert kind={Number(sp.fixed) === Number(sp.retried) ? "success" : "info"}>
           Retried {sp.retried} order(s): {sp.fixed} went through
@@ -223,6 +242,18 @@ export default async function SyncFailedPage({
                         "use server";
                         await retryFailedSyncsAction([orderId]);
                       };
+                      const linkOne = async (formData: FormData) => {
+                        "use server";
+                        await linkExistingPancakeOrderAction(orderId, formData);
+                      };
+                      const clearOne = async () => {
+                        "use server";
+                        await clearDuplicateHoldAction(orderId);
+                      };
+                      const resolveOne = async (formData: FormData) => {
+                        "use server";
+                        await resolveWithoutSyncAction(orderId, formData);
+                      };
                       return (
                         <tr key={o.id} className="whitespace-nowrap">
                           <td className="px-3 py-2">
@@ -254,11 +285,19 @@ export default async function SyncFailedPage({
                                 Details
                               </LinkButton>
                               {canRetry && (
-                                <form action={retryOne} className="inline-flex">
-                                  <Button type="submit" size="sm" variant="outline">
-                                    Retry
-                                  </Button>
-                                </form>
+                                <>
+                                  <form action={retryOne} className="inline-flex">
+                                    <Button type="submit" size="sm" variant="outline">
+                                      Retry
+                                    </Button>
+                                  </form>
+                                  <SyncResolveMenu
+                                    orderNumber={o.order_number}
+                                    linkAction={linkOne}
+                                    clearAction={clearOne}
+                                    resolveAction={resolveOne}
+                                  />
+                                </>
                               )}
                             </div>
                           </td>

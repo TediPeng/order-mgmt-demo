@@ -131,6 +131,7 @@ const PANCAKE_SYNC_STATUS_STYLES: Record<PancakeSyncStatus, { chip: string; dot:
   syncing: { chip: "bg-blue-100 text-blue-700", dot: "bg-blue-500" },
   synced: { chip: "bg-green-100 text-green-700", dot: "bg-green-500" },
   sync_failed: { chip: "bg-red-100 text-red-700", dot: "bg-red-500" },
+  resolved: { chip: "bg-slate-200 text-slate-700", dot: "bg-slate-500" },
 };
 
 /** `needsReview` renders the exhausted-retry case as "Sync Failed — needs

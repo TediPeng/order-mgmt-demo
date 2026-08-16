@@ -5,7 +5,8 @@ import { v4 as uuid } from "uuid";
 import { requireUserLite, requirePermission } from "./guards";
 import { getRequestInfo } from "@/lib/request-info";
 import { logActivity } from "@/lib/activity";
-import { writeDb } from "@/lib/db";
+import { writeDb, nowIso, loadOrderInto } from "@/lib/db";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { RETRY_BATCH } from "@/lib/pancake/config";
 import { encryptSecret } from "@/lib/pancake/crypto";
 import { testConnection } from "@/lib/pancake/client";
@@ -23,6 +24,7 @@ import {
   deleteStatusMapEntry,
   getOrderRow,
   insertSyncLog,
+  updateOrderSyncFields,
 } from "@/lib/pancake/store";
 import { LEAD_STATUSES } from "@/lib/validation";
 import type { PancakeAccount, Profile } from "@/lib/types";
@@ -328,4 +330,146 @@ export async function manualSyncNow(user: Profile, orderId: string): Promise<{ o
     account.id
   );
   return { ok: true, message: applied.applied ? applied.reason : `Up to date (${applied.reason})` };
+}
+
+/**
+ * The three ways a person closes a sync failure that a retry cannot.
+ *
+ * Retry asks Pancake again, and for the duplicate-hold group that is exactly
+ * what must not happen: more than one Pancake order matches the phone and total,
+ * so sending again risks a second shipment. The queue had only that one button,
+ * so those orders sat in it — four of them since 10 August — with no way to say
+ * what had been found in Pancake.
+ *
+ * None of the three deletes anything. An order is a sale that has been counted;
+ * what changes is what this system believes about where it lives.
+ */
+
+/** "I found it in Pancake — this is its number."
+ *
+ * The correct ending for a duplicate hold that turns out to be already sent.
+ * The two systems agree afterwards, the order leaves the queue as synced rather
+ * than as an exception, and the id is the one people quote. */
+export async function linkExistingPancakeOrderAction(orderId: string, formData: FormData) {
+  const { user, db } = await requireUserLite();
+  requirePermission(user, "integrations", "manage", db, FAILED_PATH);
+
+  const pancakeOrderId = String(formData.get("pancake_order_id") || "").trim();
+  if (!pancakeOrderId) {
+    redirect(`${FAILED_PATH}?error=${encodeURIComponent("Enter the Pancake order number.")}`);
+  }
+
+  const order = await loadOrderInto(db, orderId);
+  if (!order) redirect(`${FAILED_PATH}?error=${encodeURIComponent("Order not found.")}`);
+
+  // Two of ours pointing at one Pancake order is the thing this whole guard
+  // exists to prevent, so it is refused here too rather than only on the way out.
+  const { data: clash } = await supabaseAdmin
+    .from("orders")
+    .select("order_number")
+    .eq("pancake_order_id", pancakeOrderId)
+    .neq("id", orderId)
+    .maybeSingle();
+  if (clash) {
+    redirect(
+      `${FAILED_PATH}?error=${encodeURIComponent(
+        `Pancake order ${pancakeOrderId} is already linked to ${clash.order_number}.`
+      )}`
+    );
+  }
+
+  await updateOrderSyncFields(orderId, {
+    pancake_order_id: pancakeOrderId,
+    pancake_sync_status: "synced",
+    pancake_sync_error: null,
+    pancake_synced_at: nowIso(),
+  });
+
+  await insertSyncLog({
+    order_id: orderId,
+    action: "manual_link",
+    result: "success",
+    error_message: `Linked by hand to Pancake order ${pancakeOrderId} after duplicate review.`,
+    source: "internal_user",
+  });
+
+  logActivity(db, user.id, "PANCAKE_ORDER_LINKED", "order", orderId, {
+    order_number: order!.order_number,
+    pancake_order_id: pancakeOrderId,
+  }, { module: "integrations", ...(await getRequestInfo()) });
+  await writeDb(db);
+
+  redirect(`${FAILED_PATH}?linked=${encodeURIComponent(order!.order_number)}`);
+}
+
+/** "I cancelled the duplicate in Pancake — send this one."
+ *
+ * Clears the attempt count and the held error so the next retry runs as a first
+ * attempt would. It does not send: the person presses Retry when they are ready,
+ * which keeps the decision and the sending as two separate acts. */
+export async function clearDuplicateHoldAction(orderId: string) {
+  const { user, db } = await requireUserLite();
+  requirePermission(user, "integrations", "manage", db, FAILED_PATH);
+
+  const order = await loadOrderInto(db, orderId);
+  if (!order) redirect(`${FAILED_PATH}?error=${encodeURIComponent("Order not found.")}`);
+
+  await updateOrderSyncFields(orderId, {
+    pancake_retry_count: 0,
+    pancake_sync_error: null,
+  });
+
+  await insertSyncLog({
+    order_id: orderId,
+    action: "hold_cleared",
+    result: "success",
+    error_message: "Duplicate hold cleared by hand; attempts reset so a retry can run.",
+    source: "internal_user",
+  });
+
+  logActivity(db, user.id, "PANCAKE_HOLD_CLEARED", "order", orderId, {
+    order_number: order!.order_number,
+  }, { module: "integrations", ...(await getRequestInfo()) });
+  await writeDb(db);
+
+  redirect(`${FAILED_PATH}?cleared=${encodeURIComponent(order!.order_number)}`);
+}
+
+/** "This one is not going to Pancake."
+ *
+ * Takes the order out of the queue without pretending it synced and without
+ * touching the sale. A reason is required: `resolved` is a state only a person
+ * can set, so the record has to say who and why. */
+export async function resolveWithoutSyncAction(orderId: string, formData: FormData) {
+  const { user, db } = await requireUserLite();
+  requirePermission(user, "integrations", "manage", db, FAILED_PATH);
+
+  const reason = String(formData.get("reason") || "").trim();
+  if (reason.length < 5) {
+    redirect(`${FAILED_PATH}?error=${encodeURIComponent("Give a reason of at least 5 characters.")}`);
+  }
+
+  const order = await loadOrderInto(db, orderId);
+  if (!order) redirect(`${FAILED_PATH}?error=${encodeURIComponent("Order not found.")}`);
+
+  await updateOrderSyncFields(orderId, {
+    pancake_sync_status: "resolved",
+    pancake_sync_error: `Resolved without syncing: ${reason}`,
+  });
+
+  await insertSyncLog({
+    order_id: orderId,
+    action: "resolved_manually",
+    result: "success",
+    error_message: `Resolved without syncing by ${user.full_name}: ${reason}`,
+    source: "internal_user",
+  });
+
+  logActivity(db, user.id, "PANCAKE_SYNC_RESOLVED", "order", orderId, {
+    order_number: order!.order_number,
+    reason,
+  }, { module: "integrations", ...(await getRequestInfo()) });
+  await writeDb(db);
+
+  redirect(`${FAILED_PATH}?resolved=${encodeURIComponent(order!.order_number)}`);
 }
