@@ -8,7 +8,8 @@ import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { orderInScope, allowedAssigneeIds } from "@/lib/order-access";
 import { getActiveSessionForOrder, endSession, getActiveSession, attachOrderToSession } from "@/lib/call-sessions";
-import { isFullAccess } from "@/lib/permissions";
+import { can, isFullAccess } from "@/lib/permissions";
+import { protectedReason } from "@/lib/duplicate-leads";
 import { requireUserLite, requirePermission, requireAdministrator } from "./guards";
 import { describeParseFailure } from "@/lib/zod-error";
 import { leadFormSchema, leadImportRowSchema, normalizePreviousStatus, parseOrderItemFields, type OrderItemFields, PACKAGING_STATUS, PRE_SALE_STATUSES } from "@/lib/validation";
@@ -1040,6 +1041,12 @@ export interface LeadImportSummary {
   invalid: number;
   missingInfo: number;
   unrecognizedAgents: number;
+  /** Leads already in the system that the upload cleaned away: untouched twins
+   * on a number that was holding more than one. Not rows from the file. */
+  duplicatesCleaned: number;
+  /** Numbers left holding more than one lead because every copy carried work,
+   * so none of them could be removed without losing it. A person decides those. */
+  duplicatesNeedingReview: number;
   results: LeadImportRowResult[];
 }
 
@@ -1089,6 +1096,71 @@ export async function importLeadsAction(
   // can be traced rather than merely refused. Not the agent's name: an uploader
   // is not necessarily entitled to know whose desk the number is on, and the
   // order number is enough to find it.
+  //
+  // Before that, the numbers in this batch are made to hold one lead each.
+  //
+  // Refusing new duplicates fixes the future and leaves the past alone, and the
+  // past is where they are: 11,390 numbers were holding more than one when this
+  // rule arrived. Rather than a sweep somebody has to remember to run, the
+  // upload settles the numbers it touches — it is already holding every order on
+  // them, so the work is free.
+  //
+  // A number keeps its worked copy if it has one — Packaging, Pancake, or any
+  // status past Ringing is work already done, and protectedReason() is the same
+  // judgement the Duplicate Leads page makes. Only untouched twins go. A number
+  // whose copies are ALL worked keeps them and is counted for review, because
+  // choosing between two recorded call outcomes is a person's job.
+  const byPhone = new Map<string, Order[]>();
+  for (const o of db.orders) {
+    const key = normalizePhone(o.customer_phone || "");
+    if (!key) continue;
+    const bucket = byPhone.get(key);
+    if (bucket) bucket.push(o);
+    else byPhone.set(key, [o]);
+  }
+
+  // Deleting leads is its own grant. An uploader who may not delete still gets
+  // the import; the tidy-up is simply skipped and reported as needing review.
+  const mayDelete = can(user.role, "orders", "delete", db.role_permissions);
+  const cleaned: Order[] = [];
+  let needingReview = 0;
+
+  for (const rows of byPhone.values()) {
+    if (rows.length < 2) continue;
+    if (!mayDelete) {
+      needingReview += 1;
+      continue;
+    }
+
+    const untouched = rows.filter((o) => protectedReason(o) === null);
+    const workedCount = rows.length - untouched.length;
+    // The keeper is the worked copy when there is one; otherwise the oldest
+    // untouched copy, which is the rule the Duplicate Leads page uses.
+    const doomed =
+      workedCount > 0
+        ? untouched
+        : [...untouched]
+            .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
+            .slice(1);
+
+    // Collected, not queued: this action never calls writeDb() — it writes its
+    // orders straight to the table to avoid dragging the whole-database write
+    // back in — so the removal is a direct statement below, like the insert.
+    for (const o of doomed) cleaned.push(o);
+
+    // Two or more worked copies survive this, and choosing between recorded
+    // call outcomes is a person's job — so the number is reported rather than
+    // quietly left looking clean.
+    if (rows.length - doomed.length > 1) needingReview += 1;
+  }
+
+  if (cleaned.length > 0) {
+    const gone = new Set(cleaned.map((o) => o.id));
+    // Out of the working copy too, so the previous-order index and the
+    // number-already-taken map below are built from what will still exist.
+    db.orders = db.orders.filter((o) => !gone.has(o.id));
+  }
+
   const existingByPhone = new Map<string, string>();
   for (const o of db.orders) {
     const key = normalizePhone(o.customer_phone || "");
@@ -1226,6 +1298,8 @@ export async function importLeadsAction(
     invalid: results.filter((r) => r.category === "invalid").length,
     missingInfo: results.filter((r) => r.category === "missing_info").length,
     unrecognizedAgents: results.filter((r) => r.category === "unrecognized_agent").length,
+    duplicatesCleaned: cleaned.length,
+    duplicatesNeedingReview: needingReview,
     results,
   };
 
@@ -1233,6 +1307,46 @@ export async function importLeadsAction(
   await insertImportedOrders(newOrders, db.order_seq);
 
   const info = await getRequestInfo();
+
+  // The untouched twins on the numbers this batch touched.
+  //
+  // Chunked at 200 for the reason the duplicate sweep is: PostgREST connects as
+  // `authenticator`, which sets statement_timeout=8s, and one DELETE naming
+  // thousands of ids is cancelled at eight seconds having removed nothing.
+  //
+  // The audit entry goes in AFTER the deletes, carrying the whole of every row
+  // — so an entry is evidence the removal landed, and it is complete enough to
+  // put back. The sweep's AUDIT_SAMPLE cap is deliberately not copied: a batch
+  // clears tens of rows, not thousands, and a snapshot that stops at fifty is
+  // the difference between a mistake being reversible and being permanent.
+  if (cleaned.length > 0) {
+    const DELETE_CHUNK = 200;
+    for (let i = 0; i < cleaned.length; i += DELETE_CHUNK) {
+      const ids = cleaned.slice(i, i + DELETE_CHUNK).map((o) => o.id);
+      const { error } = await supabaseAdmin.from("orders").delete().in("id", ids);
+      if (error) throw new Error(`Could not clear duplicate leads: ${error.message}`);
+    }
+    await supabaseAdmin.from("activity_log").insert({
+      id: uuid(),
+      user_id: user.id,
+      user_email: user.email,
+      action: "DUPLICATE_LEADS_DELETED",
+      entity_type: "order",
+      entity_id: null,
+      details: {
+        how: "import_cleanup",
+        file_name: fileName,
+        deleted: cleaned.length,
+        order_numbers: cleaned.map((o) => o.order_number),
+        truncated: false,
+      },
+      module: "orders",
+      previous_value: cleaned,
+      ip_address: info.ip_address,
+      device_info: info.device_info,
+      created_at: nowIso(),
+    });
+  }
   // Written straight to the table for the same reason the orders are: this
   // must not drag the whole-database write back in. Same shape logActivity()
   // would have produced.
@@ -1251,6 +1365,8 @@ export async function importLeadsAction(
       invalid: summary.invalid,
       missing_info: summary.missingInfo,
       unrecognized_agents: summary.unrecognizedAgents,
+      duplicates_cleaned: summary.duplicatesCleaned,
+      duplicates_needing_review: summary.duplicatesNeedingReview,
     },
     module: "orders",
     ip_address: info.ip_address,
@@ -1259,7 +1375,7 @@ export async function importLeadsAction(
   });
 
   console.log(
-    `[import] rows=${rawRows.length} loop=${tLoop - t0}ms write=${Date.now() - tLoop}ms total=${Date.now() - t0}ms`
+    `[import] rows=${rawRows.length} cleaned=${cleaned.length} loop=${tLoop - t0}ms write=${Date.now() - tLoop}ms total=${Date.now() - t0}ms`
   );
   return summary;
 }

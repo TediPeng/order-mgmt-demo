@@ -56,7 +56,14 @@ export default async function DashboardPage({
   const canAddRegularCustomer = can(user.role, "regular_customers", "create", db.role_permissions);
   const canViewPerformance = can(user.role, "performance", "view", db.role_permissions);
 
-  const dashboardRange = resolveDateRange(sp.range, sp.from, sp.to);
+  // All Time unless a preset is chosen.
+  //
+  // It opened on Today, which answered a question nobody was asking of a
+  // dashboard: Total Leads read 509 against the Leads page's 51,986 and looked
+  // broken, and after a day's import it reads a fraction of the floor's actual
+  // book. The presets are still one click away for anyone who wants a period —
+  // the point is that the number you land on is the whole of what is there.
+  const dashboardRange = resolveDateRange(sp.range ?? "all", sp.from, sp.to);
   // Delivered and Returned have cards of their own, so the In Fulfillment card
   // shows the stages between.
   const inFulfilmentStatuses = FULFILLMENT_STATUSES.filter((s) => s !== "delivered" && s !== "returned");
@@ -259,7 +266,7 @@ export default async function DashboardPage({
 
       {isAgent && agentStats ? (
         <>
-          <DateRangeFilter />
+          <DateRangeFilter defaultPreset="all" />
           {/* Row 1: volume and value. Row 2: outcomes. Every card links to the
               matching filtered leads view. */}
           <StatGrid>
@@ -338,7 +345,7 @@ export default async function DashboardPage({
       ) : (
         kpiStats && (
           <>
-            <DateRangeFilter />
+            <DateRangeFilter defaultPreset="all" />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {/* The accent colours these carried as text now become the tile
                   itself, so the palette says the same thing it did before:

@@ -148,6 +148,8 @@ export function LeadImportClient() {
         invalid: 0,
         missingInfo: 0,
         unrecognizedAgents: 0,
+        duplicatesCleaned: 0,
+        duplicatesNeedingReview: 0,
         results: [],
       };
 
@@ -186,6 +188,8 @@ export function LeadImportClient() {
         merged.invalid += part.invalid;
         merged.missingInfo += part.missingInfo;
         merged.unrecognizedAgents += part.unrecognizedAgents;
+        merged.duplicatesCleaned += part.duplicatesCleaned;
+        merged.duplicatesNeedingReview += part.duplicatesNeedingReview;
         merged.results.push(...part.results);
         setProgress({ done: merged.total + failedRows, total: rawRows.length });
       }
@@ -279,6 +283,29 @@ export function LeadImportClient() {
             <span className="font-medium text-red-700">{summary.unrecognizedAgents} unrecognized agent usernames</span>
             <span className="text-slate-400">{summary.total} total rows</span>
           </div>
+
+          {/* Not rows from the file: leads already in the system that these
+              numbers were holding twice. Said plainly, because a deletion
+              nobody asked for row by row should never be silent. */}
+          {summary.duplicatesCleaned > 0 && (
+            <Alert kind="info">
+              {summary.duplicatesCleaned} duplicate lead{summary.duplicatesCleaned === 1 ? "" : "s"} already in the
+              system {summary.duplicatesCleaned === 1 ? "was" : "were"} removed, so each of these numbers holds one.
+              Untouched copies only — anything that reached Packaging, went to Pancake, or carried a recorded call was
+              kept. The whole of every removed row is in the audit log.
+            </Alert>
+          )}
+          {summary.duplicatesNeedingReview > 0 && (
+            <Alert kind="warning">
+              {summary.duplicatesNeedingReview} number{summary.duplicatesNeedingReview === 1 ? "" : "s"} still{" "}
+              {summary.duplicatesNeedingReview === 1 ? "holds" : "hold"} more than one lead, because every copy carried
+              work and choosing between recorded call outcomes is not something an upload should do.{" "}
+              <a href="/leads/duplicates" className="font-medium underline">
+                Review them
+              </a>
+              .
+            </Alert>
+          )}
 
           {(["duplicate", "invalid", "missing_info", "unrecognized_agent"] as const).map((cat) => {
             const rows = summary.results.filter((r) => r.category === cat);
