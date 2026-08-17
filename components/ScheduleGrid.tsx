@@ -4,8 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Alert } from "@/components/ui/Alert";
 import { cn } from "@/lib/utils";
+import { DUTY_STATUSES, STATUS_STYLE, STATUS_LABEL, type CellStatus } from "@/lib/duty-status";
 
-export type CellState = "on_duty" | "off" | "suspended" | "none";
+export type CellState = CellStatus;
 
 export interface ScheduleGridAgent {
   id: string;
@@ -25,25 +26,9 @@ export interface ScheduleGridColumn {
 /** Keyed `agentId|date`. Absent means nothing is assigned. */
 export type ScheduleGridCells = Record<string, CellState>;
 
-const CELL_STYLE: Record<CellState, string> = {
-  on_duty: "bg-green-600 text-white",
-  off: "bg-red-600 text-white",
-  // Set by a suspension, not by whoever is looking at the grid — the same
-  // orange the calendar and its legend already use for one.
-  suspended: "bg-orange-600 text-white",
-  none: "bg-white text-slate-300",
-};
-
-const CELL_LABEL: Record<CellState, string> = {
-  on_duty: "ON DUTY",
-  off: "OFF",
-  suspended: "SUSPENDED",
-  none: "—",
-};
-
 /**
  * The duty roster as the floor keeps it: one row per agent, one column per day
- * of the cut-off, ON DUTY or OFF in every cell.
+ * of the cut-off, and the day's status in every cell.
  *
  * A month calendar could not show this. A cut-off runs the 13th to the 27th or
  * the 28th to the 12th, so half of them straddle two months and the view that
@@ -51,9 +36,11 @@ const CELL_LABEL: Record<CellState, string> = {
  * team was keeping the real roster in a spreadsheet beside the app, which is
  * the clearest signal a view is wrong.
  *
- * Cells are editable in place for anyone who may edit schedules. A suspension
- * is never editable here: it is set by the disciplinary module and lifting it
- * from a schedule grid would hide the reason it exists.
+ * The cell offers the same five statuses as the import template, in the same
+ * colours, because a roster set here and one uploaded as a file have to be the
+ * same thing. SUSPENDED is not among them: the disciplinary module sets it, the
+ * grid only reports it, and lifting it from here would hide the reason it
+ * exists.
  */
 export function ScheduleGrid({
   agents,
@@ -73,7 +60,7 @@ export function ScheduleGrid({
 
   async function setCell(agentId: string, date: string, next: CellState) {
     const key = `${agentId}|${date}`;
-    const previous = cells[key] ?? "none";
+    const previous = cells[key] ?? "NONE";
     if (next === previous) return;
 
     // Optimistic: fifteen columns of dropdowns that each wait a round trip
@@ -84,7 +71,7 @@ export function ScheduleGrid({
 
     try {
       const res =
-        next === "none"
+        next === "NONE"
           ? await fetch(`/api/schedule/by-date?agent=${agentId}&date=${date}`, { method: "DELETE" })
           : await fetch("/api/schedule", {
               method: "POST",
@@ -92,7 +79,9 @@ export function ScheduleGrid({
               body: JSON.stringify({
                 agent_id: agentId,
                 schedule_date: date,
-                is_rest_day: next === "off",
+                // The status alone; the server turns it into a shift, the same
+                // way it does for a spreadsheet import.
+                duty_status: next,
                 // Replacing is the whole point of a grid cell: the agent
                 // already has something on that date and this is the change.
                 confirm_replace: true,
@@ -132,8 +121,12 @@ export function ScheduleGrid({
                 <th
                   key={col.date}
                   className={cn(
-                    "sticky top-0 z-20 min-w-[5.5rem] border-b border-r border-slate-200 px-2 py-2 text-center font-semibold",
-                    col.isToday ? "bg-amber-100 text-amber-900" : col.isWeekend ? "bg-slate-200 text-slate-600" : "bg-slate-100 text-slate-600"
+                    "sticky top-0 z-20 min-w-[6.25rem] border-b border-r border-slate-200 px-2 py-2 text-center font-semibold",
+                    col.isToday
+                      ? "bg-amber-100 text-amber-900"
+                      : col.isWeekend
+                        ? "bg-slate-200 text-slate-600"
+                        : "bg-slate-100 text-slate-600"
                   )}
                 >
                   <div className="whitespace-nowrap">{col.label}</div>
@@ -156,19 +149,19 @@ export function ScheduleGrid({
                 </th>
                 {columns.map((col) => {
                   const key = `${agent.id}|${col.date}`;
-                  const state = cells[key] ?? "none";
-                  const locked = state === "suspended" || !canEdit;
+                  const state = cells[key] ?? "NONE";
+                  const locked = state === "SUSPENDED" || !canEdit;
                   return (
                     <td key={col.date} className="border-b border-r border-slate-200 p-0">
                       {locked ? (
                         <div
                           className={cn(
-                            "flex h-8 items-center justify-center px-2 text-[11px] font-semibold tracking-wide",
-                            CELL_STYLE[state]
+                            "flex h-8 items-center justify-center px-1 text-[10px] font-semibold tracking-wide",
+                            STATUS_STYLE[state]
                           )}
-                          title={state === "suspended" ? "Set by a suspension — lift it from Disciplinary" : undefined}
+                          title={state === "SUSPENDED" ? "Set by a suspension — lift it from Disciplinary" : undefined}
                         >
-                          {CELL_LABEL[state]}
+                          {STATUS_LABEL[state]}
                         </div>
                       ) : (
                         // A native select: it types-to-jump, it works on a
@@ -180,14 +173,17 @@ export function ScheduleGrid({
                           onChange={(e) => setCell(agent.id, col.date, e.target.value as CellState)}
                           aria-label={`${agent.name} on ${col.label}`}
                           className={cn(
-                            "h-8 w-full cursor-pointer appearance-none border-0 px-2 text-center text-[11px] font-semibold tracking-wide focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--brand-accent)]",
-                            CELL_STYLE[state],
+                            "h-8 w-full cursor-pointer appearance-none border-0 px-1 text-center text-[10px] font-semibold tracking-wide focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--brand-accent)]",
+                            STATUS_STYLE[state],
                             saving === key && "opacity-60"
                           )}
                         >
-                          <option value="on_duty">ON DUTY</option>
-                          <option value="off">OFF</option>
-                          <option value="none">—</option>
+                          {DUTY_STATUSES.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                          <option value="NONE">—</option>
                         </select>
                       )}
                     </td>
@@ -206,11 +202,21 @@ export function ScheduleGrid({
         </table>
       </div>
 
-      <p className="text-xs text-slate-400">
-        {canEdit
-          ? "Change a cell to set that day. A suspension is shown but cannot be changed here — lift it from Disciplinary."
-          : "Read only. Scheduling is a Team Lead and Administrator grant."}
-      </p>
+      {/* What the colours mean, once, rather than five words repeated down
+          every column. */}
+      <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
+        {([...DUTY_STATUSES, "SUSPENDED"] as CellStatus[]).map((s) => (
+          <span key={s} className="inline-flex items-center gap-1.5">
+            <span className={cn("inline-block h-3 w-3 rounded-sm", STATUS_STYLE[s])} />
+            {STATUS_LABEL[s]}
+          </span>
+        ))}
+        <span className="text-slate-400">
+          {canEdit
+            ? "· SUSPENDED is set by Disciplinary and cannot be changed here."
+            : "· Read only. Scheduling is a Team Lead and Administrator grant."}
+        </span>
+      </div>
     </div>
   );
 }

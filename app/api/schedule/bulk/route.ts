@@ -7,6 +7,8 @@ import { getRequestInfo } from "@/lib/request-info";
 import { notify } from "@/lib/notifications";
 import { scopeAgentsForSchedule, eachDateInclusive, addDaysToYmd } from "@/lib/schedule-access";
 import { bulkAssignSchedules } from "@/lib/actions/schedules";
+import { shiftForStatus } from "@/lib/schedule-import";
+import { DUTY_STATUSES, remarkForStatus, type DutyStatus } from "@/lib/duty-status";
 
 /** Section 7: multi-assign, bulk assign (whole week/month), and recurring
  * (weekly pattern for N weeks) all resolve to a list of dates here, then
@@ -62,18 +64,25 @@ export async function POST(req: NextRequest) {
     const entries = (Array.isArray(body.entries) ? body.entries : []) as {
       agent_id?: string;
       schedule_date?: string;
+      duty_status?: string;
       is_rest_day?: boolean;
     }[];
 
-    // Grouped by agent and by duty/rest, so each group is one call into the
+    // Grouped by agent and by duty status, so each group is one call into the
     // same core — and therefore the same suspension and conflict rules — rather
-    // than a second implementation of them.
+    // than a second implementation of them. The status decides the shift here
+    // exactly as it does for a single cell and for the spreadsheet import.
     const groups = new Map<string, string[]>();
     for (const e of entries) {
       const agentId = String(e.agent_id || "");
       const date = String(e.schedule_date || "").slice(0, 10);
       if (!allowedIds.has(agentId) || !date) continue;
-      const key = `${agentId}|${e.is_rest_day ? "rest" : "duty"}`;
+      const status: DutyStatus = DUTY_STATUSES.includes(e.duty_status as DutyStatus)
+        ? (e.duty_status as DutyStatus)
+        : e.is_rest_day
+          ? "OFF"
+          : "ON DUTY";
+      const key = `${agentId}|${status}`;
       const bucket = groups.get(key);
       if (bucket) bucket.push(date);
       else groups.set(key, [date]);
@@ -86,15 +95,19 @@ export async function POST(req: NextRequest) {
     const affected = new Set<string>();
     let dayCount = 0;
     for (const [key, groupDates] of groups) {
-      const [agentId, kind] = key.split("|");
-      const rest = kind === "rest";
+      const [agentId, statusKey] = key.split("|");
+      const status = statusKey as DutyStatus;
+      const shift = shiftForStatus(status, db.work_schedule);
+      const rest = shift.kind === "rest";
       const part = bulkAssignSchedules(db, user, {
         agentIds: [agentId],
         dates: groupDates,
-        dutyStart: rest ? null : (body.duty_start as string) || null,
-        dutyEnd: rest ? null : (body.duty_end as string) || null,
+        dutyStart: shift.kind === "duty" ? shift.duty_start ?? null : null,
+        dutyEnd: shift.kind === "duty" ? shift.duty_end ?? null : null,
         isRestDay: rest,
-        remarks: (body.remarks as string) || null,
+        // The status's own remark, or whatever the caller typed for the plain
+        // two — a note on a bulk assign should not be thrown away.
+        remarks: remarkForStatus(status) ?? ((body.remarks as string) || null),
         confirmReplace: !!body.confirm_replace,
       });
       total.created += part.created;

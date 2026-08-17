@@ -6,6 +6,7 @@ import { rosterAgents, scopeSchedules, scopeSuspensions, isDateWithinSuspension 
 import { todayInTz } from "@/lib/utils";
 import { displayCallName } from "@/lib/types";
 import { cutoffFor, shiftCutoff, datesIn, shortDate, weekdayOf, isWeekend } from "@/lib/cutoff";
+import { statusOf } from "@/lib/duty-status";
 import { Download, Upload, ChevronLeft, ChevronRight } from "lucide-react";
 import { StatCard } from "@/components/StatCard";
 import { ScheduleGrid, type ScheduleGridCells, type CellState } from "@/components/ScheduleGrid";
@@ -65,26 +66,28 @@ export default async function SchedulePage({
   const cells: ScheduleGridCells = {};
   for (const s of inCutoff) {
     if (!scopedAgentIds.has(s.agent_id)) continue;
-    const state: CellState =
-      s.status === "suspension" || s.suspension_id ? "suspended" : s.is_rest_day || s.status === "rest_day" ? "off" : "on_duty";
-    cells[`${s.agent_id}|${s.schedule_date}`] = state;
+    // statusOf() is the same reading the spreadsheet import writes, so Half
+    // Day, On Leave and Training survive a round trip through either route.
+    cells[`${s.agent_id}|${s.schedule_date}`] = statusOf(s) as CellState;
   }
   // A suspension outranks whatever the roster says: the day is not workable,
   // and showing ON DUTY over it would have somebody expected on the floor.
   for (const s of suspensions) {
     for (const date of dates) {
-      if (isDateWithinSuspension(s, date, date)) cells[`${s.employee_id}|${date}`] = "suspended";
+      if (isDateWithinSuspension(s, date, date)) cells[`${s.employee_id}|${date}`] = "SUSPENDED";
     }
   }
 
   // The tiles stay on today, deliberately — they answer "who is on right now",
   // which does not become a different question because the grid is showing
   // next fortnight.
-  const todayCells = scopedAgents.map((a) => cells[`${a.id}|${today}`] ?? "none");
-  const onDutyToday = todayCells.filter((c) => c === "on_duty").length;
-  const offToday = todayCells.filter((c) => c === "off").length;
-  const suspendedToday = todayCells.filter((c) => c === "suspended").length;
-  const unassignedToday = todayCells.filter((c) => c === "none").length;
+  const todayCells = scopedAgents.map((a) => cells[`${a.id}|${today}`] ?? "NONE");
+  // Half Day and Training are working days, so they count as on duty here —
+  // the tile answers "how many are on the floor", not "what does the row say".
+  const onDutyToday = todayCells.filter((c) => c === "ON DUTY" || c === "HALF DAY" || c === "TRAINING").length;
+  const offToday = todayCells.filter((c) => c === "OFF" || c === "ON LEAVE").length;
+  const suspendedToday = todayCells.filter((c) => c === "SUSPENDED").length;
+  const unassignedToday = todayCells.filter((c) => c === "NONE").length;
 
   const columns = dates.map((date) => ({
     date,

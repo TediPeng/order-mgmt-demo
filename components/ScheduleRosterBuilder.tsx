@@ -6,18 +6,11 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { cutoffFor, shiftCutoff, datesIn, shortDate, weekdayOf, isWeekend, addDays, type Cutoff } from "@/lib/cutoff";
 import { cn } from "@/lib/utils";
+import { DUTY_STATUSES, STATUS_STYLE, statusOf, type CellStatus } from "@/lib/duty-status";
 import type { AgentOption } from "@/components/ScheduleEventModal";
 
-type State = "on_duty" | "off" | "suspended" | "none";
+type State = CellStatus;
 
-const CELL_STYLE: Record<State, string> = {
-  on_duty: "bg-green-600 text-white hover:bg-green-700",
-  off: "bg-red-600 text-white hover:bg-red-700",
-  suspended: "bg-orange-600 text-white",
-  none: "bg-white text-slate-300 hover:bg-slate-50",
-};
-const CELL_LABEL: Record<State, string> = { on_duty: "ON DUTY", off: "OFF", suspended: "SUSP", none: "—" };
-const NEXT: Record<State, State> = { none: "on_duty", on_duty: "off", off: "none", suspended: "suspended" };
 
 interface ScheduleEvent {
   extendedProps?: {
@@ -69,12 +62,7 @@ export function ScheduleRosterBuilder({ agents }: { agents: AgentOption[] }) {
       for (const e of events) {
         const p = e.extendedProps || {};
         if (!p.agent_id || !p.schedule_date) continue;
-        next[`${p.agent_id}|${p.schedule_date}`] =
-          p.status === "suspension" || p.suspension_id
-            ? "suspended"
-            : p.is_rest_day || p.status === "rest_day"
-              ? "off"
-              : "on_duty";
+        next[`${p.agent_id}|${p.schedule_date}`] = statusOf(p);
       }
       setLoaded(next);
       setCells(next);
@@ -90,13 +78,13 @@ export function ScheduleRosterBuilder({ agents }: { agents: AgentOption[] }) {
   }, [load]);
 
   const changed = Object.entries(cells).filter(
-    ([key, value]) => value !== "suspended" && value !== "none" && (loaded[key] ?? "none") !== value
+    ([key, value]) => value !== "SUSPENDED" && value !== "NONE" && (loaded[key] ?? "NONE") !== value
   );
 
-  function cycle(agentId: string, date: string) {
+  function setCell(agentId: string, date: string, value: State) {
     const key = `${agentId}|${date}`;
-    if ((cells[key] ?? "none") === "suspended") return;
-    setCells((c) => ({ ...c, [key]: NEXT[c[key] ?? "none"] }));
+    if ((cells[key] ?? "NONE") === "SUSPENDED") return;
+    setCells((c) => ({ ...c, [key]: value }));
   }
 
   function fill(value: State, agentId?: string, date?: string) {
@@ -107,7 +95,7 @@ export function ScheduleRosterBuilder({ agents }: { agents: AgentOption[] }) {
         for (const d of dates) {
           if (date && d !== date) continue;
           const key = `${a.id}|${d}`;
-          if ((next[key] ?? "none") === "suspended") continue;
+          if ((next[key] ?? "NONE") === "SUSPENDED") continue;
           next[key] = value;
         }
       }
@@ -121,7 +109,7 @@ export function ScheduleRosterBuilder({ agents }: { agents: AgentOption[] }) {
     try {
       const entries = changed.map(([key, value]) => {
         const [agent_id, schedule_date] = key.split("|");
-        return { agent_id, schedule_date, is_rest_day: value === "off" };
+        return { agent_id, schedule_date, duty_status: value };
       });
       const res = await fetch("/api/schedule/bulk", {
         method: "POST",
@@ -170,10 +158,10 @@ export function ScheduleRosterBuilder({ agents }: { agents: AgentOption[] }) {
           {shiftCutoff(cutoff, 1).shortLabel} →
         </Button>
         <span className="mx-2 h-4 w-px bg-slate-200" />
-        <Button type="button" variant="outline" size="sm" onClick={() => fill("on_duty")}>
+        <Button type="button" variant="outline" size="sm" onClick={() => fill("ON DUTY")}>
           All ON DUTY
         </Button>
-        <Button type="button" variant="outline" size="sm" onClick={() => fill("off")}>
+        <Button type="button" variant="outline" size="sm" onClick={() => fill("OFF")}>
           All OFF
         </Button>
         <Button type="button" variant="outline" size="sm" onClick={() => setCells(loaded)}>
@@ -191,7 +179,7 @@ export function ScheduleRosterBuilder({ agents }: { agents: AgentOption[] }) {
               {dates.map((d) => (
                 <th
                   key={d}
-                  onClick={() => fill("on_duty", undefined, d)}
+                  onClick={() => fill("ON DUTY", undefined, d)}
                   title="Set this day for everyone"
                   className={cn(
                     "sticky top-0 z-20 min-w-[4.75rem] cursor-pointer border-b border-r border-slate-200 px-1 py-2 text-center font-semibold hover:bg-slate-300",
@@ -209,7 +197,7 @@ export function ScheduleRosterBuilder({ agents }: { agents: AgentOption[] }) {
               <tr key={a.id}>
                 <th
                   scope="row"
-                  onClick={() => fill("on_duty", a.id)}
+                  onClick={() => fill("ON DUTY", a.id)}
                   title="Set this agent's whole cut-off"
                   className="sticky left-0 z-10 cursor-pointer border-b border-r border-slate-200 bg-yellow-50 px-3 py-1.5 text-left font-medium text-slate-800 hover:bg-yellow-100"
                 >
@@ -217,25 +205,28 @@ export function ScheduleRosterBuilder({ agents }: { agents: AgentOption[] }) {
                 </th>
                 {dates.map((d) => {
                   const key = `${a.id}|${d}`;
-                  const state = cells[key] ?? "none";
-                  const isChanged = state !== "suspended" && (loaded[key] ?? "none") !== state;
+                  const state = cells[key] ?? "NONE";
+                  const isChanged = state !== "SUSPENDED" && (loaded[key] ?? "NONE") !== state;
                   return (
                     <td key={d} className="border-b border-r border-slate-200 p-0">
-                      <button
-                        type="button"
-                        onClick={() => cycle(a.id, d)}
-                        disabled={state === "suspended"}
-                        aria-label={`${a.full_name} on ${shortDate(d)}: ${CELL_LABEL[state]}`}
+                      <select
+                        value={state}
+                        disabled={state === "SUSPENDED"}
+                        onChange={(e) => setCell(a.id, d, e.target.value as State)}
+                        aria-label={`${a.full_name} on ${shortDate(d)}`}
                         className={cn(
-                          "h-8 w-full text-[10px] font-semibold tracking-wide transition-colors",
-                          CELL_STYLE[state],
-                          // Edited but not yet written — the only way to tell a
-                          // saved fortnight from one still in the browser.
+                          "h-8 w-full cursor-pointer appearance-none border-0 px-1 text-center text-[10px] font-semibold tracking-wide focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--brand-accent)]",
+                          STATUS_STYLE[state],
                           isChanged && "ring-2 ring-inset ring-amber-400"
                         )}
                       >
-                        {CELL_LABEL[state]}
-                      </button>
+                        {DUTY_STATUSES.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                        <option value="NONE">—</option>
+                      </select>
                     </td>
                   );
                 })}

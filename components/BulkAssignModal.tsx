@@ -7,20 +7,11 @@ import { Input, Label, Textarea } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
 import { cutoffFor, shiftCutoff, datesIn, shortDate, weekdayOf, isWeekend, type Cutoff } from "@/lib/cutoff";
 import { cn } from "@/lib/utils";
+import { DUTY_STATUSES, STATUS_STYLE, type CellStatus } from "@/lib/duty-status";
 import type { AgentOption } from "@/components/ScheduleEventModal";
 
-type Paint = "on_duty" | "off" | "none";
+type Paint = CellStatus;
 
-const CELL_STYLE: Record<Paint, string> = {
-  on_duty: "bg-green-600 text-white hover:bg-green-700",
-  off: "bg-red-600 text-white hover:bg-red-700",
-  none: "bg-white text-slate-300 hover:bg-slate-50",
-};
-
-const CELL_LABEL: Record<Paint, string> = { on_duty: "ON DUTY", off: "OFF", none: "—" };
-
-/** Click cycles through the three states, which is the whole interaction. */
-const NEXT: Record<Paint, Paint> = { none: "on_duty", on_duty: "off", off: "none" };
 
 /**
  * Filling a cut-off for several agents at once — the same grid as the roster
@@ -58,15 +49,10 @@ export function BulkAssignModal({
   const dates = useMemo(() => datesIn(cutoff), [cutoff]);
   const rows = agents.filter((a) => selected.includes(a.id));
 
-  const painted = Object.entries(cells).filter(([, v]) => v !== "none");
+  const painted = Object.entries(cells).filter(([, v]) => v !== "NONE");
 
   function paint(agentId: string, date: string, value: Paint) {
     setCells((c) => ({ ...c, [`${agentId}|${date}`]: value }));
-  }
-
-  function cycle(agentId: string, date: string) {
-    const key = `${agentId}|${date}`;
-    paint(agentId, date, NEXT[cells[key] ?? "none"]);
   }
 
   /** Set every selected agent's whole cut-off. */
@@ -78,8 +64,8 @@ export function BulkAssignModal({
 
   /** A column: the same day for everyone selected. */
   function fillColumn(date: string) {
-    const allOn = rows.every((a) => cells[`${a.id}|${date}`] === "on_duty");
-    const value: Paint = allOn ? "off" : "on_duty";
+    const allOn = rows.every((a) => cells[`${a.id}|${date}`] === "ON DUTY");
+    const value: Paint = allOn ? "OFF" : "ON DUTY";
     const next: Record<string, Paint> = { ...cells };
     for (const a of rows) next[`${a.id}|${date}`] = value;
     setCells(next);
@@ -87,8 +73,8 @@ export function BulkAssignModal({
 
   /** A row: one agent's whole cut-off. */
   function fillRow(agentId: string) {
-    const allOn = dates.every((d) => cells[`${agentId}|${d}`] === "on_duty");
-    const value: Paint = allOn ? "off" : "on_duty";
+    const allOn = dates.every((d) => cells[`${agentId}|${d}`] === "ON DUTY");
+    const value: Paint = allOn ? "OFF" : "ON DUTY";
     const next: Record<string, Paint> = { ...cells };
     for (const d of dates) next[`${agentId}|${d}`] = value;
     setCells(next);
@@ -104,7 +90,7 @@ export function BulkAssignModal({
     try {
       const entries = painted.map(([key, value]) => {
         const [agent_id, schedule_date] = key.split("|");
-        return { agent_id, schedule_date, is_rest_day: value === "off" };
+        return { agent_id, schedule_date, duty_status: value };
       });
       const res = await fetch("/api/schedule/bulk", {
         method: "POST",
@@ -207,13 +193,13 @@ export function BulkAssignModal({
               {rows.length > 0 && (
                 <>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Button type="button" variant="outline" size="sm" onClick={() => fillAll("on_duty")}>
+                    <Button type="button" variant="outline" size="sm" onClick={() => fillAll("ON DUTY")}>
                       All ON DUTY
                     </Button>
-                    <Button type="button" variant="outline" size="sm" onClick={() => fillAll("off")}>
+                    <Button type="button" variant="outline" size="sm" onClick={() => fillAll("OFF")}>
                       All OFF
                     </Button>
-                    <Button type="button" variant="outline" size="sm" onClick={() => fillAll("none")}>
+                    <Button type="button" variant="outline" size="sm" onClick={() => fillAll("NONE")}>
                       Clear
                     </Button>
                     <span className="text-xs text-slate-400">
@@ -256,20 +242,25 @@ export function BulkAssignModal({
                               <span className="block truncate">{a.full_name}</span>
                             </th>
                             {dates.map((d) => {
-                              const state = cells[`${a.id}|${d}`] ?? "none";
+                              const state = cells[`${a.id}|${d}`] ?? "NONE";
                               return (
                                 <td key={d} className="border-b border-r border-slate-200 p-0">
-                                  <button
-                                    type="button"
-                                    onClick={() => cycle(a.id, d)}
-                                    aria-label={`${a.full_name} on ${shortDate(d)}: ${CELL_LABEL[state]}`}
+                                  <select
+                                    value={state}
+                                    onChange={(e) => paint(a.id, d, e.target.value as Paint)}
+                                    aria-label={`${a.full_name} on ${shortDate(d)}`}
                                     className={cn(
-                                      "h-8 w-full text-[10px] font-semibold tracking-wide transition-colors",
-                                      CELL_STYLE[state]
+                                      "h-8 w-full cursor-pointer appearance-none border-0 px-1 text-center text-[10px] font-semibold tracking-wide focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--brand-accent)]",
+                                      STATUS_STYLE[state]
                                     )}
                                   >
-                                    {CELL_LABEL[state]}
-                                  </button>
+                                    {DUTY_STATUSES.map((s) => (
+                                      <option key={s} value={s}>
+                                        {s}
+                                      </option>
+                                    ))}
+                                    <option value="NONE">—</option>
+                                  </select>
                                 </td>
                               );
                             })}

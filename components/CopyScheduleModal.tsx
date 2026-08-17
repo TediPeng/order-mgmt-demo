@@ -7,17 +7,11 @@ import { Label } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
 import { cutoffFor, shiftCutoff, datesIn, shortDate, weekdayOf, isWeekend, type Cutoff } from "@/lib/cutoff";
 import { cn } from "@/lib/utils";
+import { STATUS_STYLE, STATUS_LABEL, statusOf, type CellStatus } from "@/lib/duty-status";
 import type { AgentOption } from "@/components/ScheduleEventModal";
 
-type State = "on_duty" | "off" | "suspended" | "none";
+type State = CellStatus;
 
-const CELL_STYLE: Record<State, string> = {
-  on_duty: "bg-green-600 text-white",
-  off: "bg-red-600 text-white",
-  suspended: "bg-orange-600 text-white",
-  none: "bg-white text-slate-300",
-};
-const CELL_LABEL: Record<State, string> = { on_duty: "ON DUTY", off: "OFF", suspended: "SUSP", none: "—" };
 
 interface ScheduleEvent {
   extendedProps?: { agent_id?: string; status?: string; is_rest_day?: boolean; schedule_date?: string; suspension_id?: string | null };
@@ -71,8 +65,7 @@ export function CopyScheduleModal({
       for (const e of events) {
         const p = e.extendedProps || {};
         if (!p.agent_id || !p.schedule_date) continue;
-        next[`${p.agent_id}|${p.schedule_date}`] =
-          p.status === "suspension" || p.suspension_id ? "suspended" : p.is_rest_day || p.status === "rest_day" ? "off" : "on_duty";
+        next[`${p.agent_id}|${p.schedule_date}`] = statusOf(p);
       }
       setCells(next);
     } catch {
@@ -118,7 +111,7 @@ export function CopyScheduleModal({
   }
 
   const copyable = rows.reduce(
-    (n, a) => n + sourceDates.filter((d) => (cells[`${a.id}|${d}`] ?? "none") !== "none" && cells[`${a.id}|${d}`] !== "suspended").length,
+    (n, a) => n + sourceDates.filter((d) => (cells[`${a.id}|${d}`] ?? "NONE") !== "NONE" && cells[`${a.id}|${d}`] !== "SUSPENDED").length,
     0
   );
 
@@ -238,17 +231,17 @@ export function CopyScheduleModal({
                               <span className="block truncate">{a.full_name}</span>
                             </th>
                             {sourceDates.map((d) => {
-                              const state = cells[`${a.id}|${d}`] ?? "none";
+                              const state = cells[`${a.id}|${d}`] ?? "NONE";
                               return (
                                 <td key={d} className="border-b border-r border-slate-200 p-0">
                                   <div
                                     className={cn(
                                       "flex h-8 items-center justify-center text-[10px] font-semibold tracking-wide",
-                                      CELL_STYLE[state]
+                                      STATUS_STYLE[state]
                                     )}
-                                    title={state === "suspended" ? "Suspensions are never copied" : undefined}
+                                    title={state === "SUSPENDED" ? "Suspensions are never copied" : undefined}
                                   >
-                                    {CELL_LABEL[state]}
+                                    {STATUS_LABEL[state]}
                                   </div>
                                 </td>
                               );

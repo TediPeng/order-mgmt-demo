@@ -6,6 +6,8 @@ import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { scopeSchedules, scopeAgentsForSchedule } from "@/lib/schedule-access";
 import { upsertSchedule, notifyAgentSchedule } from "@/lib/actions/schedules";
+import { shiftForStatus } from "@/lib/schedule-import";
+import { DUTY_STATUSES, remarkForStatus, type DutyStatus } from "@/lib/duty-status";
 import { displayCallName, displayUserName } from "@/lib/types";
 
 /** Carried on the events this route returns. The month calendar that rendered
@@ -108,17 +110,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "You can only schedule agents in your own team." }, { status: 403 });
   }
 
-  const isRestDay = !!body.is_rest_day;
+  // The grid posts a duty status and lets the server work out the shift, so the
+  // five statuses mean the same row here as they do coming out of a spreadsheet
+  // — one mapping (lib/duty-status.ts + shiftForStatus), not two that can drift.
+  const posted = DUTY_STATUSES.includes(body.duty_status as DutyStatus) ? (body.duty_status as DutyStatus) : null;
+  const shift = posted ? shiftForStatus(posted, db.work_schedule) : null;
+
+  const isRestDay = shift ? shift.kind === "rest" : !!body.is_rest_day;
   const result = upsertSchedule(
     db,
     user,
     {
       agent_id: agentId,
       schedule_date: String(body.schedule_date || ""),
-      duty_start: isRestDay ? null : (body.duty_start as string) || null,
-      duty_end: isRestDay ? null : (body.duty_end as string) || null,
+      duty_start: isRestDay ? null : shift && shift.kind === "duty" ? shift.duty_start ?? null : (body.duty_start as string) || null,
+      duty_end: isRestDay ? null : shift && shift.kind === "duty" ? shift.duty_end ?? null : (body.duty_end as string) || null,
       is_rest_day: isRestDay,
-      remarks: (body.remarks as string) || null,
+      remarks: posted ? remarkForStatus(posted) : (body.remarks as string) || null,
     },
     { confirmReplace: !!body.confirm_replace }
   );
