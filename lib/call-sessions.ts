@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { SALE_STATUSES } from "@/lib/validation";
 import type { CallSession } from "@/lib/types";
 
 /** Calling sessions.
@@ -255,17 +256,18 @@ export interface CallRecord {
   customer_name: string;
   customer_phone: string;
   /**
-   * Whether the person called ended up ordering.
+   * Whether THIS call closed the sale — its recorded status transition landed
+   * on a sale status.
    *
-   * Keyed on `order_date`, not on the status, because that is how Total Orders
-   * and Sales are defined everywhere else in the app — the date is stamped when
-   * the lead reaches Packaging and it survives the fulfillment statuses that
-   * follow. Deliberately the CURRENT state of the order rather than what this
-   * particular call did: Result already says what the call changed, and the
-   * question being asked here is the other one.
+   * Not "the order it was on eventually became a sale", which is what keying on
+   * `order_date` gave and which was wrong on the page: a lead rung at 08:26 and
+   * left at Ringing, then rung again at 09:01 and moved to Packaging, carried
+   * the tick on both rows. The first call did not produce an order — its own
+   * Result column said Ringing beside the tick — and the day's "N ordered"
+   * figure counted one sale once per call made to it.
    */
   ordered: boolean;
-  /** The order's total, for a lead that converted. */
+  /** The order's total, on the call that closed it. */
   order_amount: number | null;
   /** Where the order stands now — not necessarily what this call set. */
   order_status: string | null;
@@ -298,7 +300,7 @@ export interface CallRecord {
 export interface CallListFilters {
   /** "all", or only leads, or only the agent's own regular customers. */
   kind?: CallKind | "all";
-  /** Only calls to someone who ended up ordering. */
+  /** Only the calls that closed a sale. */
   orderedOnly?: boolean;
 }
 
@@ -318,6 +320,9 @@ export async function listCallsForDay(
     p_page_size: pageSize,
     p_kind: filters.kind ?? "all",
     p_ordered_only: Boolean(filters.orderedOnly),
+    // Handed in rather than written in SQL, following agent_daily_order_stats:
+    // lib/validation.ts stays the only place that defines what counts as a sale.
+    p_sale_statuses: SALE_STATUSES as unknown as string[],
   });
   if (error) throw new Error(`call_sessions read failed: ${error.message}`);
 
@@ -337,7 +342,7 @@ export async function listCallsForDay(
     // Resolved in SQL, so both sides of that choice are one column here.
     customer_name: String(r.customer_name ?? ""),
     customer_phone: String(r.customer_phone ?? ""),
-    ordered: Boolean(r.order_date),
+    ordered: Boolean(r.ordered),
     order_amount: r.total_amount == null ? null : Number(r.total_amount),
     order_status: r.order_status ? String(r.order_status) : null,
   }));

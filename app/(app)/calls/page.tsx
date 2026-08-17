@@ -80,8 +80,8 @@ export default async function CallsPage({
   // in memory and should not be, so a figure claiming to cover it would be a
   // lie on page two.
   const numbersOnPage = new Set(rows.map((r) => r.customer_phone).filter(Boolean)).size;
-  // How many of the calls on this page reached somebody who ordered. Same
-  // caveat as the count above — it covers this page, not the day.
+  // How many of the calls on this page closed a sale. Same caveat as the count
+  // above — it covers this page, not the day.
   const orderedOnPage = rows.filter((r) => r.ordered).length;
 
   const qs = (overrides: Record<string, string | undefined>) => {
@@ -147,7 +147,7 @@ export default async function CallsPage({
           <label className="mb-1 block text-xs text-slate-400">Outcome</label>
           <Select name="ordered" defaultValue={orderedOnly ? "1" : ""}>
             <option value="">Every call</option>
-            <option value="1">Ordered only</option>
+            <option value="1">Closed an order only</option>
           </Select>
         </div>
         <Button type="submit" variant="secondary">
@@ -171,7 +171,7 @@ export default async function CallsPage({
             <span className="font-medium text-slate-800">
               {[
                 kind === "lead" ? "leads only" : kind === "regular_customer" ? "regular customers only" : null,
-                orderedOnly ? "ordered only" : null,
+                orderedOnly ? "closed an order" : null,
               ]
                 .filter(Boolean)
                 .join(" · ")}
@@ -183,7 +183,7 @@ export default async function CallsPage({
             {" "}
             · <span className="font-medium text-slate-800">{numbersOnPage}</span> distinct number
             {numbersOnPage === 1 ? "" : "s"} on this page ·{" "}
-            <span className="font-medium text-slate-800">{orderedOnPage}</span> ordered
+            <span className="font-medium text-slate-800">{orderedOnPage}</span> closed an order
           </>
         )}
         .
@@ -202,9 +202,10 @@ export default async function CallsPage({
               <th className="px-2.5 py-2">From</th>
               <th className="px-2.5 py-2">Phone Number</th>
               <th className="px-2.5 py-2">Order ID</th>
-              {/* Did the person called end up ordering. Result says what THIS
-                  call changed; this says where the lead stands now, which is
-                  the question asked of a day's call list. */}
+              {/* The call that closed the sale, with what it was worth. Not
+                  every call to a number that eventually ordered — that put the
+                  tick on the earlier attempts too, beside their own Result of
+                  Ringing, and counted one sale once per attempt. */}
               <th className="px-2.5 py-2">Ordered</th>
               <th className="px-2.5 py-2 text-right">Talk time</th>
               <th className="px-2.5 py-2">Result</th>
@@ -264,10 +265,10 @@ export default async function CallsPage({
                       <span className="text-slate-400">No order</span>
                     )}
                   </td>
-                  {/* Ordered means the order carries an Order Date, which is
-                      what Total Orders and Sales key off everywhere else —
-                      stamped at Packaging and kept through fulfillment. A lead
-                      still being worked shows the dash, not a zero. */}
+                  {/* Ordered means this call's own status transition landed on
+                      a sale status — the definition in lib/validation.ts, which
+                      is what Total Orders and Sales use. A call that did not
+                      close shows the dash, whatever became of the lead later. */}
                   <td className="px-2.5 py-1.5">
                     {r.ordered ? (
                       <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
