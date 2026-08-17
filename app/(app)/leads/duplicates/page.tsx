@@ -21,9 +21,16 @@ import {
 
 const PAGE_SIZE = 50;
 
-/** Deleting every duplicate is thousands of rows in chunked statements. The
- * default ceiling is generous for a page render and short for a sweep. */
-export const maxDuration = 60;
+/** Deleting every duplicate is thousands of rows in chunked statements, and the
+ * page this redirects back to is itself two window-function passes over the
+ * whole orders table — about four seconds each at 76,000 rows.
+ *
+ * Sixty seconds covered the sweep but not the sweep AND the render that follows
+ * it: a 12,282-row delete on 2026-08-17 landed in full and then died on the way
+ * back, showing "a server-side exception has occurred" over a deletion that had
+ * actually succeeded. 300 is the Pro ceiling and this is one of the few pages
+ * that can genuinely need it. */
+export const maxDuration = 300;
 
 /**
  * Duplicate Leads — the same contact number entered more than once.
@@ -137,6 +144,18 @@ export default async function DuplicateLeadsPage({
                 Keeps the earliest lead for each number and permanently deletes the other {summary.removableRows}.
                 There is no undo — type <span className="font-medium text-slate-700">{summary.removableRows}</span> to
                 confirm.
+              </p>
+              {/* The audit entry keeps whole rows, but only the first fifty of
+                  a sweep, and this one is in the thousands. Past that fiftieth
+                  row the file is the only copy there will ever be, so it is
+                  offered here rather than somewhere it would be found after
+                  the fact. */}
+              <p className="mt-1 text-xs text-slate-500">
+                <a href="/api/leads/duplicates/export" className="font-medium text-[var(--brand-primary)] hover:underline">
+                  Download the list first
+                </a>{" "}
+                — every duplicate, which is kept and which goes. Only the first 50 deletions are recoverable from the
+                audit log.
               </p>
             </div>
             <form action={deleteAllDuplicatesAction} className="flex items-center gap-2">

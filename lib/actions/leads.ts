@@ -15,7 +15,7 @@ import { leadFormSchema, leadImportRowSchema, normalizePreviousStatus, parseOrde
 import { listItems, replaceItems, summarizeItems, totalsFor } from "@/lib/order-items";
 import type { OrderItemInput } from "@/lib/types";
 import { matchAgentByCallName } from "@/lib/agent-match";
-import { todayInTz, restoreTrunkZero, canonicalPhone } from "@/lib/utils";
+import { todayInTz, restoreTrunkZero, canonicalPhone, normalizePhone } from "@/lib/utils";
 import {
   validatePackaging,
   restrictedStatusBlockReason,
@@ -1043,36 +1043,6 @@ export interface LeadImportSummary {
   results: LeadImportRowResult[];
 }
 
-function leadDedupeKey(f: {
-  agent: string;
-  customer_name: string;
-  customer_phone: string;
-  purok: string;
-  barangay: string;
-  city: string;
-  province: string;
-  landmark: string;
-  previous_order_date: string;
-  previous_order_product: string;
-  previous_order_amount: string;
-}): string {
-  return [
-    f.agent,
-    f.customer_name,
-    f.customer_phone,
-    f.purok,
-    f.barangay,
-    f.city,
-    f.province,
-    f.landmark,
-    f.previous_order_date,
-    f.previous_order_product,
-    f.previous_order_amount,
-  ]
-    .map((v) => v.trim().toLowerCase())
-    .join("|");
-}
-
 /**
  * Re-validates every row server-side (never trusts client parsing) and returns
  * a full categorized summary the client can render and turn into a CSV error
@@ -1105,26 +1075,26 @@ export async function importLeadsAction(
   db.orders = await ordersForPhones(rawRows.map((r) => String(r.data.customer_phone ?? "")));
 
   const allowedIds = new Set(allowedAssigneeIds(user, db));
-  const usernameById = new Map(db.profiles.map((p) => [p.id, p.username]));
 
-  const existingKeys = new Set(
-    db.orders.map((o) =>
-      leadDedupeKey({
-        agent: usernameById.get(o.agent_id) || "",
-        customer_name: o.customer_name,
-        customer_phone: o.customer_phone,
-        purok: o.purok,
-        barangay: o.barangay,
-        city: o.city,
-        province: o.province,
-        landmark: o.landmark,
-        previous_order_date: o.previous_order_date || "",
-        previous_order_product: o.previous_order_product || "",
-        previous_order_amount: o.previous_order_amount != null ? String(o.previous_order_amount) : "",
-      })
-    )
-  );
-  const seenInFile = new Set<string>();
+  // One lead per phone number, for the whole floor.
+  //
+  // The key used to be the agent plus the name plus the address plus the
+  // previous-order fields, so the same number reaching a second agent — or the
+  // same agent with the name spelled differently — was not a duplicate. That is
+  // how one number came to hold seven leads across three agents. The number
+  // alone decides now: it is the one field that identifies a person across two
+  // rows typed by different people on different days.
+  //
+  // The order number of what is already there comes with it, so a rejected row
+  // can be traced rather than merely refused. Not the agent's name: an uploader
+  // is not necessarily entitled to know whose desk the number is on, and the
+  // order number is enough to find it.
+  const existingByPhone = new Map<string, string>();
+  for (const o of db.orders) {
+    const key = normalizePhone(o.customer_phone || "");
+    if (key && !existingByPhone.has(key)) existingByPhone.set(key, o.order_number);
+  }
+  const seenInFile = new Map<string, number>();
   const results: LeadImportRowResult[] = [];
   const now = nowIso();
   // Built once. Doing this per row walked every order for every line of the
@@ -1145,19 +1115,7 @@ export async function importLeadsAction(
 
   for (const { row, data: raw } of rawRows) {
     const agentName = String(raw.agent_name ?? "").trim();
-    const key = leadDedupeKey({
-      agent: agentName,
-      customer_name: String(raw.customer_name ?? ""),
-      customer_phone: String(raw.customer_phone ?? ""),
-      purok: String(raw.purok ?? ""),
-      barangay: String(raw.barangay ?? ""),
-      city: String(raw.city ?? ""),
-      province: String(raw.province ?? ""),
-      landmark: String(raw.landmark ?? ""),
-      previous_order_date: String(raw.previous_order_date ?? ""),
-      previous_order_product: String(raw.previous_order_product ?? ""),
-      previous_order_amount: String(raw.previous_order_amount ?? ""),
-    });
+    const key = normalizePhone(String(raw.customer_phone ?? ""));
 
     const parsed = leadImportRowSchema.safeParse(raw);
     if (!parsed.success) {
@@ -1174,8 +1132,23 @@ export async function importLeadsAction(
       results.push({ row, category: "missing_info", reason: "Agent username is required", data: raw });
       continue;
     }
-    if (existingKeys.has(key) || seenInFile.has(key)) {
-      results.push({ row, category: "duplicate", reason: "Identical to an existing lead or another row in this file", data: raw });
+    const heldBy = existingByPhone.get(key);
+    if (heldBy) {
+      results.push({
+        row,
+        category: "duplicate",
+        reason: `This number is already a lead in the system (${heldBy})`,
+        data: raw,
+      });
+      continue;
+    }
+    if (seenInFile.has(key)) {
+      results.push({
+        row,
+        category: "duplicate",
+        reason: `Same number as row ${seenInFile.get(key)} of this file`,
+        data: raw,
+      });
       continue;
     }
     let match = agentCache.get(agentName);
@@ -1193,10 +1166,7 @@ export async function importLeadsAction(
       continue;
     }
 
-    seenInFile.add(key);
-    // Previous Note and Previous Status are deliberately absent from
-    // leadDedupeKey above: two rows that differ only in what was noted, or in
-    // how the last order ended, are still the same lead typed twice.
+    seenInFile.set(key, row);
     const hasProvidedPreviousInfo =
       data.previous_order_date ||
       data.previous_order_product ||
