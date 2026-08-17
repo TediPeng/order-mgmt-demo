@@ -13,6 +13,7 @@ import {
   createRegularCustomer,
   findDuplicates,
   findRegularCustomerByPhone,
+  regularCustomersOnPhoneElsewhere,
   recordDuplicates,
   upsertRegularCustomer,
 } from "@/lib/customers";
@@ -20,10 +21,73 @@ import { allowedAssigneeIds } from "@/lib/order-access";
 import { regularCustomerFormSchema } from "@/lib/validation";
 import { describeParseFailure } from "@/lib/zod-error";
 import { requireUserLite } from "./guards";
+import { displayUserName } from "@/lib/types";
 import type { DuplicateStatus } from "@/lib/types";
 
 const PATH = "/regular-customers";
 const NEW_PATH = "/regular-customers/new";
+
+export interface ExistingRegularOwner {
+  /** Null for an Agent — see the note on the action below. */
+  customerName: string | null;
+  agentName: string | null;
+  regularSince: string | null;
+}
+
+export interface RegularDuplicateCheck {
+  count: number;
+  /** Empty for an Agent: they are told the number is taken, not by whom. */
+  owners: ExistingRegularOwner[];
+}
+
+/**
+ * Who else already keeps this number as a regular customer.
+ *
+ * Asked by the form before it saves, so the agent is told rather than finding
+ * out later — or not at all. Two agents working the same household is the sort
+ * of thing that surfaces in a complaint rather than in the system.
+ *
+ * It answers a question and refuses nothing. Whether a customer should move
+ * between agents is a floor decision with a conversation in it, and a form is
+ * the wrong place to settle it.
+ *
+ * WHO IS TOLD WHAT is the careful part, and it follows the rule
+ * tagRegularCustomerAction already set: an Agent is never shown another agent's
+ * customer. Naming them here would turn this into a lookup — type any number,
+ * learn whose customer it is — which is exactly what that rule exists to
+ * prevent, and a form that answers on keystroke is a faster way to abuse it
+ * than the tagging path ever was.
+ *
+ * So an Agent is told the number is already held, and nothing else. A Team Lead
+ * or Administrator sees the names, because they can already see across agents
+ * everywhere else in the app and the warning is useless to them otherwise.
+ */
+export async function regularCustomerOwnersElsewhereAction(
+  phone: string,
+  agentId?: string
+): Promise<RegularDuplicateCheck> {
+  const { user, db } = await requireUserLite();
+  if (!can(user.role, "regular_customers", "create", db.role_permissions)) return { count: 0, owners: [] };
+
+  const allowed = allowedAssigneeIds(user, db);
+  const ownerAgentId = agentId && allowed.includes(agentId) ? agentId : user.id;
+
+  const others = await regularCustomersOnPhoneElsewhere(phone, ownerAgentId);
+  if (others.length === 0) return { count: 0, owners: [] };
+
+  const maySeeNames = isFullAccess(user.role) || user.role === "team_lead";
+  if (!maySeeNames) return { count: others.length, owners: [] };
+
+  const nameById = new Map(db.profiles.map((p) => [p.id, displayUserName(p)]));
+  return {
+    count: others.length,
+    owners: others.map((c) => ({
+      customerName: c.full_name,
+      agentName: c.owner_agent_id ? nameById.get(c.owner_agent_id) || "another agent" : "another agent",
+      regularSince: c.regular_since || null,
+    })),
+  };
+}
 
 /** Adds a Regular Customer directly — the Add Regular Customer button.
  *
