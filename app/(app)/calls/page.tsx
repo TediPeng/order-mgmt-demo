@@ -1,10 +1,11 @@
 import Link from "next/link";
+import { Check } from "lucide-react";
 import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { scopeAgentsForUser } from "@/lib/performance";
 import { displayUserName } from "@/lib/types";
-import { todayInTz, formatDate } from "@/lib/utils";
+import { todayInTz, formatDate, formatCurrency } from "@/lib/utils";
 import { LEAD_STATUS_LABELS } from "@/lib/validation";
 import { listCallsForDay } from "@/lib/call-sessions";
 import { Alert } from "@/components/ui/Alert";
@@ -72,6 +73,9 @@ export default async function CallsPage({
   // in memory and should not be, so a figure claiming to cover it would be a
   // lie on page two.
   const numbersOnPage = new Set(rows.map((r) => r.customer_phone).filter(Boolean)).size;
+  // How many of the calls on this page reached somebody who ordered. Same
+  // caveat as the count above — it covers this page, not the day.
+  const orderedOnPage = rows.filter((r) => r.ordered).length;
 
   const qs = (overrides: Record<string, string | undefined>) => {
     const params = new URLSearchParams();
@@ -124,21 +128,30 @@ export default async function CallsPage({
           <>
             {" "}
             · <span className="font-medium text-slate-800">{numbersOnPage}</span> distinct number
-            {numbersOnPage === 1 ? "" : "s"} on this page
+            {numbersOnPage === 1 ? "" : "s"} on this page ·{" "}
+            <span className="font-medium text-slate-800">{orderedOnPage}</span> ordered
           </>
         )}
         .
       </p>
 
       <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
-        <table className="w-full min-w-[900px] text-left text-table">
+        <table className="w-full min-w-[1120px] text-left text-table">
           <thead className="sticky top-0 z-20 bg-slate-50 shadow-sm text-xs uppercase tracking-wide text-slate-500">
             <tr className="whitespace-nowrap">
               <th className="px-2.5 py-2">Time</th>
               {seesOthers && <th className="px-2.5 py-2">Agent</th>}
               <th className="px-2.5 py-2">Customer</th>
+              {/* Whether the number belongs to a lead being worked or to one of
+                  the agent's own repeat buyers. The two are different jobs and
+                  the page read as one undifferentiated list of numbers. */}
+              <th className="px-2.5 py-2">From</th>
               <th className="px-2.5 py-2">Phone Number</th>
               <th className="px-2.5 py-2">Order ID</th>
+              {/* Did the person called end up ordering. Result says what THIS
+                  call changed; this says where the lead stands now, which is
+                  the question asked of a day's call list. */}
+              <th className="px-2.5 py-2">Ordered</th>
               <th className="px-2.5 py-2 text-right">Talk time</th>
               <th className="px-2.5 py-2">Result</th>
             </tr>
@@ -156,15 +169,19 @@ export default async function CallsPage({
                     })}
                   </td>
                   {seesOthers && <td className="px-2.5 py-1.5 text-slate-600">{nameById.get(r.agent_id) || "—"}</td>}
-                  {/* Whether this was a lead or one of the agent's own repeat
-                      buyers — the same distinction the monitor now draws. */}
-                  <td className="px-2.5 py-1.5 text-slate-700">
-                    {r.customer_name || "—"}
-                    {r.kind === "regular_customer" && (
-                      <span className="ml-1.5 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
-                        Regular
-                      </span>
-                    )}
+                  <td className="px-2.5 py-1.5 text-slate-700">{r.customer_name || "—"}</td>
+                  {/* Lead or regular customer — the same distinction the
+                      monitor draws while the call is live. */}
+                  <td className="px-2.5 py-1.5">
+                    <Badge
+                      className={
+                        r.kind === "regular_customer"
+                          ? "bg-violet-50 text-violet-700"
+                          : "bg-slate-100 text-slate-600"
+                      }
+                    >
+                      {r.kind === "regular_customer" ? "Regular Customer" : "Lead"}
+                    </Badge>
                   </td>
                   {/* The number itself dials on a phone and copies on a desktop —
                       it is the thing this page exists for, so it is not buried
@@ -193,6 +210,20 @@ export default async function CallsPage({
                       <span className="text-slate-400">No order</span>
                     )}
                   </td>
+                  {/* Ordered means the order carries an Order Date, which is
+                      what Total Orders and Sales key off everywhere else —
+                      stamped at Packaging and kept through fulfillment. A lead
+                      still being worked shows the dash, not a zero. */}
+                  <td className="px-2.5 py-1.5">
+                    {r.ordered ? (
+                      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+                        <Check className="h-3 w-3" aria-hidden />
+                        {r.order_amount ? formatCurrency(r.order_amount) : "Ordered"}
+                      </span>
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
+                  </td>
                   <td className="px-2.5 py-1.5 text-right font-mono tabular-nums text-slate-600">
                     {r.ended_at ? hms(r.duration_seconds) : "on call"}
                   </td>
@@ -208,7 +239,7 @@ export default async function CallsPage({
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={seesOthers ? 7 : 6} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={seesOthers ? 9 : 8} className="px-4 py-10 text-center text-slate-400">
                   No calls recorded on {formatDate(date)}.
                 </td>
               </tr>

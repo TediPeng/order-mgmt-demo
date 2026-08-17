@@ -254,6 +254,21 @@ export interface CallRecord {
   order_number: string;
   customer_name: string;
   customer_phone: string;
+  /**
+   * Whether the person called ended up ordering.
+   *
+   * Keyed on `order_date`, not on the status, because that is how Total Orders
+   * and Sales are defined everywhere else in the app — the date is stamped when
+   * the lead reaches Packaging and it survives the fulfillment statuses that
+   * follow. Deliberately the CURRENT state of the order rather than what this
+   * particular call did: Result already says what the call changed, and the
+   * question being asked here is the other one.
+   */
+  ordered: boolean;
+  /** The order's total, for a lead that converted. */
+  order_amount: number | null;
+  /** Where the order stands now — not necessarily what this call set. */
+  order_status: string | null;
 }
 
 /**
@@ -288,7 +303,7 @@ export async function listCallsForDay(
       // had an order; a call raised from a Regular Customer's record has none
       // until the order is written, and an inner join would drop exactly the
       // calls that never produced a sale — the ones this page is for.
-      "id, agent_id, order_id, customer_id, started_at, ended_at, duration_seconds, new_status, orders(order_number, customer_name, customer_phone, is_regular_customer), customers(full_name, phone_raw)",
+      "id, agent_id, order_id, customer_id, started_at, ended_at, duration_seconds, new_status, orders(order_number, customer_name, customer_phone, is_regular_customer, order_date, status, total_amount), customers(full_name, phone_raw)",
       { count: "exact" }
     )
     .in("agent_id", agentIds)
@@ -322,6 +337,9 @@ export async function listCallsForDay(
       order_number: String(order?.order_number ?? ""),
       customer_name: String(customer?.full_name ?? order?.customer_name ?? ""),
       customer_phone: String(customer?.phone_raw ?? order?.customer_phone ?? ""),
+      ordered: Boolean(order?.order_date),
+      order_amount: order?.total_amount == null ? null : Number(order.total_amount),
+      order_status: order?.status ? String(order.status) : null,
     };
   });
   return { rows, total: count ?? 0 };
