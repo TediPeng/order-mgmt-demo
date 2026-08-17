@@ -43,8 +43,6 @@ export interface MonitorRow {
   bioCount: number;
   /** Completed bio break time today, seconds. The live one is added client-side. */
   bioSeconds: number;
-  /** Seconds already accounted for as standby before the current state began. */
-  standbyBaseSeconds: number;
 }
 
 /** `cls`/`dot` still dress the per-row badge in the table; `tone` is the same
@@ -169,7 +167,13 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
               // Live states keep counting; everything else shows the stored total.
               const talk = r.talkSeconds + (r.state === "on_call" ? live : 0);
               const bio = r.bioSeconds + (r.state === "bio_break" ? live : 0);
-              const standby = r.standbyBaseSeconds + (r.state === "standby" ? live : 0);
+              // Standby restarts with each stretch of it rather than carrying
+              // the day forward. This board answers "what is happening now",
+              // and a number that only ever grows cannot answer it: an agent
+              // idle for two minutes and one idle since the morning both read
+              // as a large figure. The day's total is a reporting question, and
+              // the Activity Report already sums it.
+              const standby = r.state === "standby" ? live : 0;
 
               return (
                 <tr key={r.agentId} className={r.state === "on_call" ? "bg-green-50/40" : undefined}>
@@ -204,7 +208,12 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
                     )}
                   </td>
                   <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-700">{hms(talk)}</td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-700">{hms(standby)}</td>
+                  {/* A dash, not 0:00:00, when they are doing something else:
+                      zero would read as "idle for no time", which is a claim
+                      about standby rather than the absence of one. */}
+                  <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-700">
+                    {r.state === "standby" ? hms(standby) : <span className="text-slate-300">—</span>}
+                  </td>
                   <td className="px-4 py-3 text-right tabular-nums text-slate-700">
                     {r.bioCount}
                     <span className="ml-2 font-mono text-xs text-slate-400">{hms(bio)}</span>

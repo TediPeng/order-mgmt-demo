@@ -110,31 +110,10 @@ export default async function AgentMonitorPage() {
       sinceIso = attendance.break_end || attendance.time_in;
     }
 
-    // Standby is what is left of the shift after talking and breaks. Computed
-    // from the total elapsed shift rather than summed from gaps, so any time
-    // unaccounted for lands here rather than silently disappearing.
-    let standbyBaseSeconds = 0;
-    if (attendance?.time_in) {
-      const shiftEnd = attendance.time_out ? new Date(attendance.time_out).getTime() : Date.now();
-      const elapsed = Math.max(0, (shiftEnd - new Date(attendance.time_in).getTime()) / 1000);
-      const mainBreak = (attendance.break_minutes ?? 0) * 60;
-      standbyBaseSeconds = Math.max(0, elapsed - calls.seconds - bios.seconds - mainBreak);
-
-      // Whatever stretch is currently running has to come out of the base, for
-      // one of two reasons depending on the state — but the arithmetic is the
-      // same either way, so it is one rule rather than two branches:
-      //   standby  — the browser adds this stretch live, so leaving it here
-      //              would count it twice;
-      //   anything else — the totals subtracted above only cover COMPLETED
-      //              calls, bio breaks and breaks, so the stretch in progress
-      //              is still sitting inside `elapsed` and would otherwise be
-      //              misreported as standby.
-      const liveStates: MonitorState[] = ["on_call", "bio_break", "break", "standby"];
-      if (sinceIso && liveStates.includes(state)) {
-        standbyBaseSeconds = Math.max(0, standbyBaseSeconds - (Date.now() - new Date(sinceIso).getTime()) / 1000);
-      }
-    }
-
+    // The day's standby total is not computed here any more. This board shows
+    // the stretch running now, which the browser times from `sinceIso`; the
+    // total belongs to the Activity Report, which already derives it the same
+    // way (shift elapsed, less talking and breaks) over a date range.
     return {
       agentId: agent.id,
       name: displayUserName(agent),
@@ -147,7 +126,6 @@ export default async function AgentMonitorPage() {
       talkSeconds: calls.seconds,
       bioCount: bios.count,
       bioSeconds: bios.seconds,
-      standbyBaseSeconds: Math.round(standbyBaseSeconds),
     };
   });
 
@@ -157,7 +135,8 @@ export default async function AgentMonitorPage() {
         <h1 className="text-page-title text-slate-900">Agent Monitoring</h1>
         <p className="text-sm text-slate-500">
           {isTeamLead ? "Your agents" : "All agents"} for {today}. Standby is shift time that is not a call and not a
-          break.
+          break; the figure here is the stretch running now, and restarts each time one begins. The day&apos;s total is
+          in the Activity Report.
         </p>
       </div>
       <AgentMonitorBoard rows={rows} generatedAt={generatedAt} />
