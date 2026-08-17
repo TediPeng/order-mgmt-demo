@@ -129,6 +129,12 @@ export async function getActiveSessions(agentIds: string[]): Promise<Map<string,
 export interface CallDayTotals {
   count: number;
   seconds: number;
+  /** When the last completed call ended, ISO. Null when there were none.
+   *
+   * Carried so the monitor can tell when standby actually began: an agent who
+   * has just hung up is seconds into standby, not hours, however long ago they
+   * timed in. */
+  lastEndedAt: string | null;
 }
 
 export interface CallRecord {
@@ -217,7 +223,7 @@ export async function callTotalsForDay(agentIds: string[], workDate: string): Pr
 
   const { data, error } = await supabaseAdmin
     .from("call_sessions")
-    .select("agent_id, duration_seconds")
+    .select("agent_id, duration_seconds, ended_at")
     .in("agent_id", agentIds)
     .not("ended_at", "is", null)
     .gte("started_at", `${workDate}T00:00:00Z`)
@@ -226,9 +232,11 @@ export async function callTotalsForDay(agentIds: string[], workDate: string): Pr
 
   for (const row of data || []) {
     const key = String(row.agent_id);
-    const current = out.get(key) || { count: 0, seconds: 0 };
+    const current = out.get(key) || { count: 0, seconds: 0, lastEndedAt: null };
     current.count += 1;
     current.seconds += Number(row.duration_seconds ?? 0);
+    const ended = row.ended_at ? String(row.ended_at) : null;
+    if (ended && (!current.lastEndedAt || ended > current.lastEndedAt)) current.lastEndedAt = ended;
     out.set(key, current);
   }
   return out;
@@ -260,7 +268,7 @@ export async function callTotalsForRange(
 
   for (const row of data || []) {
     const key = String(row.agent_id);
-    const current = out.get(key) || { count: 0, seconds: 0 };
+    const current = out.get(key) || { count: 0, seconds: 0, lastEndedAt: null };
     current.count += 1;
     current.seconds += Number(row.duration_seconds ?? 0);
     out.set(key, current);

@@ -108,6 +108,10 @@ export interface BioBreakDayTotals {
   /** Seconds across completed breaks. The one in progress is excluded — the
    * monitor adds its live elapsed time separately so the figure keeps ticking. */
   seconds: number;
+  /** When the last completed bio break ended, ISO. Null when there were none.
+   * Used the same way as CallDayTotals.lastEndedAt: to date the start of the
+   * standby that followed it. */
+  lastEndedAt: string | null;
 }
 
 /** Completed bio break totals for one day, per agent. */
@@ -117,7 +121,7 @@ export async function bioBreakTotalsForDay(agentIds: string[], workDate: string)
 
   const { data, error } = await supabaseAdmin
     .from("bio_breaks")
-    .select("agent_id, duration_seconds")
+    .select("agent_id, duration_seconds, ended_at")
     .in("agent_id", agentIds)
     .eq("work_date", workDate)
     .not("ended_at", "is", null);
@@ -125,9 +129,11 @@ export async function bioBreakTotalsForDay(agentIds: string[], workDate: string)
 
   for (const row of data || []) {
     const key = String(row.agent_id);
-    const current = out.get(key) || { count: 0, seconds: 0 };
+    const current = out.get(key) || { count: 0, seconds: 0, lastEndedAt: null };
     current.count += 1;
     current.seconds += Number(row.duration_seconds ?? 0);
+    const ended = row.ended_at ? String(row.ended_at) : null;
+    if (ended && (!current.lastEndedAt || ended > current.lastEndedAt)) current.lastEndedAt = ended;
     out.set(key, current);
   }
   return out;
@@ -154,7 +160,7 @@ export async function bioBreakTotalsForRange(
 
   for (const row of data || []) {
     const key = String(row.agent_id);
-    const current = out.get(key) || { count: 0, seconds: 0 };
+    const current = out.get(key) || { count: 0, seconds: 0, lastEndedAt: null };
     current.count += 1;
     current.seconds += Number(row.duration_seconds ?? 0);
     out.set(key, current);
