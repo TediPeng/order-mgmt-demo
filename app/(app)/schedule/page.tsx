@@ -6,9 +6,10 @@ import { scopeAgentsForSchedule, scopeSchedules, scopeSuspensions, isDateWithinS
 import { todayInTz } from "@/lib/utils";
 import { displayCallName } from "@/lib/types";
 import { cutoffFor, shiftCutoff, datesIn, shortDate, weekdayOf, isWeekend } from "@/lib/cutoff";
-import { Download, Upload, ChevronLeft, ChevronRight, CalendarDays } from "lucide-react";
+import { Download, Upload, ChevronLeft, ChevronRight } from "lucide-react";
 import { StatCard } from "@/components/StatCard";
 import { ScheduleGrid, type ScheduleGridCells, type CellState } from "@/components/ScheduleGrid";
+import { ScheduleBulkActions } from "@/components/ScheduleBulkActions";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { PrintButton } from "@/components/PrintButton";
 
@@ -33,6 +34,7 @@ export default async function SchedulePage({
   const canCreate = can(user.role, "schedules", "create", db.role_permissions);
   const canEdit = can(user.role, "schedules", "edit", db.role_permissions);
   const canExport = can(user.role, "schedules", "export", db.role_permissions);
+  const canBulk = can(user.role, "schedules", "assign", db.role_permissions);
   // A cell writes through POST (create/replace) and DELETE (clear), so editing
   // the grid needs all three rather than `edit` alone.
   const canEditGrid = canCreate && canEdit && can(user.role, "schedules", "delete", db.role_permissions);
@@ -48,6 +50,7 @@ export default async function SchedulePage({
 
   const scopedAgents = scopeAgentsForSchedule(db, user);
   const scopedAgentIds = new Set(scopedAgents.map((a) => a.id));
+  const agentOptions = scopedAgents.map((a) => ({ id: a.id, full_name: a.full_name }));
 
   // Every suspension touching this period, so a suspended day reads as one
   // rather than as an ordinary rest day.
@@ -96,11 +99,9 @@ export default async function SchedulePage({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-page-title text-slate-900">Schedule</h1>
         <div className="flex flex-wrap gap-2">
-          {/* Bulk assign and copy-schedule live in the calendar — they are how
-              a fortnight gets filled before anyone edits a cell. */}
-          <LinkButton href="/schedule/calendar" variant="outline" size="sm">
-            <CalendarDays className="h-4 w-4" /> Calendar
-          </LinkButton>
+          {/* How a cut-off gets filled, as against how one day gets corrected.
+              These sat on the calendar's toolbar until it was removed. */}
+          {canBulk && <ScheduleBulkActions agents={agentOptions} />}
           {canCreate && (
             <LinkButton href="/schedule/import" variant="outline" size="sm">
               <Upload className="h-4 w-4" /> Import Schedule

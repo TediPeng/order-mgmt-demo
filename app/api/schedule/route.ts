@@ -8,10 +8,10 @@ import { scopeSchedules, scopeAgentsForSchedule } from "@/lib/schedule-access";
 import { upsertSchedule, notifyAgentSchedule } from "@/lib/actions/schedules";
 import { displayCallName, displayUserName } from "@/lib/types";
 
-/** Month-view events are filled bars with white text on them, so these are the
- * 700 shades rather than the 600s: white on green-600 is 3.5:1, which fails
- * AA for label-sized text. Keep the legend swatches in ScheduleCalendar.tsx in
- * step with these. */
+/** Carried on the events this route returns. The month calendar that rendered
+ * them is gone — the roster is a cut-off grid now, which colours its own cells
+ * — but the field is part of the response and cheap to keep, and these are the
+ * 700 shades because white on green-600 is 3.5:1 and fails AA at label size. */
 const SCHEDULE_STATUS_COLORS: Record<string, string> = {
   scheduled: "#15803d", // green -- Scheduled for Duty
   rest_day: "#1d4ed8", // blue -- Rest Day
