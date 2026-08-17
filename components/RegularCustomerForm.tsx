@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { AlertTriangle } from "lucide-react";
 import { Input, Label, Select } from "@/components/ui/Field";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { AddressSelect, EMPTY_ADDRESS, type AddressValue } from "@/components/AddressSelect";
+import { regularCustomerOwnersElsewhereAction, type RegularDuplicateCheck } from "@/lib/actions/regular-customers";
 
 /**
  * Add Regular Customer.
@@ -35,6 +37,21 @@ export function RegularCustomerForm({
   const [values, setValues] = useState({ full_name: "", phone: "", purok: "", landmark: "" });
   const [showProblems, setShowProblems] = useState(false);
 
+  /**
+   * Warning before saving, when somebody else already keeps this number.
+   *
+   * Checked on submit rather than while typing: a check that fires on every
+   * keystroke asks the database for every half-finished number, and turns the
+   * field into a lookup for whether a number is taken.
+   *
+   * `confirmed` is what lets the second submit through. Without it the dialog
+   * would raise itself again on the very submit it approved.
+   */
+  const [duplicate, setDuplicate] = useState<RegularDuplicateCheck | null>(null);
+  const [checking, setChecking] = useState(false);
+  const confirmed = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
+
   const set = (key: keyof typeof values, value: string) => setValues((v) => ({ ...v, [key]: value }));
 
   const problems = [
@@ -47,12 +64,35 @@ export function RegularCustomerForm({
 
   return (
     <form
+      ref={formRef}
       action={action}
       onSubmit={(e) => {
         if (problems.length > 0) {
           e.preventDefault();
           setShowProblems(true);
+          return;
         }
+        if (confirmed.current) return;
+
+        e.preventDefault();
+        setChecking(true);
+        const agentId = (formRef.current?.elements.namedItem("agent_id") as HTMLSelectElement | null)?.value;
+        regularCustomerOwnersElsewhereAction(values.phone, agentId || undefined)
+          .then((found) => {
+            if (found.count === 0) {
+              confirmed.current = true;
+              formRef.current?.requestSubmit();
+              return;
+            }
+            setDuplicate(found);
+          })
+          // A failed check must not block the save. The rule is a warning, and
+          // an unreachable warning is not a reason to refuse somebody's work.
+          .catch(() => {
+            confirmed.current = true;
+            formRef.current?.requestSubmit();
+          })
+          .finally(() => setChecking(false));
       }}
       className="space-y-4"
       noValidate
@@ -140,8 +180,70 @@ export function RegularCustomerForm({
         <LinkButton href="/regular-customers" variant="outline">
           Cancel
         </LinkButton>
-        <Button type="submit">Save Regular Customer</Button>
+        <Button type="submit" disabled={checking}>
+          {checking ? "Checking…" : "Save Regular Customer"}
+        </Button>
       </div>
+
+      {duplicate && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setDuplicate(null)}
+        >
+          <div className="w-full max-w-md rounded-xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start gap-3 border-b border-slate-100 px-5 py-4">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">This number is already a regular customer</h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  {duplicate.count === 1
+                    ? "Another agent already keeps this phone number as a regular customer."
+                    : `${duplicate.count} other agents already keep this phone number as a regular customer.`}
+                </p>
+              </div>
+            </div>
+
+            {/* Names only for a Team Lead or Administrator. An Agent is told the
+                number is taken and no more — see the server action for why. */}
+            {duplicate.owners.length > 0 && (
+              <ul className="divide-y divide-slate-100 border-b border-slate-100">
+                {duplicate.owners.map((o, i) => (
+                  <li key={i} className="px-5 py-2.5 text-sm">
+                    <span className="font-medium text-slate-800">{o.customerName}</span>
+                    <span className="text-slate-500"> — {o.agentName}</span>
+                    {o.regularSince && (
+                      <span className="block text-xs text-slate-400">Regular since {o.regularSince.slice(0, 10)}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="px-5 py-4">
+              <p className="text-xs text-slate-500">
+                Adding them is not blocked — two agents can genuinely serve the same household. Check with your Team
+                Lead first if this looks like the same person.
+              </p>
+              <div className="mt-4 flex justify-end gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => setDuplicate(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    confirmed.current = true;
+                    setDuplicate(null);
+                    formRef.current?.requestSubmit();
+                  }}
+                >
+                  Add anyway
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 }

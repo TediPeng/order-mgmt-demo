@@ -65,6 +65,34 @@ export async function listCustomers(
   return (data || []).map(mapCustomer);
 }
 
+/**
+ * Regular customers on this phone number held by SOMEBODY ELSE.
+ *
+ * The same-agent case is refused outright — one record per person per agent, or
+ * their order history splits in two. This is the other case, and it is not a
+ * fault: two agents can legitimately end up with the same household. What it
+ * is, is worth knowing before you claim somebody, because the alternative is
+ * two agents working the same customer without either of them finding out.
+ *
+ * So it is asked and shown, not enforced. Who owns a customer is a question for
+ * the floor, not for a validation rule.
+ */
+export async function regularCustomersOnPhoneElsewhere(
+  phone: string,
+  excludeAgentId: string
+): Promise<Customer[]> {
+  const normalized = canonicalPhone(phone);
+  if (!normalized) return [];
+  const { data, error } = await supabaseAdmin
+    .from("customers")
+    .select("*")
+    .eq("phone_normalized", normalized)
+    .eq("is_regular_customer", true)
+    .neq("owner_agent_id", excludeAgentId);
+  if (error) throw new Error(`customers read failed: ${error.message}`);
+  return (data || []).map(mapCustomer);
+}
+
 /** The regular customer an agent already owns for this phone number, if any.
  *
  * Used both to refuse a duplicate entry on the Add Regular Customer form and

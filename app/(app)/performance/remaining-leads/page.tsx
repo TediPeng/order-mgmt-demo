@@ -33,7 +33,16 @@ export default async function RemainingLeadsPage() {
   const counts = await agentRemainingLeads(agents.map((a) => a.id));
 
   const rows = agents
-    .map((a) => ({ id: a.id, name: a.full_name, remaining: counts.get(a.id) || 0 }))
+    // The Call Name in brackets, because that is the name the floor uses out
+    // loud and on the leads themselves — a queue you read to decide who to give
+    // work to should carry the name you would say to them. Omitted, brackets
+    // and all, for an account that has none.
+    .map((a) => ({
+      id: a.id,
+      name: a.full_name,
+      callName: a.call_name?.trim() || null,
+      remaining: counts.get(a.id) || 0,
+    }))
     .filter((r) => r.remaining > 0)
     .sort((a, b) => b.remaining - a.remaining || a.name.localeCompare(b.name));
   const total = rows.reduce((sum, r) => sum + r.remaining, 0);
@@ -60,7 +69,10 @@ export default async function RemainingLeadsPage() {
               {rows.map((r) => (
                 <li key={r.id} className="px-4 py-2.5">
                   <div className="flex items-baseline justify-between gap-4">
-                    <span className="truncate text-table font-medium text-slate-700">{r.name}</span>
+                    <span className="truncate text-table font-medium text-slate-700">
+                      {r.name}
+                      {r.callName && <span className="ml-1.5 text-slate-400">({r.callName})</span>}
+                    </span>
                     <span className="num shrink-0 text-table font-semibold text-slate-900">
                       {r.remaining.toLocaleString()}
                     </span>
