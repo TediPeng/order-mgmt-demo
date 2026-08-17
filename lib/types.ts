@@ -823,7 +823,17 @@ export interface CustomerDuplicateMatch {
 export interface CallSession {
   id: string;
   agent_id: string;
-  order_id: string;
+  /** The order being called.
+   *
+   * Null only while the call is on a regular customer who has no order yet:
+   * the agent rings them from their record and the order is written during the
+   * call, at which point createLeadAction attaches it here. Every finished
+   * call that produced an order therefore reads exactly like a lead call. */
+  order_id: string | null;
+  /** The regular customer being called, when the call started from their
+   * record rather than from a lead. Stays set after the order is attached, so
+   * the monitor and the call list can still say who was rung. */
+  customer_id: string | null;
   started_at: string;
   ended_at: string | null;
   duration_seconds: number | null;

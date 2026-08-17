@@ -25,6 +25,15 @@ function map(row: Record<string, unknown>): CallSession {
 /** Postgres unique-violation, raised by one_active_call_per_agent. */
 const UNIQUE_VIOLATION = "23505";
 
+/**
+ * What is being called.
+ *
+ * An order for a lead, or a regular customer who has no order yet — the agent
+ * rings their saved number from Regular Customers and the order is written
+ * during the call. `call_sessions_has_target` requires one of the two.
+ */
+export type CallTarget = { orderId: string; customerId?: string | null } | { customerId: string; orderId?: string | null };
+
 export async function getActiveSession(agentId: string): Promise<CallSession | null> {
   const { data, error } = await supabaseAdmin
     .from("call_sessions")
@@ -48,10 +57,14 @@ export type StartResult =
 /** Opens a session. If the agent already has one — including on this same
  * order, which happens when a popup is reopened — the existing session is
  * returned rather than a second one being created. */
-export async function startSession(agentId: string, orderId: string): Promise<StartResult> {
+export async function startSession(agentId: string, target: CallTarget): Promise<StartResult> {
   const { data, error } = await supabaseAdmin
     .from("call_sessions")
-    .insert({ agent_id: agentId, order_id: orderId })
+    .insert({
+      agent_id: agentId,
+      order_id: target.orderId ?? null,
+      customer_id: target.customerId ?? null,
+    })
     .select("*")
     .single();
 
@@ -63,6 +76,31 @@ export async function startSession(agentId: string, orderId: string): Promise<St
     throw new Error(`Could not start the call: ${error.message}`);
   }
   return { ok: true, session: map(data) };
+}
+
+/**
+ * Points a customer call at the order it just produced.
+ *
+ * A call raised from a Regular Customer's record starts with no order — there
+ * is none yet — and the agent writes one while still on the phone. Attaching it
+ * here is what makes that call indistinguishable from a lead call afterwards:
+ * it shows in the order's call history, the monitor names the order, and the
+ * status-update gate (getActiveSessionForOrder) recognises the open session.
+ *
+ * Guarded on `order_id is null` so this can only ever fill a gap: a session
+ * already pointing at an order is never redirected to another one.
+ */
+export async function attachOrderToSession(sessionId: string, orderId: string): Promise<CallSession | null> {
+  const { data, error } = await supabaseAdmin
+    .from("call_sessions")
+    .update({ order_id: orderId })
+    .eq("id", sessionId)
+    .is("order_id", null)
+    .is("ended_at", null)
+    .select("*")
+    .maybeSingle();
+  if (error) throw new Error(`Could not attach the call to the order: ${error.message}`);
+  return data ? map(data) : null;
 }
 
 /** Closes a session, recording the status transition it produced (if any).
@@ -126,6 +164,67 @@ export async function getActiveSessions(agentIds: string[]): Promise<Map<string,
   return out;
 }
 
+/** What a live call is a call OF, for the monitor. */
+export interface CallTargetInfo {
+  kind: CallKind;
+  /** Null while a regular customer's order has not been written yet. */
+  orderNumber: string | null;
+  /** The person being rung. Null only if the record behind the call vanished. */
+  customerName: string | null;
+}
+
+/**
+ * Describes the calls in progress — a lead, or one of the agent's own regular
+ * customers, and who.
+ *
+ * The monitor showed an order number and nothing else, which said what was
+ * being worked but not what kind of work it was. A supervisor watching the
+ * board wants to know whether the floor is calling fresh leads or its repeat
+ * buyers, and a call raised from a Regular Customer's record has no order
+ * number at all until the order is written.
+ *
+ * Two queries at most, both keyed by primary key over the handful of calls
+ * actually running. Keyed by session id in the returned map, since one agent's
+ * call is one session.
+ */
+export async function describeCallTargets(sessions: CallSession[]): Promise<Map<string, CallTargetInfo>> {
+  const out = new Map<string, CallTargetInfo>();
+  if (sessions.length === 0) return out;
+
+  const orderIds = Array.from(new Set(sessions.map((s) => s.order_id).filter((id): id is string => Boolean(id))));
+  const customerIds = Array.from(new Set(sessions.map((s) => s.customer_id).filter((id): id is string => Boolean(id))));
+
+  const [orders, customers] = await Promise.all([
+    orderIds.length
+      ? supabaseAdmin.from("orders").select("id, order_number, customer_name, is_regular_customer").in("id", orderIds)
+      : Promise.resolve({ data: [], error: null }),
+    customerIds.length
+      ? supabaseAdmin.from("customers").select("id, full_name").in("id", customerIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (orders.error) throw new Error(`Call target lookup failed: ${orders.error.message}`);
+  if (customers.error) throw new Error(`Call target lookup failed: ${customers.error.message}`);
+
+  const orderById = new Map((orders.data || []).map((o) => [String(o.id), o as Record<string, unknown>]));
+  const customerById = new Map((customers.data || []).map((c) => [String(c.id), c as Record<string, unknown>]));
+
+  for (const session of sessions) {
+    const order = session.order_id ? orderById.get(session.order_id) : undefined;
+    const customer = session.customer_id ? customerById.get(session.customer_id) : undefined;
+    // A call started from a customer's record is a regular-customer call for
+    // the whole of its life, order or no order. A lead call becomes one only
+    // if the order itself is tagged — which is how a repeat buyer rung through
+    // the Leads list still reads correctly.
+    const kind: CallKind = session.customer_id || order?.is_regular_customer ? "regular_customer" : "lead";
+    out.set(session.id, {
+      kind,
+      orderNumber: order ? String(order.order_number) : null,
+      customerName: customer ? String(customer.full_name) : order ? String(order.customer_name || "") || null : null,
+    });
+  }
+  return out;
+}
+
 export interface CallDayTotals {
   count: number;
   seconds: number;
@@ -137,14 +236,21 @@ export interface CallDayTotals {
   lastEndedAt: string | null;
 }
 
+/** Who was on the other end: a lead being worked, or the agent's own repeat
+ * buyer rung from their Regular Customers record. */
+export type CallKind = "lead" | "regular_customer";
+
 export interface CallRecord {
   id: string;
   agent_id: string;
-  order_id: string;
+  /** Null for a call on a regular customer that produced no order. */
+  order_id: string | null;
   started_at: string;
   ended_at: string | null;
   duration_seconds: number | null;
   new_status: string | null;
+  kind: CallKind;
+  /** Empty when the call never produced an order. */
   order_number: string;
   customer_name: string;
   customer_phone: string;
@@ -178,7 +284,11 @@ export async function listCallsForDay(
   const { data, count, error } = await supabaseAdmin
     .from("call_sessions")
     .select(
-      "id, agent_id, order_id, started_at, ended_at, duration_seconds, new_status, orders!inner(order_number, customer_name, customer_phone)",
+      // Both embeds are LEFT joins. `orders!inner` was right while every call
+      // had an order; a call raised from a Regular Customer's record has none
+      // until the order is written, and an inner join would drop exactly the
+      // calls that never produced a sale — the ones this page is for.
+      "id, agent_id, order_id, customer_id, started_at, ended_at, duration_seconds, new_status, orders(order_number, customer_name, customer_phone, is_regular_customer), customers(full_name, phone_raw)",
       { count: "exact" }
     )
     .in("agent_id", agentIds)
@@ -195,18 +305,23 @@ export async function listCallsForDay(
     const r = row as unknown as Record<string, unknown>;
     // PostgREST returns the embedded row as an object for a to-one relation,
     // but types it as an array; either shape is accepted here rather than cast.
-    const embedded = (Array.isArray(r.orders) ? r.orders[0] : r.orders) as Record<string, unknown> | undefined;
+    const order = (Array.isArray(r.orders) ? r.orders[0] : r.orders) as Record<string, unknown> | undefined;
+    const customer = (Array.isArray(r.customers) ? r.customers[0] : r.customers) as Record<string, unknown> | undefined;
+    // The customer record wins the naming when there is one, because that is
+    // who the agent chose to ring; the order's own fields are what a lead call
+    // has and are the fallback.
     return {
       id: String(r.id),
       agent_id: String(r.agent_id),
-      order_id: String(r.order_id),
+      order_id: r.order_id ? String(r.order_id) : null,
       started_at: String(r.started_at),
       ended_at: r.ended_at ? String(r.ended_at) : null,
       duration_seconds: r.duration_seconds == null ? null : Number(r.duration_seconds),
       new_status: r.new_status ? String(r.new_status) : null,
-      order_number: String(embedded?.order_number ?? ""),
-      customer_name: String(embedded?.customer_name ?? ""),
-      customer_phone: String(embedded?.customer_phone ?? ""),
+      kind: (r.customer_id || order?.is_regular_customer ? "regular_customer" : "lead") as CallKind,
+      order_number: String(order?.order_number ?? ""),
+      customer_name: String(customer?.full_name ?? order?.customer_name ?? ""),
+      customer_phone: String(customer?.phone_raw ?? order?.customer_phone ?? ""),
     };
   });
   return { rows, total: count ?? 0 };

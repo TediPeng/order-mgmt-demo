@@ -18,6 +18,7 @@ import { isOrderLocked, SYNCED_LOCK_MESSAGE, canSetOrderTag } from "@/lib/lead-w
 import { displayOrderId, displayUserName, isPendingOrderId } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { Input, Label } from "@/components/ui/Field";
+import { BackToCallButton } from "@/components/BackToCallButton";
 
 function summarizeValue(v: unknown): string {
   if (v === null || v === undefined) return "—";
@@ -135,15 +136,22 @@ export default async function LeadDetailPage({
               )}
             </p>
           </div>
-          {canDelete && (
-            <ConfirmButton
-              action={boundDelete}
-              variant="danger"
-              label="Delete"
-              confirmTitle="Delete this lead?"
-              confirmBody="This permanently removes the lead record. A full snapshot is kept in the audit log for recovery reference."
-            />
-          )}
+          <div className="flex items-center gap-2">
+            {/* This page has no calling controls of its own — the popup in the
+                leads table is where a call is ended. An agent who lands here
+                mid-call (a repeat order saved while on the phone does exactly
+                that) would otherwise have no way back to it. */}
+            <BackToCallButton />
+            {canDelete && (
+              <ConfirmButton
+                action={boundDelete}
+                variant="danger"
+                label="Delete"
+                confirmTitle="Delete this lead?"
+                confirmBody="This permanently removes the lead record. A full snapshot is kept in the audit log for recovery reference."
+              />
+            )}
+          </div>
         </div>
       </div>
 

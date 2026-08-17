@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Alert } from "@/components/ui/Alert";
 import { LinkButton } from "@/components/ui/Button";
 import { LeadForm } from "@/components/LeadForm";
+import { RegularCustomerCallPanel } from "@/components/RegularCustomerCallPanel";
 import { createLeadAction } from "@/lib/actions/leads";
 import { allowedAssigneeIds } from "@/lib/order-access";
 import { getCurrentUser } from "@/lib/auth";
@@ -97,6 +98,18 @@ export default async function NewLeadPage({
             </LinkButton>
           </div>
         </Alert>
+      )}
+
+      {/* A repeat order is taken on the phone like any other, so the call is
+          started here rather than left unrecorded. Withheld while the agent is
+          not timed in — the server refuses the call for the same reason it
+          refuses the order, and a button that can only fail is not a control. */}
+      {regularCustomer && !notTimedIn && (
+        <RegularCustomerCallPanel
+          customerId={regularCustomer.id}
+          customerName={regularCustomer.full_name}
+          phone={regularCustomer.phone}
+        />
       )}
 
       <Card>

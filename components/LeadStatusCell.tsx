@@ -131,7 +131,13 @@ export function LeadCallCell({ order, onOpen }: { order: Order; onOpen: () => vo
           difference between a control and a trap. */}
       {otherCall && (
         <a
-          href={`/leads?open_id=${otherCall.order_id}`}
+          href={
+            // A call raised from a Regular Customer's record has no order to
+            // return to until one is written; the form it started on does.
+            otherCall.order_id
+              ? `/leads?open_id=${otherCall.order_id}`
+              : `/leads/new?customer=${otherCall.customer_id}`
+          }
           title="Finish the call you have open before starting another"
           className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-50"
         >

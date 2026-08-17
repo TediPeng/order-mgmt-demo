@@ -156,7 +156,16 @@ export default async function CallsPage({
                     })}
                   </td>
                   {seesOthers && <td className="px-2.5 py-1.5 text-slate-600">{nameById.get(r.agent_id) || "—"}</td>}
-                  <td className="px-2.5 py-1.5 text-slate-700">{r.customer_name || "—"}</td>
+                  {/* Whether this was a lead or one of the agent's own repeat
+                      buyers — the same distinction the monitor now draws. */}
+                  <td className="px-2.5 py-1.5 text-slate-700">
+                    {r.customer_name || "—"}
+                    {r.kind === "regular_customer" && (
+                      <span className="ml-1.5 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700">
+                        Regular
+                      </span>
+                    )}
+                  </td>
                   {/* The number itself dials on a phone and copies on a desktop —
                       it is the thing this page exists for, so it is not buried
                       in a tooltip. */}
@@ -170,12 +179,19 @@ export default async function CallsPage({
                     )}
                   </td>
                   <td className="px-2.5 py-1.5">
-                    <Link
-                      href={`/leads?open_id=${r.order_id}`}
-                      className="font-medium text-[var(--brand-primary)] hover:underline"
-                    >
-                      {r.order_number}
-                    </Link>
+                    {/* A call raised from a Regular Customer's record has no
+                        order unless one was saved during it. The call still
+                        happened and still belongs on this page. */}
+                    {r.order_id ? (
+                      <Link
+                        href={`/leads?open_id=${r.order_id}`}
+                        className="font-medium text-[var(--brand-primary)] hover:underline"
+                      >
+                        {r.order_number}
+                      </Link>
+                    ) : (
+                      <span className="text-slate-400">No order</span>
+                    )}
                   </td>
                   <td className="px-2.5 py-1.5 text-right font-mono tabular-nums text-slate-600">
                     {r.ended_at ? hms(r.duration_seconds) : "on call"}

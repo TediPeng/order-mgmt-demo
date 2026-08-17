@@ -24,6 +24,9 @@ export interface StartCallResult {
   error?: string;
   /** The order that already holds this agent's active call, on a 409. */
   activeOrder?: { id: string; order_number: string } | null;
+  /** The regular customer holding it instead, when that call has not produced
+   * an order yet — there is no order to send the agent back to. */
+  activeCustomer?: { id: string; full_name: string } | null;
   /** True when the agent has not timed in for today (Section 2). */
   timeInRequired?: boolean;
   timeInHref?: string;
@@ -36,6 +39,9 @@ interface CallSessionContextValue {
   /** The server-corrected clock, for anything that needs a reading between ticks. */
   clock: () => number;
   startCall: (orderId: string) => Promise<StartCallResult>;
+  /** Opens a call on a regular customer who has no order yet — the New Order
+   * form raises one while the agent is still on the phone. */
+  startCustomerCall: (customerId: string) => Promise<StartCallResult>;
   endCall: () => Promise<void>;
   /** Drops the local session after a save that closed it server-side. */
   clearSession: () => void;
@@ -129,12 +135,12 @@ export function CallSessionProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh]);
 
-  const startCall = useCallback(async (orderId: string): Promise<StartCallResult> => {
+  const open = useCallback(async (body: { orderId?: string; customerId?: string }): Promise<StartCallResult> => {
     try {
       const res = await fetch("/api/call-sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId }),
+        body: JSON.stringify(body),
       });
       const json = await res.json();
       if (!json.ok) {
@@ -142,6 +148,7 @@ export function CallSessionProvider({
           ok: false,
           error: json.error || "Could not start the call.",
           activeOrder: json.activeOrder ?? null,
+          activeCustomer: json.activeCustomer ?? null,
           timeInRequired: Boolean(json.timeInRequired),
           timeInHref: json.timeInHref,
         };
@@ -155,6 +162,9 @@ export function CallSessionProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const startCall = useCallback((orderId: string) => open({ orderId }), [open]);
+  const startCustomerCall = useCallback((customerId: string) => open({ customerId }), [open]);
+
   const endCall = useCallback(async () => {
     try {
       await fetch("/api/call-sessions", { method: "DELETE" });
@@ -166,7 +176,9 @@ export function CallSessionProvider({
   const clearSession = useCallback(() => setSession(null), []);
 
   return (
-    <CallSessionContext.Provider value={{ session, now, clock, startCall, endCall, clearSession, refresh }}>
+    <CallSessionContext.Provider
+      value={{ session, now, clock, startCall, startCustomerCall, endCall, clearSession, refresh }}
+    >
       {children}
     </CallSessionContext.Provider>
   );

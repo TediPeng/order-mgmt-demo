@@ -7,7 +7,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { orderInScope, allowedAssigneeIds } from "@/lib/order-access";
-import { getActiveSessionForOrder, endSession } from "@/lib/call-sessions";
+import { getActiveSessionForOrder, endSession, getActiveSession, attachOrderToSession } from "@/lib/call-sessions";
 import { isFullAccess } from "@/lib/permissions";
 import { requireUserLite, requirePermission, requireAdministrator } from "./guards";
 import { describeParseFailure } from "@/lib/zod-error";
@@ -318,6 +318,41 @@ export async function createLeadAction(formData: FormData) {
   }
   await writeDb(db);
 
+  // The call this order was taken on. A repeat order is raised from the
+  // customer's own record, where there is no order to call from, so the session
+  // was opened against the customer — it is pointed at the order now that one
+  // exists. After this the call is a lead call in every respect: it appears in
+  // the order's call history, the monitor names the order, and the
+  // status-update gate finds an open session on it.
+  //
+  // After writeDb, because order_id carries a foreign key to a row that has to
+  // exist first. A failure here must not take the order down with it; the sale
+  // is already committed and the call is still recorded against the customer.
+  let callAttached = false;
+  if (regular) {
+    try {
+      const activeCall = await getActiveSession(user.id);
+      if (activeCall && !activeCall.order_id && activeCall.customer_id === regular.id) {
+        await attachOrderToSession(activeCall.id, order.id);
+        callAttached = true;
+        logActivity(db, user.id, "CALL_SESSION_ATTACHED_TO_ORDER", "order", order.id, {
+          order_number: order.order_number,
+          customer_id: regular.id,
+          customer_name: regular.full_name,
+          call_session_id: activeCall.id,
+        }, { module: "orders", ...info });
+        await writeDb(db);
+      }
+    } catch (e) {
+      logActivity(db, user.id, "CALL_SESSION_ATTACH_FAILED", "order", order.id, {
+        order_number: order.order_number,
+        customer_id: regular.id,
+        error: (e as Error).message,
+      }, { module: "orders", ...info });
+      await writeDb(db);
+    }
+  }
+
   // Order count on the customer row, kept in step outside the whole-database
   // write (the customers table is not part of DbShape).
   if (regular) {
@@ -357,6 +392,12 @@ export async function createLeadAction(formData: FormData) {
     // Forward AFTER persisting; the handler has its own duplicate/idempotency guards.
     await forwardOrderToPancake(order.id, { source: "packaging_event", triggeredBy: user.id });
   }
+  // Still on the phone: go to the popup rather than the read-only detail page.
+  // It is the only screen that ends a call and the only one that updates the
+  // status against it — the detail page would leave the agent on the clock
+  // with no control in sight. open_id pins the order onto the list even though
+  // a regular customer's orders are excluded from it.
+  if (callAttached) redirect(`/leads?open_id=${order.id}`);
   redirect(`/leads/${order.id}?created=1`);
 }
 

@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Phone, Coffee, Utensils, Hourglass, LogOut, Minus, Plane, CalendarOff, Ban } from "lucide-react";
+import { Phone, Coffee, Utensils, Hourglass, LogOut, Minus, Plane, CalendarOff, Ban, UserRound, Star } from "lucide-react";
 import { StatWidget, type StatTone } from "@/components/StatCard";
+import type { CallTargetInfo } from "@/lib/call-sessions";
 
 /** How often the board pulls fresh server state. Faster than the shell's own
  * 60s refresh because this is a live board — but still gated on tab visibility,
@@ -35,8 +36,10 @@ export interface MonitorRow {
   state: MonitorState;
   /** When the current state began. Null when there is nothing to count. */
   sinceIso: string | null;
-  /** Order the agent is on, when state is on_call. */
-  orderNumber: string | null;
+  /** What the agent is calling, when state is on_call: a lead or one of their
+   * own regular customers, with the order number and the person's name. Null
+   * when they are not on a call. */
+  call: CallTargetInfo | null;
   calls: number;
   /** Completed talk time today, seconds. The live call is added client-side. */
   talkSeconds: number;
@@ -63,6 +66,16 @@ const STATE_META: Record<
   rest_day: { label: "Rest day", icon: CalendarOff, cls: "bg-slate-100 text-slate-500", dot: "bg-slate-300", tone: "slate" },
   suspended: { label: "Suspended", icon: Ban, cls: "bg-red-50 text-red-700", dot: "bg-red-400", tone: "maroon" },
   not_in: { label: "Not timed in", icon: Minus, cls: "bg-amber-50 text-amber-700", dot: "bg-amber-400", tone: "amber" },
+};
+
+/** What kind of call it is, said in the row rather than left to be inferred
+ * from an order number. A supervisor watching the board wants to know whether
+ * the floor is working fresh leads or ringing its repeat buyers, and a call
+ * raised from a Regular Customer's record has no order number at all until the
+ * order is written. */
+const CALL_KIND_META: Record<CallTargetInfo["kind"], { label: string; icon: typeof Phone; cls: string }> = {
+  lead: { label: "Lead", icon: UserRound, cls: "bg-slate-100 text-slate-600" },
+  regular_customer: { label: "Regular customer", icon: Star, cls: "bg-violet-50 text-violet-700" },
 };
 
 function hms(totalSeconds: number): string {
@@ -149,11 +162,16 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
       )}
 
       <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
-        <table className="w-full min-w-[900px] text-left text-sm">
+        <table className="w-full min-w-[1080px] text-left text-sm">
           <thead className="sticky top-0 z-20 bg-slate-50 shadow-sm text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Agent</th>
               <th className="px-4 py-3">Status</th>
+              {/* Who is on the other end. The board said which order was open
+                  and nothing else, which is what is being worked but not what
+                  kind of work it is — and it said nothing at all for a call on
+                  a regular customer, which has no order until one is written. */}
+              <th className="px-4 py-3">Calling</th>
               {/* "For" is this stretch, "Standby today" is the shift's total.
                   Named apart because they read as the same thing otherwise,
                   and for an idle agent they are genuinely different numbers. */}
@@ -169,6 +187,7 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
               const live = elapsedSince(r.sinceIso);
               const meta = STATE_META[r.state];
               const Icon = meta.icon;
+              const CallIcon = r.call ? CALL_KIND_META[r.call.kind].icon : null;
               // Live states keep counting; everything else shows the stored total.
               //
               // Standby is the DAY's total, not the stretch running now. It was
@@ -193,7 +212,33 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
                       <Icon className="h-3.5 w-3.5" aria-hidden />
                       {meta.label}
                     </span>
-                    {r.orderNumber && <span className="ml-2 font-mono text-xs text-slate-500">{r.orderNumber}</span>}
+                  </td>
+                  <td className="px-4 py-3">
+                    {r.call ? (
+                      <div className="flex flex-col gap-0.5">
+                        <span
+                          className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+                            CALL_KIND_META[r.call.kind].cls
+                          }`}
+                        >
+                          {CallIcon && <CallIcon className="h-3.5 w-3.5" aria-hidden />}
+                          {CALL_KIND_META[r.call.kind].label}
+                        </span>
+                        <span className="text-xs text-slate-500">
+                          {r.call.customerName || "—"}
+                          {/* No order number yet means the repeat order is
+                              still being written, mid-call. Said plainly, so
+                              the blank does not read as a fault. */}
+                          {r.call.orderNumber ? (
+                            <span className="ml-1.5 font-mono text-slate-400">{r.call.orderNumber}</span>
+                          ) : (
+                            <span className="ml-1.5 text-slate-400">order not saved yet</span>
+                          )}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-600">
                     {r.sinceIso ? hms(live) : "—"}
@@ -224,7 +269,7 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
             })}
             {visible.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={8} className="px-4 py-10 text-center text-slate-400">
                   {filter ? `Nobody is ${STATE_META[filter].label.toLowerCase()} right now.` : "No agents to monitor."}
                 </td>
               </tr>

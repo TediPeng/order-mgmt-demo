@@ -1,12 +1,11 @@
 import { redirect } from "next/navigation";
 import { readDbLite } from "@/lib/db";
-import { orderNumbersByIds } from "@/lib/orders-lookup";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { todayInTz } from "@/lib/utils";
 import { activeSuspensionOn } from "@/lib/schedule-access";
 import { displayUserName } from "@/lib/types";
-import { getActiveSessions, callTotalsForDay } from "@/lib/call-sessions";
+import { getActiveSessions, callTotalsForDay, describeCallTargets } from "@/lib/call-sessions";
 import { getActiveBioBreaks, bioBreakTotalsForDay } from "@/lib/bio-breaks";
 import { AgentMonitorBoard, type MonitorRow, type MonitorState } from "@/components/AgentMonitorBoard";
 
@@ -49,13 +48,13 @@ export default async function AgentMonitorPage() {
     bioBreakTotalsForDay(agentIds, today),
   ]);
 
-  // Order numbers for the calls actually in progress — at most one per agent,
-  // usually a handful. This board refreshes every twenty seconds, and it used
-  // to build the map from every order in the system: three full reads of
-  // 51,000 rows per minute, per open tab, to label a dozen cells.
-  const orderNumberById = await orderNumbersByIds(
-    Array.from(activeCalls.values()).map((c) => c.order_id)
-  );
+  // What each live call is a call OF — a lead or one of the agent's own regular
+  // customers, and who. Keyed by session id, over the calls actually in
+  // progress: at most one per agent, usually a handful. This board refreshes
+  // every twenty seconds, and it used to build its labels from every order in
+  // the system — three full reads of 51,000 rows per minute, per open tab, to
+  // fill a dozen cells.
+  const callTargets = await describeCallTargets(Array.from(activeCalls.values()));
   const leadNameById = new Map(db.profiles.map((p) => [p.id, displayUserName(p)]));
   const generatedAt = new Date().toISOString();
 
@@ -152,7 +151,7 @@ export default async function AgentMonitorPage() {
       teamLead: isTeamLead ? null : agent.team_lead_id ? leadNameById.get(agent.team_lead_id) || null : null,
       state,
       sinceIso,
-      orderNumber: call ? orderNumberById.get(call.order_id) || null : null,
+      call: call ? callTargets.get(call.id) || null : null,
       calls: calls.count,
       talkSeconds: calls.seconds,
       bioCount: bios.count,
@@ -166,8 +165,10 @@ export default async function AgentMonitorPage() {
       <div className="mb-4">
         <h1 className="text-page-title text-slate-900">Agent Monitoring</h1>
         <p className="text-sm text-slate-500">
-          {isTeamLead ? "Your agents" : "All agents"} for {today}. Standby is shift time that is not a call and not a
-          break — <span className="font-medium">For</span> is how long the current stretch has run,{" "}
+          {isTeamLead ? "Your agents" : "All agents"} for {today}.{" "}
+          <span className="font-medium">Calling</span> says who is on the other end — a lead, or one of the agent&apos;s
+          own regular customers. Standby is shift time that is not a call and not a break —{" "}
+          <span className="font-medium">For</span> is how long the current stretch has run,{" "}
           <span className="font-medium">Standby today</span> is the shift&apos;s total so far. Totals across a date
           range are in the Activity Report.
         </p>

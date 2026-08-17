@@ -10,48 +10,58 @@ import { TIME_IN_HREF } from "@/lib/time-in-gate";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
-export interface CallingState {
-  session: { id: string; order_id: string; started_at: string } | null;
-  /** Another order already holds this agent's active call. */
-  blockedBy: { id: string; order_number: string } | null;
-}
-
 /**
- * Start/stop control and the live call timer for one order.
+ * Start/stop control and the live call timer for one call.
  *
  * The session itself lives in CallSessionProvider (app-level), so the timer
  * keeps running across route changes and is restored from the server after a
  * refresh. This component only renders whichever state that session implies for
- * *this* order.
+ * *this* target.
+ *
+ * The target is an order for a lead, or a regular customer who has no order
+ * yet: the New Order form raised from Regular Customers shows this panel keyed
+ * on the customer, so the agent can ring them and write the order during the
+ * call rather than having to invent an order first.
  */
 export function CallingPanel({
   orderId,
+  customerId,
   onStarted,
   onEnded,
   onOpenActive,
   compact = false,
 }: {
-  orderId: string;
+  /** The lead being called. Omit for a call on a regular customer. */
+  orderId?: string;
+  /** The regular customer being called, when there is no order yet. */
+  customerId?: string;
   onStarted?: () => void;
   onEnded?: () => void;
   onOpenActive: (orderId: string) => void;
   /** Renders as a single row of controls, for the popup's footer bar. */
   compact?: boolean;
 }) {
-  const { session, now, startCall, endCall } = useCallSession();
+  const { session, now, startCall, startCustomerCall, endCall } = useCallSession();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [timeInBlocked, setTimeInBlocked] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
 
-  const active = Boolean(session && session.order_id === orderId);
-  const blockedByOtherOrder = session && session.order_id !== orderId ? session.order_id : null;
+  // A customer call stays this panel's own once the order it produced has been
+  // attached to it — the agent is still on the phone to the same person.
+  const active = Boolean(
+    session && (orderId ? session.order_id === orderId : Boolean(customerId) && session.customer_id === customerId)
+  );
+  const other = session && !active ? session : null;
+  // The way back to whatever else is running. A call that has not produced an
+  // order yet has no order to open, so it returns to the form it started on.
+  const otherHref = other && !other.order_id ? `/leads/new?customer=${other.customer_id}` : null;
 
   async function start() {
     setBusy(true);
     setError(null);
     setTimeInBlocked(false);
-    const result = await startCall(orderId);
+    const result = orderId ? await startCall(orderId) : await startCustomerCall(customerId!);
     setBusy(false);
     if (result.ok) {
       onStarted?.();
@@ -94,13 +104,21 @@ export function CallingPanel({
           </span>
         )}
 
-        {blockedByOtherOrder && !active && (
-          <Button type="button" size="sm" variant="secondary" onClick={() => onOpenActive(blockedByOtherOrder)}>
-            Return to active call
-          </Button>
-        )}
+        {other &&
+          (otherHref ? (
+            <Link
+              href={otherHref}
+              className="inline-flex items-center rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Return to active call
+            </Link>
+          ) : (
+            <Button type="button" size="sm" variant="secondary" onClick={() => onOpenActive(other.order_id!)}>
+              Return to active call
+            </Button>
+          ))}
 
-        {!blockedByOtherOrder && !active && (
+        {!other && !active && (
           <Button type="button" size="sm" disabled={busy} onClick={start}>
             <PhoneCall className="h-4 w-4" /> {busy ? "Starting…" : "Calling"}
           </Button>
@@ -146,13 +164,24 @@ export function CallingPanel({
     );
   }
 
-  if (blockedByOtherOrder && !active) {
+  if (other) {
     return (
       <Alert kind="error" className="flex items-center justify-between gap-3">
-        <span>You already have a call in progress on another order.</span>
-        <Button type="button" size="sm" variant="secondary" onClick={() => onOpenActive(blockedByOtherOrder)}>
-          Return to active call
-        </Button>
+        <span>
+          You already have a call in progress on another {otherHref ? "customer" : "order"}.
+        </span>
+        {otherHref ? (
+          <Link
+            href={otherHref}
+            className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Return to active call
+          </Link>
+        ) : (
+          <Button type="button" size="sm" variant="secondary" onClick={() => onOpenActive(other.order_id!)}>
+            Return to active call
+          </Button>
+        )}
       </Alert>
     );
   }

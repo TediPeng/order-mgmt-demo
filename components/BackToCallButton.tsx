@@ -16,6 +16,11 @@ import { formatElapsed } from "@/components/CallSessionProvider";
  * page it would otherwise fall on, which is the same route the leads row's own
  * "Return to call" takes.
  *
+ * A call raised from a Regular Customer's record has no order to go back to
+ * until one is written, so it returns to the New Order form the agent was
+ * filling in — the customer's details are prefilled there and the same call
+ * panel is on it.
+ *
  * It renders nothing when no call is open. A permanent button that usually does
  * nothing is worse than one that appears when it means something.
  */
@@ -23,9 +28,13 @@ export function BackToCallButton() {
   const { session, now } = useCallSession();
   if (!session) return null;
 
+  const href = session.order_id
+    ? `/leads?open_id=${session.order_id}`
+    : `/leads/new?customer=${session.customer_id}`;
+
   return (
     <a
-      href={`/leads?open_id=${session.order_id}`}
+      href={href}
       title="A call is in progress — go back to it"
       className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md bg-green-100 px-2.5 py-1.5 text-control font-medium text-green-800 transition-colors hover:bg-green-200"
     >
