@@ -106,7 +106,7 @@ export default async function SchedulePage({
           {canBulk && <ScheduleBulkActions agents={agentOptions} />}
           {canCreate && (
             <LinkButton href="/schedule/import" variant="outline" size="sm">
-              <Upload className="h-4 w-4" /> Import Schedule
+              <Upload className="h-4 w-4" /> Create Schedule
             </LinkButton>
           )}
           {canExport && (

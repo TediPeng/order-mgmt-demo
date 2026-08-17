@@ -5,7 +5,8 @@ import { ScheduleImportClient } from "@/components/ScheduleImportClient";
 import { getCurrentUser } from "@/lib/auth";
 import { readDbLite } from "@/lib/db";
 import { can } from "@/lib/permissions";
-import { scopeAgentsForSchedule } from "@/lib/schedule-access";
+import { scopeAgentsForSchedule, rosterAgents } from "@/lib/schedule-access";
+import { ScheduleRosterBuilder } from "@/components/ScheduleRosterBuilder";
 import { DUTY_STATUSES, shiftForStatus } from "@/lib/schedule-import";
 
 const TEMPLATE_HREF = "/api/schedule/template";
@@ -33,8 +34,29 @@ export default async function ImportSchedulePage() {
   const halfDayEndsAt = shiftForStatus("HALF DAY", workDay).duty_end;
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="mb-4 text-page-title text-slate-900">Import Schedule</h1>
+    <div className="mx-auto max-w-6xl">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-page-title text-slate-900">Create Schedule</h1>
+        <LinkButton href="/schedule" variant="outline" size="sm">
+          ← Back to roster
+        </LinkButton>
+      </div>
+
+      {/* The roster itself, in the grid it is read in. Setting a cut-off used
+          to mean downloading a spreadsheet, filling it in somewhere else and
+          uploading it back — three steps and a file, to say who is off on
+          Sunday. The Excel path is still below for a roster that arrives as a
+          file, but it is no longer the only way in. */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Build the cut-off</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ScheduleRosterBuilder agents={rosterAgents(db, user).map((a) => ({ id: a.id, full_name: a.full_name }))} />
+        </CardContent>
+      </Card>
+
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Or import from Excel</h2>
 
       <Card className="mb-4">
         <CardHeader>
