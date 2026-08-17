@@ -2,14 +2,14 @@
 
 import { redirect } from "next/navigation";
 import { writeDb, uuid, nowIso, nextOrderNumber, reserveOrderNumbers, queueDelete, markOrderDirty, loadOrderInto } from "@/lib/db";
-import { previousOrderForPhone, customerOrderCount } from "@/lib/orders-lookup";
+import { previousOrderForPhone, customerOrderCount, ordersForPhones } from "@/lib/orders-lookup";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { orderInScope, allowedAssigneeIds } from "@/lib/order-access";
 import { getActiveSessionForOrder, endSession } from "@/lib/call-sessions";
 import { isFullAccess } from "@/lib/permissions";
-import { requireUser, requireUserLite, requirePermission, requireAdministrator } from "./guards";
+import { requireUserLite, requirePermission, requireAdministrator } from "./guards";
 import { describeParseFailure } from "@/lib/zod-error";
 import { leadFormSchema, leadImportRowSchema, normalizePreviousStatus, parseOrderItemFields, type OrderItemFields, PACKAGING_STATUS, PRE_SALE_STATUSES } from "@/lib/validation";
 import { listItems, replaceItems, summarizeItems, totalsFor } from "@/lib/order-items";
@@ -1048,8 +1048,20 @@ export async function importLeadsAction(
   rawRows: { row: number; data: Record<string, unknown> }[],
   fileName: string
 ): Promise<LeadImportSummary> {
-  const { user, db } = await requireUser();
+  // Lite, then the history this batch actually needs.
+  //
+  // This used to be requireUser(), which reads every order in the system —
+  // 52,000 rows, per batch, four times over for a 1,600-row file. That is what
+  // ran past the function's time limit and stopped the import halfway.
+  //
+  // Only orders sharing a phone number with this batch can matter: the dedupe
+  // key contains the number, so a different one cannot collide, and the
+  // previous-order index is keyed by it. Fetching those and putting them where
+  // db.orders was leaves both walks below reading exactly what they read
+  // before, over a few hundred rows instead of fifty thousand.
+  const { user, db } = await requireUserLite();
   requirePermission(user, "orders", "upload", db, "/leads/import");
+  db.orders = await ordersForPhones(rawRows.map((r) => String(r.data.customer_phone ?? "")));
 
   const allowedIds = new Set(allowedAssigneeIds(user, db));
   const usernameById = new Map(db.profiles.map((p) => [p.id, p.username]));

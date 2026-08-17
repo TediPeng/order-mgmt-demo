@@ -151,26 +151,50 @@ export function LeadImportClient() {
         results: [],
       };
 
+      // Rows in batches that never landed, so the message at the end can name
+      // them rather than saying a number and leaving the file to be guessed at.
+      let failedRows = 0;
+      let failedBatches = 0;
+
       for (let i = 0; i < batches.length; i++) {
-        try {
-          const part = await importLeadsAction(batches[i], fileName || "import.xlsx");
-          merged.total += part.total;
-          merged.imported += part.imported;
-          merged.duplicates += part.duplicates;
-          merged.invalid += part.invalid;
-          merged.missingInfo += part.missingInfo;
-          merged.unrecognizedAgents += part.unrecognizedAgents;
-          merged.results.push(...part.results);
-          setProgress({ done: merged.total, total: rawRows.length });
-        } catch {
-          // Says what did land rather than leaving the button on "Importing…"
-          // for good: silence reads as "still working", which it is not.
-          setFileError(
-            `The import stopped after ${merged.imported} of ${rawRows.length} rows — everything up to that point was saved. ` +
-              "Upload the same file again to continue: rows already in the system are skipped as duplicates."
-          );
-          break;
+        // One batch failing used to end the whole import: a `break`, and 1,100
+        // rows of a 1,605-row file left unsent. A batch fails for reasons that
+        // pass on their own — a slow round trip, a dropped connection — so it
+        // is tried again, and if it still will not go the run carries on to the
+        // next one. Nothing is lost by continuing: a row that did land is
+        // skipped as a duplicate if the file is uploaded again.
+        let part: LeadImportSummary | null = null;
+        for (let attempt = 0; attempt < 3 && !part; attempt++) {
+          try {
+            part = await importLeadsAction(batches[i], fileName || "import.xlsx");
+          } catch {
+            // Backing off rather than retrying instantly: an immediate repeat
+            // of a request that just timed out is the same request.
+            if (attempt < 2) await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+          }
         }
+
+        if (!part) {
+          failedBatches += 1;
+          failedRows += batches[i].length;
+          continue;
+        }
+
+        merged.total += part.total;
+        merged.imported += part.imported;
+        merged.duplicates += part.duplicates;
+        merged.invalid += part.invalid;
+        merged.missingInfo += part.missingInfo;
+        merged.unrecognizedAgents += part.unrecognizedAgents;
+        merged.results.push(...part.results);
+        setProgress({ done: merged.total + failedRows, total: rawRows.length });
+      }
+
+      if (failedRows > 0) {
+        setFileError(
+          `${failedRows} of ${rawRows.length} rows could not be sent (${failedBatches} batch${failedBatches === 1 ? "" : "es"} failed after three tries). ` +
+            "Everything else was saved. Upload the same file again to pick up the rest: rows already in the system are skipped as duplicates."
+        );
       }
 
       setProgress(null);
