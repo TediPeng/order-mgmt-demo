@@ -63,8 +63,8 @@ export default async function AgentMonitorPage() {
     const attendance = db.attendance.find((a) => a.user_id === agent.id && a.work_date === today);
     const call = activeCalls.get(agent.id) || null;
     const bio = activeBio.get(agent.id) || null;
-    const calls = callTotals.get(agent.id) || { count: 0, seconds: 0 };
-    const bios = bioTotals.get(agent.id) || { count: 0, seconds: 0 };
+    const calls = callTotals.get(agent.id) || { count: 0, seconds: 0, lastEndedAt: null };
+    const bios = bioTotals.get(agent.id) || { count: 0, seconds: 0, lastEndedAt: null };
 
     // The order below is the precedence when several could apply at once. Call
     // and bio break are mutually exclusive by construction, but a stale open
@@ -105,9 +105,19 @@ export default async function AgentMonitorPage() {
       sinceIso = attendance.break_start;
     } else {
       state = "standby";
-      // Standby began when the last thing that wasn't standby ended. Falling
-      // back to time_in covers an agent who has done nothing yet.
-      sinceIso = attendance.break_end || attendance.time_in;
+      // Standby began when the last thing that wasn't standby ended — the
+      // LATEST of those, which is the whole point. This used to read
+      // `break_end || time_in`, so it saw the main break and nothing else:
+      // an agent who had just hung up after forty-nine calls was reported as
+      // standing by since they timed in, two hours earlier. Every agent on the
+      // floor read as idle for their whole shift.
+      //
+      // Timing in is the floor; a completed call, bio break or break moves it
+      // forward. The one in progress is not here by construction — an agent in
+      // any of those is not in standby.
+      sinceIso = [attendance.time_in, attendance.break_end, calls.lastEndedAt, bios.lastEndedAt]
+        .filter((t): t is string => Boolean(t))
+        .reduce((latest, t) => (t > latest ? t : latest));
     }
 
     // Standby is what is left of the shift after talking and breaks. Computed
