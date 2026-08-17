@@ -19,6 +19,7 @@ export function AppShell({
   user,
   roleName,
   access,
+  canImportRegularCustomers,
   notifications,
   releases,
   initialCollapsed,
@@ -27,6 +28,9 @@ export function AppShell({
   user: Profile;
   roleName: string;
   access: Record<ModuleKey, boolean>;
+  /** regular_customers.create — an action grant, so it cannot be read off
+   * `access`, which carries view only. */
+  canImportRegularCustomers: boolean;
   notifications: AppNotification[];
   releases: UpdateLog[];
   initialCollapsed: boolean;
@@ -109,7 +113,8 @@ export function AppShell({
   return (
     <div className="flex h-screen" style={{ background: "var(--surface-muted)" }}>
       <div className="hidden lg:block">
-        <Sidebar access={access} canMonitor={canMonitor} canSeeRemainingLeads={canSeeRemainingLeads} collapsed={collapsed} />
+        <Sidebar access={access} canMonitor={canMonitor} canSeeRemainingLeads={canSeeRemainingLeads}
+          canImportRegularCustomers={canImportRegularCustomers} collapsed={collapsed} />
       </div>
 
       {drawerOpen && (
@@ -120,7 +125,8 @@ export function AppShell({
             onClick={() => setDrawerOpen(false)}
           />
           <div className="relative z-10">
-            <Sidebar access={access} canMonitor={canMonitor} canSeeRemainingLeads={canSeeRemainingLeads} onNavigate={() => setDrawerOpen(false)} />
+            <Sidebar access={access} canMonitor={canMonitor} canSeeRemainingLeads={canSeeRemainingLeads}
+          canImportRegularCustomers={canImportRegularCustomers} onNavigate={() => setDrawerOpen(false)} />
           </div>
           <button
             className="absolute right-4 top-4 z-10 cursor-pointer rounded-md bg-white p-1.5 shadow"

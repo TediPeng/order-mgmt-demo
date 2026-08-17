@@ -10,6 +10,7 @@ import {
   PhoneCall,
   PhoneOutgoing,
   UploadCloud,
+  FileUp,
   Users2,
   UserCheck,
   TrendingUp,
@@ -63,6 +64,7 @@ export function Sidebar({
   access,
   canMonitor = false,
   canSeeRemainingLeads = false,
+  canImportRegularCustomers = false,
   collapsed = false,
   onNavigate,
 }: {
@@ -76,6 +78,11 @@ export function Sidebar({
    * Administrators and Management only -- narrower than performance.view,
    * which every Team Lead holds for their own team. */
   canSeeRemainingLeads?: boolean;
+  /** Uploading is gated on regular_customers.create, an action grant rather
+   * than a module one, so it cannot be read off `access` — which carries view
+   * only. The page enforces the same rule; this decides whether the link
+   * shows. */
+  canImportRegularCustomers?: boolean;
   collapsed?: boolean;
   /** Lets the mobile drawer close itself when a destination is chosen. */
   onNavigate?: () => void;
@@ -96,6 +103,15 @@ export function Sidebar({
         // the same rows, scoped the same way — an agent sees their own.
         { href: "/calls", label: "Numbers Called", icon: PhoneOutgoing, show: access.orders },
         { href: "/regular-customers", label: "Regular Customers", icon: UserCheck, show: access.regular_customers },
+        // Its own entry rather than a button on the list: an agent bringing
+        // over a list of their repeat buyers goes straight to it, and the
+        // template lives on that page beside the upload box.
+        {
+          href: "/regular-customers/import",
+          label: "Import Regular Customers",
+          icon: FileUp,
+          show: access.regular_customers && canImportRegularCustomers,
+        },
         { href: "/products", label: "Products", icon: Package, show: access.products },
       ],
     },
@@ -144,10 +160,20 @@ export function Sidebar({
     },
   ];
 
+  // The most specific entry that matches the current path, and only that one.
+  //
+  // The rule was "exact, or a path-segment prefix", which lit Regular Customers
+  // AND Import Regular Customers together the moment the second existed —
+  // /regular-customers/import is a child of /regular-customers, and both were
+  // in the list. Two items highlighted says the wrong thing about where you
+  // are. The longest matching href wins.
+  const activeHref = groups
+    .flatMap((g) => g.items)
+    .filter((item) => item.show && (pathname === item.href || pathname.startsWith(item.href + "/")))
+    .reduce<string | null>((best, item) => (best && best.length >= item.href.length ? best : item.href), null);
+
   function renderItem(item: NavItem) {
-    // A parent route must not stay lit while a child is open, so the match is
-    // exact or a true path-segment prefix.
-    const active = pathname === item.href || pathname.startsWith(item.href + "/");
+    const active = item.href === activeHref;
     const Icon = item.icon;
     return (
       <Link

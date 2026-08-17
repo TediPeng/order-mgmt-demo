@@ -86,6 +86,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         user={user}
         roleName={roleName}
         access={access}
+        canImportRegularCustomers={can(user.role, "regular_customers", "create", db.role_permissions)}
         notifications={notifications}
         releases={releases}
         initialCollapsed={collapsed}
