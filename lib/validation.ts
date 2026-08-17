@@ -471,9 +471,14 @@ export const LEAD_IMPORT_FORBIDDEN_HEADERS = ["Order Number", "Order Date", "New
  * would be worse than none, since a wrong ID sends the parcel to the wrong
  * place while a missing one just means the agent picks the address on the
  * first order.
+ *
+ * There is no Agent column and no Status column. The owner is whoever uploads
+ * the file — a regular customer is the uploader's own repeat buyer, so naming
+ * somebody else in a spreadsheet cell is not a thing this should allow — and
+ * every imported customer starts active, which is the only state worth
+ * uploading.
  */
 export const REGULAR_CUSTOMER_IMPORT_HEADERS = [
-  "Agent",
   "Customer Name",
   "Phone Number",
   "Purok",
@@ -481,7 +486,19 @@ export const REGULAR_CUSTOMER_IMPORT_HEADERS = [
   "City",
   "Province",
   "Landmark",
+];
+
+/** Columns the file must NOT carry: two that the system decides for itself, and
+ * the order fields somebody will inevitably paste in from a sales sheet. */
+export const REGULAR_CUSTOMER_IMPORT_FORBIDDEN_HEADERS = [
+  "Agent",
   "Status",
+  "Order Number",
+  "Order Date",
+  "Product",
+  "Quantity",
+  "Unit Price",
+  "Total Amount",
 ];
 
 const emptyToNull = (v: unknown) => (typeof v === "string" && v.trim() === "" ? null : v);

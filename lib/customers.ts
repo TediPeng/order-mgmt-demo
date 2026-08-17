@@ -253,19 +253,48 @@ export async function scanDuplicateCustomers(): Promise<DuplicateCustomerGroup[]
   return (data || []) as DuplicateCustomerGroup[];
 }
 
-export async function findDuplicates(candidate: {
-  id?: string;
-  full_name: string;
-  phone_normalized: string;
-  purok?: string | null;
-  barangay?: string | null;
-  city?: string | null;
-  province?: string | null;
-}): Promise<DuplicateFinding[]> {
-  const { data, error } = await supabaseAdmin.from("customers").select("*");
-  if (error) throw new Error(`customers read failed: ${error.message}`);
+/**
+ * Every customer, for the duplicate check to compare a candidate against.
+ *
+ * Paged rather than a plain select: PostgREST stops at a thousand rows and says
+ * nothing about it, so past that point a new customer would be checked against
+ * an arbitrary first thousand and the duplicates beyond it would never be
+ * found. The explicit order is what makes the paging deterministic — without a
+ * sort, two pages can return the same row and miss another.
+ */
+export async function allCustomers(): Promise<Customer[]> {
+  const PAGE = 1000;
+  const out: Customer[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabaseAdmin
+      .from("customers")
+      .select("*")
+      .order("id")
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(`customers read failed: ${error.message}`);
+    const rows = data || [];
+    out.push(...rows.map(mapCustomer));
+    if (rows.length < PAGE) return out;
+  }
+}
 
-  const others = (data || []).map(mapCustomer).filter((c) => c.id !== candidate.id);
+export async function findDuplicates(
+  candidate: {
+    id?: string;
+    full_name: string;
+    phone_normalized: string;
+    purok?: string | null;
+    barangay?: string | null;
+    city?: string | null;
+    province?: string | null;
+  },
+  /** The set to compare against. An import passes the customers it already
+   * read, rather than making this fetch the whole table once per row. */
+  existing?: Customer[]
+): Promise<DuplicateFinding[]> {
+  const all = existing ?? (await allCustomers());
+
+  const others = all.filter((c) => c.id !== candidate.id);
   const candName = nameKey(candidate.full_name);
   const candAddress = nameKey([candidate.purok, candidate.barangay, candidate.city, candidate.province].filter(Boolean).join(" "));
   const candTail = candidate.phone_normalized.slice(-7);

@@ -130,11 +130,12 @@ export default async function RegularCustomersPage({
               and the popup that ends it lives in the leads table, so an agent
               who came here mid-call had to remember which lead it was on. */}
           <BackToCallButton />
-          {/* The blank workbook for adding them in bulk. Behind the same grant
-              as adding one by hand, since that is all the file is for. */}
+          {/* Adding them in bulk. The template lives on that page beside the
+              upload box, so there is one place to go rather than a file to
+              find here and a form to find there. */}
           {canCreate && (
-            <LinkButton href="/api/regular-customers/template" variant="outline" size="sm">
-              Download Excel Template
+            <LinkButton href="/regular-customers/import" variant="outline" size="sm">
+              Import from Excel
             </LinkButton>
           )}
           {canCreate && <LinkButton href="/regular-customers/new">Add Regular Customer</LinkButton>}

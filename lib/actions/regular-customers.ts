@@ -10,6 +10,7 @@ import { orderInScope } from "@/lib/order-access";
 import { verifyPassword } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import {
+  allCustomers,
   createRegularCustomer,
   findDuplicates,
   findRegularCustomerByPhone,
@@ -17,6 +18,7 @@ import {
   recordDuplicates,
   upsertRegularCustomer,
 } from "@/lib/customers";
+import { normalizePhone, restoreTrunkZero } from "@/lib/utils";
 import { allowedAssigneeIds } from "@/lib/order-access";
 import { regularCustomerFormSchema } from "@/lib/validation";
 import { describeParseFailure } from "@/lib/zod-error";
@@ -408,4 +410,183 @@ export async function permanentlyDeleteRegularCustomerAction(customerId: string,
   await writeDb(db);
 
   redirect(`${PATH}?deleted=${encodeURIComponent(customer.full_name)}`);
+}
+
+/** One row of a regular-customer upload, as the client parsed it. */
+export interface RegularCustomerImportRow {
+  /** 1-based row number in the sheet, so a rejection can name the line. */
+  row: number;
+  data: Record<string, unknown>;
+}
+
+export type RegularCustomerImportCategory = "imported" | "duplicate" | "missing_info" | "invalid";
+
+export interface RegularCustomerImportResult {
+  row: number;
+  category: RegularCustomerImportCategory;
+  reason: string;
+  data: Record<string, unknown>;
+}
+
+export interface RegularCustomerImportSummary {
+  total: number;
+  imported: number;
+  duplicates: number;
+  missingInfo: number;
+  invalid: number;
+  /** Leads that moved out of the active list onto a customer record. */
+  ordersMoved: number;
+  results: RegularCustomerImportResult[];
+}
+
+/**
+ * Bulk-adds regular customers from an uploaded sheet.
+ *
+ * The owner is always the uploader. A regular customer is that person's own
+ * repeat buyer — `owner_agent_id` is what every scoping rule on the module keys
+ * off — so there is no Agent column to get wrong and no way to fill somebody
+ * else's list from a spreadsheet. Status is not a column either: an imported
+ * customer is active.
+ *
+ * Ends where the single-record path ends, deliberately. `createRegularCustomer`
+ * writes the row, the uploader's existing orders on that number are adopted
+ * onto it (which takes them out of the active Leads list, exactly as Add
+ * Regular Customer does), and the duplicate scan is recorded. Two ways in, one
+ * end state.
+ *
+ * Called a batch at a time by the client. The whole-table reads that the
+ * single-record path can afford once — the customer list for the duplicate
+ * check — are done ONCE per batch here and reused, since at five hundred rows
+ * they would otherwise be five hundred full reads of the customers table.
+ */
+export async function importRegularCustomersAction(
+  rows: RegularCustomerImportRow[],
+  fileName: string
+): Promise<RegularCustomerImportSummary> {
+  const { user, db } = await requireUserLite();
+  if (!can(user.role, "regular_customers", "create", db.role_permissions)) {
+    throw new Error("You do not have permission to add regular customers.");
+  }
+
+  const ownerAgentId = user.id;
+  const summary: RegularCustomerImportSummary = {
+    total: rows.length,
+    imported: 0,
+    duplicates: 0,
+    missingInfo: 0,
+    invalid: 0,
+    ordersMoved: 0,
+    results: [],
+  };
+
+  // Read once, compared against for every row, and kept up to date as rows are
+  // created so that two identical numbers inside the same file cannot both be
+  // written.
+  const existingCustomers = await allCustomers();
+  const takenByUploader = new Set(
+    existingCustomers.filter((c) => c.owner_agent_id === ownerAgentId).map((c) => c.phone_normalized)
+  );
+
+  for (const { row, data } of rows) {
+    const fullName = String(data.full_name ?? "").trim();
+    // Excel stores 09175550101 as a number and drops the trunk zero before the
+    // file ever reaches us. normalizePhone would still match it, but phone_raw
+    // is what the agent reads off the customer's row and dials, so it is put
+    // back — the same thing the lead import does.
+    const phoneRaw = restoreTrunkZero(String(data.phone ?? "").trim());
+    const reject = (category: RegularCustomerImportCategory, reason: string) => {
+      summary.results.push({ row, category, reason, data });
+      if (category === "duplicate") summary.duplicates += 1;
+      else if (category === "missing_info") summary.missingInfo += 1;
+      else summary.invalid += 1;
+    };
+
+    if (!fullName || !phoneRaw) {
+      reject("missing_info", !fullName && !phoneRaw ? "Customer Name and Phone Number are both blank." : !fullName ? "Customer Name is blank." : "Phone Number is blank.");
+      continue;
+    }
+
+    const phoneKey = normalizePhone(phoneRaw);
+    if (!phoneKey) {
+      reject("invalid", `"${phoneRaw}" has no digits in it.`);
+      continue;
+    }
+    if (takenByUploader.has(phoneKey)) {
+      reject("duplicate", `You already keep a regular customer on ${phoneRaw}.`);
+      continue;
+    }
+
+    try {
+      const customer = await createRegularCustomer(
+        {
+          full_name: fullName,
+          phone: phoneRaw,
+          purok: String(data.purok ?? "").trim(),
+          barangay: String(data.barangay ?? "").trim(),
+          city: String(data.city ?? "").trim(),
+          province: String(data.province ?? "").trim(),
+          landmark: String(data.landmark ?? "").trim(),
+          pancake_province_id: "",
+          pancake_district_id: "",
+          pancake_commune_id: "",
+          customer_status: "active",
+        },
+        ownerAgentId
+      );
+
+      // Same move the manual path makes: orders this agent already holds on the
+      // number belong to the customer record now, and therefore leave the
+      // active Leads list.
+      let moved = 0;
+      for (const o of adoptOrders(db, await orderRowsForPhoneAndAgent(phoneRaw, ownerAgentId))) {
+        o.is_regular_customer = true;
+        o.regular_customer_since = o.regular_customer_since || customer.regular_since;
+        o.customer_id = customer.id;
+        markOrderDirty(db, o.id);
+        moved++;
+      }
+      if (moved > 0) await supabaseAdmin.from("customers").update({ total_orders: moved }).eq("id", customer.id);
+      summary.ordersMoved += moved;
+
+      const findings = await findDuplicates(
+        {
+          id: customer.id,
+          full_name: customer.full_name,
+          phone_normalized: customer.phone_normalized,
+          purok: customer.purok,
+          barangay: customer.barangay,
+          city: customer.city,
+          province: customer.province,
+        },
+        existingCustomers
+      );
+      await recordDuplicates(customer.id, findings);
+
+      // Kept in step so a later row in the same file matches against it.
+      existingCustomers.push(customer);
+      takenByUploader.add(customer.phone_normalized);
+
+      summary.imported += 1;
+      summary.results.push({ row, category: "imported", reason: "", data });
+    } catch (e) {
+      // One bad row must not take the batch down: the rows before it are
+      // already written, and the uploader gets it back in the error report.
+      reject("invalid", (e as Error).message);
+    }
+  }
+
+  const info = await getRequestInfo();
+  logActivity(db, user.id, "REGULAR_CUSTOMERS_IMPORTED", "customer", null, {
+    file_name: fileName,
+    total: summary.total,
+    imported: summary.imported,
+    duplicates: summary.duplicates,
+    missing_info: summary.missingInfo,
+    invalid: summary.invalid,
+    orders_moved: summary.ordersMoved,
+    owner_agent_id: ownerAgentId,
+  }, { module: "regular_customers", ...info });
+  await writeDb(db);
+
+  return summary;
 }
