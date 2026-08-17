@@ -458,6 +458,32 @@ export const LEAD_IMPORT_HEADERS = [
 // the system, not supplied by the uploader.
 export const LEAD_IMPORT_FORBIDDEN_HEADERS = ["Order Number", "Order Date", "New Product Order", "Unit Price", "Status"];
 
+/**
+ * Columns for a regular-customer upload.
+ *
+ * A Regular Customer is a person, not a sale — `createRegularCustomer()` writes
+ * a row with no order at all — so there is deliberately nothing about products,
+ * quantities or amounts here. Their order history builds up from the orders
+ * raised against them afterwards.
+ *
+ * Pancake's address IDs are absent too. They come from the Select Address
+ * picker and are only useful if they match Pancake's own catalogue; a typed one
+ * would be worse than none, since a wrong ID sends the parcel to the wrong
+ * place while a missing one just means the agent picks the address on the
+ * first order.
+ */
+export const REGULAR_CUSTOMER_IMPORT_HEADERS = [
+  "Agent",
+  "Customer Name",
+  "Phone Number",
+  "Purok",
+  "Barangay",
+  "City",
+  "Province",
+  "Landmark",
+  "Status",
+];
+
 const emptyToNull = (v: unknown) => (typeof v === "string" && v.trim() === "" ? null : v);
 
 export const productFormSchema = z.object({
