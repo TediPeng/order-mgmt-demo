@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import type { PreviousOrderInfo } from "@/lib/lead-workflow";
 import type { Order } from "@/lib/types";
+import { normalizePhone } from "@/lib/utils";
 
 /**
  * The small questions about orders that pages outside Leads need answered.
@@ -13,6 +14,31 @@ import type { Order } from "@/lib/types";
  *
  * See readDbLite() in lib/db.ts for why the full read is worth avoiding.
  */
+
+/**
+ * Every order on a set of phone numbers — the history a lead import needs.
+ *
+ * The import asks history two questions, and both turn on the phone number:
+ * is this row a duplicate, and what did this customer last order. The dedupe
+ * key contains the number, so an order on a different one can never collide;
+ * the previous-order index is keyed by it outright. So the import does not
+ * need the orders table, only the orders on the numbers in the file.
+ *
+ * It used to read all of them — 52,000 rows per batch, four times over for a
+ * 1,600-row file — which is what ran past the function's time limit and left
+ * the import stopped halfway with a "upload the file again" message.
+ *
+ * `phones` are raw as typed; normalisation happens in SQL against the index on
+ * lead_phone_key(customer_phone), which is the same rule normalizePhone
+ * applies here.
+ */
+export async function ordersForPhones(phones: string[]): Promise<Order[]> {
+  const keys = Array.from(new Set(phones.map((p) => normalizePhone(p)).filter(Boolean)));
+  if (keys.length === 0) return [];
+  const { data, error } = await supabaseAdmin.rpc("orders_for_phone_keys", { p_keys: keys });
+  if (error) throw new Error(`Order history lookup failed: ${error.message}`);
+  return (data || []) as Order[];
+}
 
 /** Products that appear on at least one order — the Delete/Deactivate rule. */
 export async function productIdsInUse(): Promise<Set<string>> {
