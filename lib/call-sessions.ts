@@ -286,63 +286,62 @@ export interface CallRecord {
  *
  * The day window matches callTotalsForDay exactly, deliberately: a list that
  * disagreed with the count on the tile above it would be worse than either.
+ *
+ * SQL (`calls_for_day`) rather than PostgREST, because of the filters. Whether
+ * a call is a regular customer's is true when it was raised from their record
+ * OR when the order behind it is tagged — an OR across call_sessions and
+ * orders, which PostgREST can only express by inner joining the embed, and that
+ * would drop exactly the regular-customer calls that produced no order.
+ * Filtering the page in TypeScript instead would make the count and the paging
+ * lie.
  */
+export interface CallListFilters {
+  /** "all", or only leads, or only the agent's own regular customers. */
+  kind?: CallKind | "all";
+  /** Only calls to someone who ended up ordering. */
+  orderedOnly?: boolean;
+}
+
 export async function listCallsForDay(
   agentIds: string[],
   workDate: string,
   page: number,
-  pageSize: number
+  pageSize: number,
+  filters: CallListFilters = {}
 ): Promise<{ rows: CallRecord[]; total: number }> {
   if (agentIds.length === 0) return { rows: [], total: 0 };
 
-  const from = (page - 1) * pageSize;
-  const { data, count, error } = await supabaseAdmin
-    .from("call_sessions")
-    .select(
-      // Both embeds are LEFT joins. `orders!inner` was right while every call
-      // had an order; a call raised from a Regular Customer's record has none
-      // until the order is written, and an inner join would drop exactly the
-      // calls that never produced a sale — the ones this page is for.
-      "id, agent_id, order_id, customer_id, started_at, ended_at, duration_seconds, new_status, orders(order_number, customer_name, customer_phone, is_regular_customer, order_date, status, total_amount), customers(full_name, phone_raw)",
-      { count: "exact" }
-    )
-    .in("agent_id", agentIds)
-    .gte("started_at", `${workDate}T00:00:00Z`)
-    .lte("started_at", `${workDate}T23:59:59Z`)
-    // started_at is unique enough in practice, but id is the tie-break that
-    // keeps a row from appearing on two pages when two calls share a second.
-    .order("started_at", { ascending: false })
-    .order("id", { ascending: false })
-    .range(from, from + pageSize - 1);
+  const { data, error } = await supabaseAdmin.rpc("calls_for_day", {
+    p_agent_ids: agentIds,
+    p_date: workDate,
+    p_page: page,
+    p_page_size: pageSize,
+    p_kind: filters.kind ?? "all",
+    p_ordered_only: Boolean(filters.orderedOnly),
+  });
   if (error) throw new Error(`call_sessions read failed: ${error.message}`);
 
-  const rows = (data || []).map((row) => {
-    const r = row as unknown as Record<string, unknown>;
-    // PostgREST returns the embedded row as an object for a to-one relation,
-    // but types it as an array; either shape is accepted here rather than cast.
-    const order = (Array.isArray(r.orders) ? r.orders[0] : r.orders) as Record<string, unknown> | undefined;
-    const customer = (Array.isArray(r.customers) ? r.customers[0] : r.customers) as Record<string, unknown> | undefined;
+  const payload = (data || { rows: [], total: 0 }) as { rows: Record<string, unknown>[]; total: number };
+  const rows = (payload.rows || []).map((r) => ({
+    id: String(r.id),
+    agent_id: String(r.agent_id),
+    order_id: r.order_id ? String(r.order_id) : null,
+    started_at: String(r.started_at),
+    ended_at: r.ended_at ? String(r.ended_at) : null,
+    duration_seconds: r.duration_seconds == null ? null : Number(r.duration_seconds),
+    new_status: r.new_status ? String(r.new_status) : null,
+    kind: (r.is_regular ? "regular_customer" : "lead") as CallKind,
+    order_number: String(r.order_number ?? ""),
     // The customer record wins the naming when there is one, because that is
-    // who the agent chose to ring; the order's own fields are what a lead call
-    // has and are the fallback.
-    return {
-      id: String(r.id),
-      agent_id: String(r.agent_id),
-      order_id: r.order_id ? String(r.order_id) : null,
-      started_at: String(r.started_at),
-      ended_at: r.ended_at ? String(r.ended_at) : null,
-      duration_seconds: r.duration_seconds == null ? null : Number(r.duration_seconds),
-      new_status: r.new_status ? String(r.new_status) : null,
-      kind: (r.customer_id || order?.is_regular_customer ? "regular_customer" : "lead") as CallKind,
-      order_number: String(order?.order_number ?? ""),
-      customer_name: String(customer?.full_name ?? order?.customer_name ?? ""),
-      customer_phone: String(customer?.phone_raw ?? order?.customer_phone ?? ""),
-      ordered: Boolean(order?.order_date),
-      order_amount: order?.total_amount == null ? null : Number(order.total_amount),
-      order_status: order?.status ? String(order.status) : null,
-    };
-  });
-  return { rows, total: count ?? 0 };
+    // who the agent chose to ring; the order's own fields are the fallback.
+    // Resolved in SQL, so both sides of that choice are one column here.
+    customer_name: String(r.customer_name ?? ""),
+    customer_phone: String(r.customer_phone ?? ""),
+    ordered: Boolean(r.order_date),
+    order_amount: r.total_amount == null ? null : Number(r.total_amount),
+    order_status: r.order_status ? String(r.order_status) : null,
+  }));
+  return { rows, total: Number(payload.total ?? 0) };
 }
 
 /** Completed call count and talk time for one day, per agent. Unlike

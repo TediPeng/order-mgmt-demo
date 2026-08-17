@@ -7,7 +7,7 @@ import { scopeAgentsForUser } from "@/lib/performance";
 import { displayUserName } from "@/lib/types";
 import { todayInTz, formatDate, formatCurrency } from "@/lib/utils";
 import { LEAD_STATUS_LABELS } from "@/lib/validation";
-import { listCallsForDay } from "@/lib/call-sessions";
+import { listCallsForDay, type CallKind } from "@/lib/call-sessions";
 import { Alert } from "@/components/ui/Alert";
 import { Badge, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { Button, LinkButton } from "@/components/ui/Button";
@@ -43,7 +43,7 @@ function hms(seconds: number | null): string {
 export default async function CallsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string; agent?: string; page?: string }>;
+  searchParams: Promise<{ date?: string; agent?: string; page?: string; from?: string; ordered?: string }>;
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
@@ -65,7 +65,14 @@ export default async function CallsPage({
   const selectedAgent = sp.agent && scopedAgents.some((a) => a.id === sp.agent) ? sp.agent : "";
   const agentIds = selectedAgent ? [selectedAgent] : scopedAgents.map((a) => a.id);
 
-  const { rows, total } = await listCallsForDay(agentIds, date, page, PAGE_SIZE);
+  // Filtering happens in SQL, not over the rows in hand: the count under the
+  // header and the pager both have to describe the filtered day, and a filter
+  // applied after paging would describe neither.
+  const kind: CallKind | "all" = sp.from === "lead" || sp.from === "regular_customer" ? sp.from : "all";
+  const orderedOnly = sp.ordered === "1";
+  const filtered = kind !== "all" || orderedOnly;
+
+  const { rows, total } = await listCallsForDay(agentIds, date, page, PAGE_SIZE, { kind, orderedOnly });
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const nameById = new Map(db.profiles.map((p) => [p.id, displayUserName(p)]));
 
@@ -79,7 +86,14 @@ export default async function CallsPage({
 
   const qs = (overrides: Record<string, string | undefined>) => {
     const params = new URLSearchParams();
-    Object.entries({ date, agent: selectedAgent, page: String(page), ...overrides }).forEach(([k, v]) => {
+    Object.entries({
+      date,
+      agent: selectedAgent,
+      page: String(page),
+      from: kind === "all" ? "" : kind,
+      ordered: orderedOnly ? "1" : "",
+      ...overrides,
+    }).forEach(([k, v]) => {
       if (v) params.set(k, v);
     });
     return `?${params.toString()}`;
@@ -117,13 +131,53 @@ export default async function CallsPage({
             </Select>
           </div>
         )}
+        {/* Two questions asked of a day's calls often enough to deserve their
+            own controls: whose numbers were these, and which of them bought.
+            Both are applied in SQL, so the count and the pager move with
+            them. */}
+        <div className="min-w-[12rem]">
+          <label className="mb-1 block text-xs text-slate-400">From</label>
+          <Select name="from" defaultValue={kind === "all" ? "" : kind}>
+            <option value="">Leads and regular customers</option>
+            <option value="lead">Leads only</option>
+            <option value="regular_customer">Regular customers only</option>
+          </Select>
+        </div>
+        <div className="min-w-[11rem]">
+          <label className="mb-1 block text-xs text-slate-400">Outcome</label>
+          <Select name="ordered" defaultValue={orderedOnly ? "1" : ""}>
+            <option value="">Every call</option>
+            <option value="1">Ordered only</option>
+          </Select>
+        </div>
         <Button type="submit" variant="secondary">
           Show
         </Button>
+        {/* Paging is reset by submitting the form (no page field in it), but a
+            filter left on is easy to forget when the list comes back short. */}
+        {filtered && (
+          <LinkButton href={qs({ from: "", ordered: "", page: "1" })} variant="outline" size="sm">
+            Clear filters
+          </LinkButton>
+        )}
       </form>
 
       <p className="mb-3 text-sm text-slate-500">
         <span className="font-medium text-slate-800">{total}</span> call{total === 1 ? "" : "s"} on this date
+        {filtered && (
+          <>
+            {" "}
+            matching{" "}
+            <span className="font-medium text-slate-800">
+              {[
+                kind === "lead" ? "leads only" : kind === "regular_customer" ? "regular customers only" : null,
+                orderedOnly ? "ordered only" : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          </>
+        )}
         {rows.length > 0 && (
           <>
             {" "}
@@ -240,7 +294,17 @@ export default async function CallsPage({
             {rows.length === 0 && (
               <tr>
                 <td colSpan={seesOthers ? 9 : 8} className="px-4 py-10 text-center text-slate-400">
-                  No calls recorded on {formatDate(date)}.
+                  {filtered ? (
+                    <>
+                      No calls on {formatDate(date)} match that filter.{" "}
+                      <Link href={qs({ from: "", ordered: "", page: "1" })} className="text-[var(--brand-primary)] hover:underline">
+                        Show every call
+                      </Link>
+                      .
+                    </>
+                  ) : (
+                    <>No calls recorded on {formatDate(date)}.</>
+                  )}
                 </td>
               </tr>
             )}
