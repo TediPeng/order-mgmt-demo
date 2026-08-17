@@ -55,6 +55,72 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Select at least one agent you're allowed to schedule." }, { status: 400 });
   }
 
+  // The painted cut-off: one state per agent per day, rather than one state for
+  // every date the pattern resolves to. A fortnight where each agent has a
+  // different rest day is one request here and was one pass per agent before.
+  if (body.mode === "matrix") {
+    const entries = (Array.isArray(body.entries) ? body.entries : []) as {
+      agent_id?: string;
+      schedule_date?: string;
+      is_rest_day?: boolean;
+    }[];
+
+    // Grouped by agent and by duty/rest, so each group is one call into the
+    // same core — and therefore the same suspension and conflict rules — rather
+    // than a second implementation of them.
+    const groups = new Map<string, string[]>();
+    for (const e of entries) {
+      const agentId = String(e.agent_id || "");
+      const date = String(e.schedule_date || "").slice(0, 10);
+      if (!allowedIds.has(agentId) || !date) continue;
+      const key = `${agentId}|${e.is_rest_day ? "rest" : "duty"}`;
+      const bucket = groups.get(key);
+      if (bucket) bucket.push(date);
+      else groups.set(key, [date]);
+    }
+    if (groups.size === 0) {
+      return NextResponse.json({ ok: false, error: "Nothing to apply." }, { status: 400 });
+    }
+
+    const total = { created: 0, skippedConflict: 0, skippedSuspended: 0 };
+    const affected = new Set<string>();
+    let dayCount = 0;
+    for (const [key, groupDates] of groups) {
+      const [agentId, kind] = key.split("|");
+      const rest = kind === "rest";
+      const part = bulkAssignSchedules(db, user, {
+        agentIds: [agentId],
+        dates: groupDates,
+        dutyStart: rest ? null : (body.duty_start as string) || null,
+        dutyEnd: rest ? null : (body.duty_end as string) || null,
+        isRestDay: rest,
+        remarks: (body.remarks as string) || null,
+        confirmReplace: !!body.confirm_replace,
+      });
+      total.created += part.created;
+      total.skippedConflict += part.skippedConflict;
+      total.skippedSuspended += part.skippedSuspended;
+      dayCount += groupDates.length;
+      for (const id of part.affectedAgentIds) affected.add(id);
+    }
+
+    const matrixInfo = await getRequestInfo();
+    logActivity(
+      db,
+      user.id,
+      "SCHEDULE_BULK_ASSIGNED",
+      "schedule",
+      null,
+      { agent_count: affected.size, date_count: dayCount, mode: "matrix", ...total },
+      { module: "schedules", ...matrixInfo }
+    );
+    for (const agentId of affected) {
+      notify(db, [agentId], "schedule_change", "Schedule Updated", "Your duty schedule was updated.", "/schedule");
+    }
+    await writeDb(db);
+    return NextResponse.json({ ok: true, summary: { ...total, affectedAgentIds: Array.from(affected) } });
+  }
+
   const dates = resolveDates(body);
   if (dates.length === 0) {
     return NextResponse.json({ ok: false, error: "No valid dates resolved for this pattern." }, { status: 400 });

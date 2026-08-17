@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { scopeAgentsForSchedule, scopeSchedules, scopeSuspensions, isDateWithinSuspension } from "@/lib/schedule-access";
+import { rosterAgents, scopeSchedules, scopeSuspensions, isDateWithinSuspension } from "@/lib/schedule-access";
 import { todayInTz } from "@/lib/utils";
 import { displayCallName } from "@/lib/types";
 import { cutoffFor, shiftCutoff, datesIn, shortDate, weekdayOf, isWeekend } from "@/lib/cutoff";
@@ -48,7 +48,9 @@ export default async function SchedulePage({
   const next = shiftCutoff(cutoff, 1);
   const dates = datesIn(cutoff);
 
-  const scopedAgents = scopeAgentsForSchedule(db, user);
+  // Agents on the floor, not everyone the API would let you write to:
+  // Administrators, Team Leads and test accounts are not on a duty roster.
+  const scopedAgents = rosterAgents(db, user);
   const scopedAgentIds = new Set(scopedAgents.map((a) => a.id));
   const agentOptions = scopedAgents.map((a) => ({ id: a.id, full_name: a.full_name }));
 

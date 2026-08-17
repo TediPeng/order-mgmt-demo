@@ -38,6 +38,23 @@ export function scopeAgentsForSchedule(db: DbShape, user: Profile): Profile[] {
   return db.profiles.filter((p) => p.id === user.id);
 }
 
+/**
+ * Who appears on the duty roster.
+ *
+ * Narrower than scopeAgentsForSchedule, and deliberately not a replacement for
+ * it: that function answers "whose schedule may this person write", which still
+ * has to cover a Team Lead's own row and anyone else the API might legitimately
+ * be asked to schedule. This answers "who is on the floor", which is the
+ * question the grid is showing — so Administrators, Team Leads and test
+ * accounts are left out. Rows for them were all dashes anyway; they only ever
+ * made the roster longer than the floor.
+ */
+export function rosterAgents(db: DbShape, user: Profile): Profile[] {
+  return scopeAgentsForSchedule(db, user).filter(
+    (p) => p.role === "agent" && !p.is_test_account && !p.is_deleted
+  );
+}
+
 export function dateOnlyUTC(d: string): number {
   const [y, m, day] = d.split("-").map(Number);
   return Date.UTC(y, m - 1, day);
