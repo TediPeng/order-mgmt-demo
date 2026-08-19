@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { readDbLite } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { scopeAgentsForSchedule, eachDateInclusive, addDaysToYmd } from "@/lib/schedule-access";
+import { cutoffFor } from "@/lib/cutoff";
 import { displayUserName } from "@/lib/types";
 import { todayInTz } from "@/lib/utils";
 import { buildScheduleWorkbook } from "@/lib/schedule-template";
@@ -17,19 +18,20 @@ import { buildScheduleWorkbook } from "@/lib/schedule-template";
  * duty roster, and putting them in the file would invite scheduling them by
  * accident.
  *
- * Defaults to the coming Monday-to-Sunday week; ?start=YYYY-MM-DD and ?days=N
- * override it. The importer reads the dates back out of the header, so any
- * range this can produce is one it can also take back. The workbook itself is
- * built in lib/schedule-template.ts.
+ * Covers a cut-off period — the 13th to the 27th, then the 28th to the 12th —
+ * because that is the unit the floor rosters in and the one /schedule and the
+ * roster builder both open on. It used to default to the coming Monday-to-Sunday
+ * week, which meant the Excel half of Create Schedule described a different
+ * fortnight from the grid directly above it, and a week downloaded on the 26th
+ * straddled two periods.
+ *
+ * ?start=YYYY-MM-DD picks the cut-off that date falls in, matching how
+ * /schedule?start= already reads. ?days=N is the escape hatch: it asks for a
+ * literal N-day range from the anchor instead, which is what the importer's
+ * contract rests on — it reads the dates back out of the header, so any range
+ * this can produce is one it can also take back. The workbook itself is built
+ * in lib/schedule-template.ts.
  */
-
-/** The Monday on or after `ymd`. Rosters are drawn up a week ahead, so the
- * default is the NEXT week rather than the current one. */
-function nextMonday(ymd: string): string {
-  const [y, m, d] = ymd.split("-").map(Number);
-  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 = Sunday
-  return addDaysToYmd(ymd, dow === 1 ? 7 : (8 - dow) % 7 || 7);
-}
 
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
@@ -41,9 +43,17 @@ export async function GET(req: NextRequest) {
   }
 
   const startParam = req.nextUrl.searchParams.get("start") || "";
-  const start = /^\d{4}-\d{2}-\d{2}$/.test(startParam) ? startParam : nextMonday(todayInTz());
-  const days = Math.min(31, Math.max(1, Number(req.nextUrl.searchParams.get("days")) || 7));
-  const dates = eachDateInclusive(start, addDaysToYmd(start, days - 1));
+  const daysParam = req.nextUrl.searchParams.get("days");
+  const anchor = /^\d{4}-\d{2}-\d{2}$/.test(startParam) ? startParam : todayInTz();
+
+  // Without ?days= the file is the whole cut-off the anchor falls in. With it,
+  // the anchor is taken literally and N days run from there — an arbitrary
+  // range is still downloadable for the roster that does not fit a period.
+  const cutoff = cutoffFor(anchor);
+  const days = daysParam ? Math.min(31, Math.max(1, Number(daysParam) || 7)) : 0;
+  const start = days ? anchor : cutoff.start;
+  const end = days ? addDaysToYmd(anchor, days - 1) : cutoff.end;
+  const dates = eachDateInclusive(start, end);
 
   const agents = scopeAgentsForSchedule(db, user)
     .filter((p) => p.role === "agent" && p.is_active && !p.is_deleted)
@@ -55,13 +65,16 @@ export async function GET(req: NextRequest) {
     dates,
     times: { work_start: db.work_schedule.work_start, work_end: db.work_schedule.work_end },
     generatedFor: displayUserName(user),
+    periodLabel: days ? `${start} – ${end}` : cutoff.label,
   });
   const buf = await wb.xlsx.writeBuffer();
 
   return new NextResponse(buf, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="schedule-template-${start}.xlsx"`,
+      // Both ends in the name: a cut-off crosses a month boundary half the
+      // time, so a start date alone does not say which fortnight this is.
+      "Content-Disposition": `attachment; filename="schedule-template-${start}-to-${end}.xlsx"`,
     },
   });
 }

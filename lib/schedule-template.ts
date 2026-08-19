@@ -38,12 +38,16 @@ export function buildScheduleWorkbook(input: {
   dates: string[];
   times: WorkDayTimes;
   generatedFor: string;
+  /** The period the dates cover, named the way the roster names it
+   * ("Aug 13 – 27, 2026"). Written into the guide sheet so a file that has been
+   * sitting in somebody's Downloads for a fortnight still says which one it is. */
+  periodLabel: string;
 }): ExcelJS.Workbook {
   const { agents, dates, times } = input;
 
   const wb = new ExcelJS.Workbook();
   wb.creator = "4S ROMA";
-  // Frozen panes so the names stay put while scrolling across a month.
+  // Frozen panes so the names stay put while scrolling across the period.
   const ws = wb.addWorksheet("Schedule", { views: [{ state: "frozen", xSplit: 2, ySplit: 1 }] });
 
   ws.columns = [
@@ -135,6 +139,9 @@ export function buildScheduleWorkbook(input: {
     ["", "", "A date already covered by an active suspension is skipped and reported; suspensions win."],
     ["", "", "An agent who already has a schedule on a date in this file will have it replaced by what the file says."],
     [],
+    // Appended after the "Notes" heading on purpose — the bold styling below
+    // addresses rows by number, and every index it names is at or above this.
+    ["Period:", input.periodLabel],
     ["Agents listed:", String(agents.length)],
     ["Generated for:", input.generatedFor],
   ]);
