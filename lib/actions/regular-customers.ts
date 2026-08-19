@@ -16,6 +16,8 @@ import {
   findRegularCustomerByPhone,
   regularCustomersOnPhoneElsewhere,
   recordDuplicates,
+  replaceCustomerShares,
+  shareTargetsFor,
   upsertRegularCustomer,
 } from "@/lib/customers";
 import { normalizePhone, restoreTrunkZero } from "@/lib/utils";
@@ -24,7 +26,7 @@ import { regularCustomerFormSchema } from "@/lib/validation";
 import { describeParseFailure } from "@/lib/zod-error";
 import { requireUserLite } from "./guards";
 import { displayUserName } from "@/lib/types";
-import type { DuplicateStatus } from "@/lib/types";
+import type { Customer, DbShape, DuplicateStatus, Profile } from "@/lib/types";
 
 const PATH = "/regular-customers";
 const NEW_PATH = "/regular-customers/new";
@@ -589,4 +591,98 @@ export async function importRegularCustomersAction(
   await writeDb(db);
 
   return summary;
+}
+
+// ── Sharing ─────────────────────────────────────────────────────────────────
+
+/**
+ * Sets who a regular customer is shared with.
+ *
+ * Ownership is untouched. A share is read access plus the ability to work the
+ * customer; it never moves owner_agent_id, so one person stays accountable and
+ * un-sharing cannot orphan the record.
+ */
+export async function shareCustomerAction(formData: FormData) {
+  const { user, db } = await requireUserLite();
+  const customerId = String(formData.get("customer_id") || "");
+  const back = (message: string) =>
+    redirect(`${PATH}/${customerId}?error=${encodeURIComponent(message)}`);
+
+  if (!can(user.role, "regular_customers", "assign", db.role_permissions)) {
+    back("You do not have permission to share regular customers.");
+  }
+
+  const { data: row } = await supabaseAdmin
+    .from("customers")
+    .select("*")
+    .eq("id", customerId)
+    .maybeSingle();
+  if (!row) back("That customer no longer exists.");
+  const customer = row as unknown as Customer;
+
+  // Only the owner, or somebody with full access acting on their behalf. A
+  // teammate who was shared the customer cannot pass it on further — otherwise
+  // one share becomes a chain nobody is watching.
+  if (!isFullAccess(user.role) && customer.owner_agent_id !== user.id) {
+    back("Only the agent who owns this customer can share it.");
+  }
+
+  const owner = db.profiles.find((p) => p.id === customer.owner_agent_id);
+  if (!owner) back("This customer's owner account no longer exists.");
+
+  // The submitted list is checked against the owner's team rather than trusted:
+  // the picker is a form field, and a form field is a suggestion.
+  const allowed = new Set(shareTargetsFor(db, owner!).map((p) => p.id));
+  const requested = formData.getAll("agent_ids").map(String).filter(Boolean);
+  const rejected = requested.filter((id) => !allowed.has(id));
+  if (rejected.length > 0) {
+    back("You can only share a customer with the owner's own team.");
+  }
+
+  const { added, removed } = await replaceCustomerShares(customerId, requested, user.id);
+  if (added.length === 0 && removed.length === 0) {
+    redirect(`${PATH}/${customerId}?shared=0`);
+  }
+
+  // The number stops being an active lead for the people just added.
+  //
+  // Without this the one-lead-per-number rule breaks in plain sight: the record
+  // is a regular customer for the owner while the same number sits in a
+  // teammate's Leads list as an open lead. createRegularCustomer does exactly
+  // this for the owner at creation time; a share is the same event for somebody
+  // else, so it does the same thing.
+  let moved = 0;
+  for (const agentId of added) {
+    for (const o of adoptOrders(db, await orderRowsForPhoneAndAgent(customer.phone_raw, agentId))) {
+      o.is_regular_customer = true;
+      o.regular_customer_since = o.regular_customer_since || customer.regular_since;
+      o.customer_id = customer.id;
+      markOrderDirty(db, o.id);
+      moved++;
+    }
+  }
+
+  const nameById = new Map(db.profiles.map((p) => [p.id, displayUserName(p)]));
+  const info = await getRequestInfo();
+  logActivity(
+    db,
+    user.id,
+    "REGULAR_CUSTOMER_SHARED",
+    "customer",
+    customer.id,
+    {
+      customer_name: customer.full_name,
+      owner_agent_id: customer.owner_agent_id,
+      // Names as well as ids: an audit entry read a year from now should say who
+      // was given access without needing another query to find out.
+      added: added.map((id) => ({ id, name: nameById.get(id) || "unknown" })),
+      removed: removed.map((id) => ({ id, name: nameById.get(id) || "unknown" })),
+      shared_with_total: requested.length,
+      orders_moved: moved,
+    },
+    { module: "regular_customers", ...info }
+  );
+  await writeDb(db);
+
+  redirect(`${PATH}/${customerId}?shared=1`);
 }

@@ -62,7 +62,12 @@ export const MODULE_ACTIONS: Record<ModuleKey, ActionKey[]> = {
   // "create" is deliberately its own grant, separate from orders.create:
   // adding a Regular Customer is not adding a lead. It covers both the Add
   // Regular Customer button and tagging an existing lead's customer as one.
-  regular_customers: ["view", "create", "edit", "manage"],
+  //
+  // "assign" is the Share grant, and is separate from "edit" on purpose: editing
+  // a customer changes what the record says, sharing changes who can see a
+  // person's name, number and address. The second is a disclosure, not an edit,
+  // and an agent trusted with one is not automatically trusted with the other.
+  regular_customers: ["view", "create", "edit", "assign", "manage"],
 };
 
 type Grant = [ModuleKey, ActionKey];

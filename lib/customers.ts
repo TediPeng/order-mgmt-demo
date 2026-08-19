@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { canonicalPhone, normalizePhone } from "@/lib/utils";
-import type { Customer, CustomerDuplicateMatch, Order } from "@/lib/types";
+import { displayUserName } from "@/lib/types";
+import type { Customer, CustomerDuplicateMatch, DbShape, Order, Profile } from "@/lib/types";
 
 /** Regular Customers — an agent's own repeat buyers, deliberately kept OUT of
  * their Leads list.
@@ -34,7 +35,19 @@ export async function listCustomers(
   filter: { ownerAgentIds?: string[]; q?: string } = {}
 ): Promise<Customer[]> {
   let query = supabaseAdmin.from("customers").select("*").eq("is_regular_customer", true);
-  if (filter.ownerAgentIds) query = query.in("owner_agent_id", filter.ownerAgentIds);
+
+  if (filter.ownerAgentIds) {
+    // Owned OR shared with one of these agents. The share ids are fetched first
+    // rather than joined, because PostgREST can only filter on an embedded table
+    // by inner joining it — which would drop every customer that has no share at
+    // all, i.e. nearly all of them.
+    const sharedIds = await sharedCustomerIds(filter.ownerAgentIds);
+    query = sharedIds.length
+      ? query.or(
+          `owner_agent_id.in.(${filter.ownerAgentIds.join(",")}),id.in.(${sharedIds.join(",")})`
+        )
+      : query.in("owner_agent_id", filter.ownerAgentIds);
+  }
 
   // One box, matched against everything the row shows: the name, the number as
   // typed and as stored, and each part of the address. A number is searched by
@@ -63,6 +76,153 @@ export async function listCustomers(
   const { data, error } = await query.order("regular_since", { ascending: false });
   if (error) throw new Error(`customers read failed: ${error.message}`);
   return (data || []).map(mapCustomer);
+}
+
+// ── Sharing ─────────────────────────────────────────────────────────────────
+//
+// An owner lends a repeat buyer to a teammate, so somebody can answer when the
+// customer calls and the owner is off. Ownership never moves: `owner_agent_id`
+// is untouched, so one person stays accountable and un-sharing cannot orphan
+// the record.
+//
+// Sharing is a disclosure, not an edit — it hands over a person's name, number
+// and address. That is why it needs its own grant (regular_customers.assign),
+// why the picker is limited to the owner's own team, and why every change is
+// written to the activity log.
+
+/**
+ * Who a customer may be shared with: the OWNER's own team.
+ *
+ * Keyed off the owner rather than off whoever is clicking, so the disclosure
+ * boundary belongs to the customer and does not widen when a Team Lead or an
+ * Administrator opens the same dialog.
+ *
+ * Deliberately not the whole floor. An agent has never had a way to enumerate
+ * their colleagues — allowedAssigneeIds() answers [self] for them — and sharing
+ * should not become the feature that quietly hands them the roster.
+ *
+ * The owner's own Team Lead is left out on purpose: a Team Lead already sees
+ * every customer their team owns, so a share to them grants nothing and would
+ * only read as though it did.
+ *
+ * Lives here rather than beside shareCustomerAction because that file carries
+ * "use server", which may only export async functions — a sync helper exported
+ * from it takes the whole app down at compile time.
+ */
+export function shareTargetsFor(db: DbShape, owner: Profile): Profile[] {
+  const teamLeadId = owner.role === "team_lead" ? owner.id : owner.team_lead_id;
+  if (!teamLeadId) return [];
+
+  return db.profiles
+    .filter(
+      (p) =>
+        p.id !== owner.id &&
+        p.role === "agent" &&
+        p.is_active &&
+        !p.is_deleted &&
+        !p.is_test_account &&
+        p.team_lead_id === teamLeadId
+    )
+    .sort((a, b) => displayUserName(a).localeCompare(displayUserName(b)));
+}
+
+/** Customer ids these agents have been shared on. */
+export async function sharedCustomerIds(agentIds: string[]): Promise<string[]> {
+  if (agentIds.length === 0) return [];
+  const { data, error } = await supabaseAdmin
+    .from("customer_shares")
+    .select("customer_id")
+    .in("agent_id", agentIds);
+  if (error) throw new Error(`customer_shares read failed: ${error.message}`);
+  return Array.from(new Set((data || []).map((r) => String(r.customer_id))));
+}
+
+/** Who each of these customers is shared with, keyed by customer id. */
+export async function sharesForCustomers(
+  customerIds: string[]
+): Promise<Map<string, string[]>> {
+  const byCustomer = new Map<string, string[]>();
+  if (customerIds.length === 0) return byCustomer;
+
+  const { data, error } = await supabaseAdmin
+    .from("customer_shares")
+    .select("customer_id, agent_id")
+    .in("customer_id", customerIds);
+  if (error) throw new Error(`customer_shares read failed: ${error.message}`);
+
+  for (const row of data || []) {
+    const key = String(row.customer_id);
+    byCustomer.set(key, [...(byCustomer.get(key) || []), String(row.agent_id)]);
+  }
+  return byCustomer;
+}
+
+/** Which of these customers are shared with this one agent. */
+export async function sharedCustomerIdsForAgent(
+  customerIds: string[],
+  agentId: string
+): Promise<string[]> {
+  if (customerIds.length === 0) return [];
+  const { data, error } = await supabaseAdmin
+    .from("customer_shares")
+    .select("customer_id")
+    .eq("agent_id", agentId)
+    .in("customer_id", customerIds);
+  if (error) throw new Error(`customer_shares read failed: ${error.message}`);
+  return (data || []).map((r) => String(r.customer_id));
+}
+
+/** Whether this agent may work this customer — as owner, or through a share. */
+export async function agentCanSeeCustomer(customerId: string, agentId: string): Promise<boolean> {
+  const { data, error } = await supabaseAdmin
+    .from("customer_shares")
+    .select("customer_id")
+    .eq("customer_id", customerId)
+    .eq("agent_id", agentId)
+    .maybeSingle();
+  if (error) throw new Error(`customer_shares read failed: ${error.message}`);
+  return Boolean(data);
+}
+
+/**
+ * Replaces the share list for a customer.
+ *
+ * Written as a delete-then-insert of the whole set rather than a diff: the form
+ * posts the complete list of who should hold it, and reconciling that against
+ * what is stored is the same work with more ways to be wrong.
+ *
+ * Returns what actually changed, so the audit entry can name the people added
+ * and removed rather than just recording that "sharing was edited".
+ */
+export async function replaceCustomerShares(
+  customerId: string,
+  agentIds: string[],
+  sharedBy: string
+): Promise<{ added: string[]; removed: string[] }> {
+  const existing = (await sharesForCustomers([customerId])).get(customerId) || [];
+  const wanted = Array.from(new Set(agentIds));
+
+  const added = wanted.filter((id) => !existing.includes(id));
+  const removed = existing.filter((id) => !wanted.includes(id));
+  if (added.length === 0 && removed.length === 0) return { added, removed };
+
+  if (removed.length > 0) {
+    const { error } = await supabaseAdmin
+      .from("customer_shares")
+      .delete()
+      .eq("customer_id", customerId)
+      .in("agent_id", removed);
+    if (error) throw new Error(`customer_shares delete failed: ${error.message}`);
+  }
+
+  if (added.length > 0) {
+    const { error } = await supabaseAdmin.from("customer_shares").insert(
+      added.map((agent_id) => ({ customer_id: customerId, agent_id, shared_by: sharedBy }))
+    );
+    if (error) throw new Error(`customer_shares insert failed: ${error.message}`);
+  }
+
+  return { added, removed };
 }
 
 /**
