@@ -8,6 +8,7 @@ import {
   shiftForStatus,
 } from "@/lib/schedule-import";
 import type { WorkDayTimes } from "@/lib/schedule-import";
+import { isWeekend } from "@/lib/cutoff";
 
 /**
  * Builds the roster workbook.
@@ -26,7 +27,18 @@ import type { WorkDayTimes } from "@/lib/schedule-import";
  * whole format.
  */
 
-const HEADER_FILL = "FF1F2937";
+// Taken from the roster grid so the file and the screen read as one thing: the
+// grid's headers are slate-100, its weekend columns slate-200, its header text
+// slate-600. The template used to carry a dark slate-800 header, which was the
+// one place the two views disagreed on sight.
+//
+// A second header row for the weekday — which the grid does have — is
+// deliberately NOT added: the importer reads the dates out of row 1 and expects
+// the data to start at row 2 (see aoa[0] in ScheduleImportClient). Adding a row
+// would break every file already in circulation, which is not worth a label.
+const HEADER_FILL = "FFF1F5F9";
+const HEADER_WEEKEND_FILL = "FFE2E8F0";
+const HEADER_FONT = "FF475569";
 
 export interface TemplateAgent {
   username: string;
@@ -57,10 +69,22 @@ export function buildScheduleWorkbook(input: {
   ];
 
   const headerRow = ws.getRow(1);
-  headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  headerRow.font = { bold: true, color: { argb: HEADER_FONT } };
   headerRow.alignment = { horizontal: "center", vertical: "middle" };
   headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HEADER_FILL } };
   headerRow.height = 22;
+
+  // Saturdays and Sundays shaded a step darker, as the grid shades them. On a
+  // fifteen-day cut-off the rest days are what the eye is looking for, and
+  // counting columns to find the weekend is the thing the grid removed.
+  dates.forEach((d, i) => {
+    if (!isWeekend(d)) return;
+    headerRow.getCell(3 + i).fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: HEADER_WEEKEND_FILL },
+    };
+  });
 
   for (const agent of agents) {
     // Pre-set to ON DUTY: a roster is mostly working days, so only the

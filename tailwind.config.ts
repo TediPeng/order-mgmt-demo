@@ -7,6 +7,17 @@ const config: Config = {
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
+    // lib/ too, because class names live there: STATUS_STYLE in lib/duty-status.ts
+    // is the one place the roster's colours are written. Without this path the
+    // scanner never sees them and Tailwind emits no rule, so the cell renders
+    // with no background at all.
+    //
+    // It failed silently and only partly, which is why it survived: four of the
+    // six colours happened to appear in some component too and were emitted for
+    // that reason, while bg-violet-600 (TRAINING) and bg-orange-600 (SUSPENDED)
+    // appeared nowhere else and simply vanished. A colour working by coincidence
+    // is not a colour that works.
+    "./lib/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     extend: {
