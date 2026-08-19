@@ -29,7 +29,13 @@ import {
   canSetOrderTag,
 } from "@/lib/lead-workflow";
 import { timeInBlockReason } from "@/lib/time-in-gate";
-import { findDuplicates, findRegularCustomerByPhone, getCustomer, recordCustomerOrder } from "@/lib/customers";
+import {
+  findDuplicates,
+  findRegularCustomerByPhone,
+  getCustomer,
+  recordCustomerOrder,
+  sharedCustomerIdsForAgent,
+} from "@/lib/customers";
 import { forwardOrderToPancake } from "@/lib/pancake/forward";
 import { computeOrderTotal, validateForPancake } from "@/lib/pancake/validate";
 import { verifyOrderAddress } from "@/lib/pancake/verifyAddress";
@@ -475,7 +481,18 @@ export async function applyLeadUpdate(
         city: String(raw.city ?? order.city ?? ""),
         province: String(raw.province ?? order.province ?? ""),
       });
-      const foreign = findings.filter((f) => f.matched.owner_agent_id !== user.id);
+      // A customer shared with this agent is not foreign to them: the owner
+      // handed it over deliberately, and refusing the order here would make the
+      // share look broken rather than granted.
+      const sharedToMe = new Set(
+        await sharedCustomerIdsForAgent(
+          findings.map((f) => f.matched.id),
+          user.id
+        )
+      );
+      const foreign = findings.filter(
+        (f) => f.matched.owner_agent_id !== user.id && !sharedToMe.has(f.matched.id)
+      );
       if (foreign.length > 0) {
         const owner = db.profiles.find((p) => p.id === foreign[0].matched.owner_agent_id);
         return {

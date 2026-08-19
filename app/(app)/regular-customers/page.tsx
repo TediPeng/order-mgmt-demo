@@ -5,7 +5,13 @@ import { readDbLite } from "@/lib/db";
 import { ordersForCustomers } from "@/lib/orders-lookup";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
-import { listCustomers, ordersForCustomer, listOpenDuplicates, scanDuplicateCustomers } from "@/lib/customers";
+import {
+  listCustomers,
+  ordersForCustomer,
+  listOpenDuplicates,
+  scanDuplicateCustomers,
+  sharedCustomerIds,
+} from "@/lib/customers";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
@@ -47,6 +53,10 @@ export default async function RegularCustomersPage({
   const query = (sp.q || "").trim();
   const customers = await listCustomers({ ownerAgentIds, q: query });
   const nameById = new Map(db.profiles.map((p) => [p.id, p.full_name]));
+
+  // Which of these rows reached this list through a share rather than through
+  // ownership. Asked once for the whole page rather than per row.
+  const sharedCustomerIdSet = new Set(await sharedCustomerIds([user.id]));
 
   // The duplicate queue is a Management/Team Lead concern only — an agent is
   // never shown that a match exists.
@@ -201,7 +211,15 @@ export default async function RegularCustomersPage({
                 <td className="px-4 py-3 text-slate-600">
                   {[customer.purok, customer.barangay, customer.city, customer.province].filter(Boolean).join(", ") || "—"}
                 </td>
-                <td className="px-4 py-3 text-slate-600">{nameById.get(customer.owner_agent_id) || "—"}</td>
+                <td className="px-4 py-3 text-slate-600">
+                  {nameById.get(customer.owner_agent_id) || "—"}
+                  {/* A shared row looks identical to an owned one otherwise, and
+                      an agent acting on one they do not own — untagging it,
+                      treating it as their sale — is a mistake the page invited. */}
+                  {customer.owner_agent_id !== user.id && sharedCustomerIdSet.has(customer.id) && (
+                    <Badge className="ml-2 bg-sky-100 text-sky-700">Shared with you</Badge>
+                  )}
+                </td>
                 {/* Their orders are out of the Leads list by design, so this
                     page has to be the way back to them. */}
                 <td className="px-4 py-3 text-slate-600">

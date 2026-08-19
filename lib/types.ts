@@ -804,6 +804,21 @@ export interface Customer {
   updated_at: string | null;
 }
 
+/**
+ * A regular customer an owner has lent to a teammate.
+ *
+ * Additive to `Customer.owner_agent_id`, which a share never changes — there is
+ * always exactly one person accountable for the record, and removing a share
+ * cannot leave it ownerless.
+ */
+export interface CustomerShare {
+  customer_id: string;
+  agent_id: string;
+  /** The owner who shared it, or null if that account has since been removed. */
+  shared_by: string | null;
+  created_at: string;
+}
+
 export type DuplicateMatchType = "phone" | "name_address" | "name_barangay_city" | "other";
 export type DuplicateConfidence = "high" | "medium" | "low";
 export type DuplicateStatus = "open" | "confirmed_duplicate" | "not_duplicate" | "merged";

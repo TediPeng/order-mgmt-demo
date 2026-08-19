@@ -4,14 +4,21 @@ import { readDbLite } from "@/lib/db";
 import { ordersForCustomers } from "@/lib/orders-lookup";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
-import { getCustomer, ordersForCustomer } from "@/lib/customers";
+import {
+  agentCanSeeCustomer,
+  getCustomer,
+  ordersForCustomer,
+  shareTargetsFor,
+  sharesForCustomers,
+} from "@/lib/customers";
 import { displayUserName } from "@/lib/types";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge, StatusBadge } from "@/components/ui/Badge";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { LinkButton } from "@/components/ui/Button";
-import { untagRegularCustomerAction } from "@/lib/actions/regular-customers";
+import { shareCustomerAction, untagRegularCustomerAction } from "@/lib/actions/regular-customers";
+import { ShareCustomerButton } from "@/components/ShareCustomerButton";
 
 /**
  * One regular customer, and every order on their record.
@@ -36,17 +43,36 @@ export default async function RegularCustomerDetailPage({
   const customer = await getCustomer(id);
   if (!customer || !customer.is_regular_customer) notFound();
 
-  // Scope mirrors the list: an agent sees their own, a team lead their team's.
+  // Scope mirrors the list: an agent sees their own, a team lead their team's —
+  // plus anything shared with them. Without the share check a teammate would see
+  // the customer on the list and be bounced back here on the click, which reads
+  // as a bug rather than as a permission.
   if (!isFullAccess(user.role)) {
     const allowed =
       user.role === "team_lead"
         ? [user.id, ...db.profiles.filter((p) => p.team_lead_id === user.id).map((p) => p.id)]
         : [user.id];
-    if (!allowed.includes(customer.owner_agent_id)) redirect("/regular-customers");
+    const owned = allowed.includes(customer.owner_agent_id);
+    if (!owned && !(await agentCanSeeCustomer(customer.id, user.id))) {
+      redirect("/regular-customers");
+    }
   }
 
   const canManage = can(user.role, "regular_customers", "manage", db.role_permissions);
   const canOrder = can(user.role, "orders", "create", db.role_permissions);
+
+  // Sharing is the owner's to give away, so the button belongs to them — or to
+  // somebody with full access acting on their behalf. A teammate holding a share
+  // cannot pass it on: one share must not become a chain nobody is watching.
+  const isOwner = customer.owner_agent_id === user.id;
+  const canShare =
+    (isOwner || isFullAccess(user.role)) &&
+    can(user.role, "regular_customers", "assign", db.role_permissions);
+  const ownerProfile = db.profiles.find((p) => p.id === customer.owner_agent_id);
+  const shareTargets = canShare && ownerProfile ? shareTargetsFor(db, ownerProfile) : [];
+  const sharedWith = canShare
+    ? (await sharesForCustomers([customer.id])).get(customer.id) || []
+    : [];
 
   const orders = await ordersForCustomer(customer, await ordersForCustomers([customer]));
   const owner = db.profiles.find((p) => p.id === customer.owner_agent_id);
@@ -73,6 +99,19 @@ export default async function RegularCustomerDetailPage({
             Back to Regular Customers
           </LinkButton>
           {canOrder && <LinkButton href={`/leads/new?customer=${customer.id}`} size="sm">New Order</LinkButton>}
+          {canShare && (
+            <ShareCustomerButton
+              customerId={customer.id}
+              customerName={customer.full_name}
+              targets={shareTargets.map((p) => ({
+                id: p.id,
+                name: displayUserName(p),
+                callName: p.call_name,
+              }))}
+              sharedWith={sharedWith}
+              action={shareCustomerAction}
+            />
+          )}
           {canManage && (
             <form action={untagRegularCustomerAction.bind(null, customer.id)}>
               <ConfirmSubmitButton confirmMessage="Return this customer to the active Leads list?">
