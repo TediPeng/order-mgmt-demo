@@ -26,7 +26,7 @@ import { regularCustomerFormSchema } from "@/lib/validation";
 import { describeParseFailure } from "@/lib/zod-error";
 import { requireUserLite } from "./guards";
 import { displayUserName } from "@/lib/types";
-import type { Customer, DbShape, DuplicateStatus, Profile } from "@/lib/types";
+import type { Customer, DuplicateStatus } from "@/lib/types";
 
 const PATH = "/regular-customers";
 const NEW_PATH = "/regular-customers/new";
