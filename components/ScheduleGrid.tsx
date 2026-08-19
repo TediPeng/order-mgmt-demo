@@ -54,7 +54,28 @@ export function ScheduleGrid({
   canEdit: boolean;
 }) {
   const router = useRouter();
-  const [cells, setCells] = useState<ScheduleGridCells>(initialCells);
+  /**
+   * Only the edits made in this browser, merged over whatever the server sent.
+   *
+   * This used to be `useState(initialCells)` — the server's cells copied into
+   * state once — and that captured them at mount and ignored every prop after
+   * it. Two things broke, and both looked like the data was wrong rather than
+   * the component:
+   *
+   * The cut-off arrows are client-side navigations, so paging to the next
+   * fortnight re-rendered the server component with new cells and kept drawing
+   * the old ones.
+   *
+   * And a suspension raised in the disciplinary module never appeared here. The
+   * stat tiles above are server-rendered and did update, so the SUSPENDED count
+   * could read 2 over a grid showing none — which reads as the roster losing a
+   * suspension rather than as a stale copy.
+   *
+   * Merging instead of copying means the server is always the source: anything
+   * it says arrives, and a local edit sits on top until the refresh confirms it.
+   */
+  const [overrides, setOverrides] = useState<ScheduleGridCells>({});
+  const cells: ScheduleGridCells = { ...initialCells, ...overrides };
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,7 +86,7 @@ export function ScheduleGrid({
 
     // Optimistic: fifteen columns of dropdowns that each wait a round trip
     // before showing anything is unusable for setting a fortnight of rest days.
-    setCells((c) => ({ ...c, [key]: next }));
+    setOverrides((o) => ({ ...o, [key]: next }));
     setSaving(key);
     setError(null);
 
@@ -89,14 +110,28 @@ export function ScheduleGrid({
             });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json.ok === false) {
-        setCells((c) => ({ ...c, [key]: previous }));
+        // Dropping the override rather than writing the old value back: the
+        // fall-through is initialCells, which IS the server value, so this reverts
+        // to what the server actually holds rather than to what we remembered.
+        setOverrides((o) => {
+          const remaining = { ...o };
+          delete remaining[key];
+          return remaining;
+        });
         setError(json.error || "Could not save that change.");
       } else {
         // The stat tiles above are server-rendered from the same rows.
         router.refresh();
       }
     } catch {
-      setCells((c) => ({ ...c, [key]: previous }));
+      // Dropping the override rather than writing the old value back: the
+      // fall-through is initialCells, which IS the server value, so this reverts
+      // to what the server actually holds rather than to what we remembered.
+      setOverrides((o) => {
+        const remaining = { ...o };
+        delete remaining[key];
+        return remaining;
+      });
       setError("Network error. That change was not saved.");
     } finally {
       setSaving(null);
