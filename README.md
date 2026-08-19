@@ -124,6 +124,35 @@ status change no matter how little data exists.
 Keep the functions in whatever region the database is in. If the Supabase project is ever moved,
 move this too.
 
+## `xlsx` comes from the SheetJS CDN, not npm
+
+`package.json` pins `xlsx` to a tarball URL rather than a version range:
+
+```
+"xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+```
+
+The npm registry's copy stops at 0.18.5, which carries two high-severity advisories —
+prototype pollution (GHSA-4r6h-8v6p-xvw6, fixed in 0.19.3) and a ReDoS
+(GHSA-5pgg-2g8v-p4x9, fixed in 0.20.2). SheetJS publishes the fixes only from its own CDN,
+so npm reports no patched version and `npm audit fix` cannot resolve either one. Every
+lead, roster, call-log and regular-customer import parses a file somebody uploaded, which
+is exactly the input those advisories are about.
+
+**So `npm install xlsx` is a downgrade.** It resolves against the registry and silently
+puts 0.18.5 back, reintroducing both. Bump the version inside the URL instead, and check
+https://cdn.sheetjs.com/ for what is current.
+
+The trade is that builds now fetch from `cdn.sheetjs.com`. If that host is unreachable the
+build fails rather than silently installing something vulnerable, which is the right way
+round; the lockfile carries the tarball's `integrity` hash, so a substituted file is
+refused.
+
+`exceljs` is also a dependency (`lib/schedule-template.ts`) and could in principle absorb
+the six `xlsx` calls this codebase makes, dropping the CDN dependency entirely. That is a
+migration across nine files with different async semantics, not a version bump, and it is
+not what this pin is for.
+
 ## Getting Started
 
 First, run the development server:
