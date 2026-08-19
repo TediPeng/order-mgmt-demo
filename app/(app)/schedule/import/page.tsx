@@ -8,6 +8,8 @@ import { can } from "@/lib/permissions";
 import { scopeAgentsForSchedule, rosterAgents } from "@/lib/schedule-access";
 import { ScheduleRosterBuilder } from "@/components/ScheduleRosterBuilder";
 import { DUTY_STATUSES, shiftForStatus } from "@/lib/schedule-import";
+import { cutoffFor } from "@/lib/cutoff";
+import { todayInTz } from "@/lib/utils";
 
 const TEMPLATE_HREF = "/api/schedule/template";
 
@@ -32,6 +34,10 @@ export default async function ImportSchedulePage() {
 
   const workDay = { work_start: db.work_schedule.work_start, work_end: db.work_schedule.work_end };
   const halfDayEndsAt = shiftForStatus("HALF DAY", workDay).duty_end;
+
+  // Named here rather than left to the download so the copy and the file agree:
+  // /api/schedule/template with no parameters returns exactly this period.
+  const currentCutoff = cutoffFor(todayInTz());
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -65,9 +71,10 @@ export default async function ImportSchedulePage() {
         <CardContent className="space-y-3">
           <p className="text-sm text-slate-600">
             The template comes with your {agentCount} agent account{agentCount === 1 ? "" : "s"} already listed — one
-            row each, one column per date, defaulting to next Monday through Sunday. Every date cell is a dropdown of{" "}
-            {DUTY_STATUSES.join(", ")}, pre-set to ON DUTY and colour-coded, so you only change the exceptions. Leave a
-            cell blank to say nothing about that day.
+            row each, one column per date, covering{" "}
+            <span className="font-medium">{currentCutoff.label}</span>, the cut-off the grid above opens on. Every date
+            cell is a dropdown of {DUTY_STATUSES.join(", ")}, pre-set to ON DUTY and colour-coded, so you only change
+            the exceptions. Leave a cell blank to say nothing about that day.
           </p>
           <p className="text-xs text-slate-500">
             ON DUTY and TRAINING run {db.work_schedule.work_start}–{db.work_schedule.work_end} (the company work

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { cutoffFor, shiftCutoff, datesIn, shortDate, weekdayOf, isWeekend, addDays, type Cutoff } from "@/lib/cutoff";
 import { cn } from "@/lib/utils";
-import { DUTY_STATUSES, STATUS_STYLE, statusOf, type CellStatus } from "@/lib/duty-status";
+import { DUTY_STATUSES, STATUS_STYLE, STATUS_LABEL, statusOf, type CellStatus } from "@/lib/duty-status";
 import type { AgentOption } from "@/components/ScheduleEventModal";
 
 type State = CellStatus;
@@ -209,24 +209,40 @@ export function ScheduleRosterBuilder({ agents }: { agents: AgentOption[] }) {
                   const isChanged = state !== "SUSPENDED" && (loaded[key] ?? "NONE") !== state;
                   return (
                     <td key={d} className="border-b border-r border-slate-200 p-0">
-                      <select
-                        value={state}
-                        disabled={state === "SUSPENDED"}
-                        onChange={(e) => setCell(a.id, d, e.target.value as State)}
-                        aria-label={`${a.full_name} on ${shortDate(d)}`}
-                        className={cn(
-                          "h-8 w-full cursor-pointer appearance-none border-0 px-1 text-center text-[10px] font-semibold tracking-wide focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--brand-accent)]",
-                          STATUS_STYLE[state],
-                          isChanged && "ring-2 ring-inset ring-amber-400"
-                        )}
-                      >
-                        {DUTY_STATUSES.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                        <option value="NONE">—</option>
-                      </select>
+                      {state === "SUSPENDED" ? (
+                        // Not a disabled <select>: SUSPENDED is deliberately
+                        // absent from the options, so a select holding it draws
+                        // an empty box — the fill arrived and the word did not,
+                        // which reads as a cell nobody has set rather than one
+                        // that cannot be. Same locked div ScheduleGrid renders.
+                        <div
+                          className={cn(
+                            "flex h-8 items-center justify-center px-1 text-[10px] font-semibold tracking-wide",
+                            STATUS_STYLE.SUSPENDED
+                          )}
+                          title="Set by a suspension — lift it from Disciplinary"
+                        >
+                          {STATUS_LABEL.SUSPENDED}
+                        </div>
+                      ) : (
+                        <select
+                          value={state}
+                          onChange={(e) => setCell(a.id, d, e.target.value as State)}
+                          aria-label={`${a.full_name} on ${shortDate(d)}`}
+                          className={cn(
+                            "h-8 w-full cursor-pointer appearance-none border-0 px-1 text-center text-[10px] font-semibold tracking-wide focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--brand-accent)]",
+                            STATUS_STYLE[state],
+                            isChanged && "ring-2 ring-inset ring-amber-400"
+                          )}
+                        >
+                          {DUTY_STATUSES.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                          <option value="NONE">—</option>
+                        </select>
+                      )}
                     </td>
                   );
                 })}
