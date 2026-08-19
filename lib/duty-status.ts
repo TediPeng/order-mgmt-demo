@@ -65,7 +65,12 @@ export const STATUS_STYLE: Record<CellStatus, string> = {
   "ON LEAVE": "bg-blue-500 text-white",
   OFF: "bg-red-600 text-white",
   TRAINING: "bg-violet-600 text-white",
-  SUSPENDED: "bg-orange-600 text-white",
+  // Near-black rather than the orange it used to carry, for two reasons. Orange
+  // sat next to HALF DAY's amber and the two were hard to tell apart in a row of
+  // fifteen cells. And SUSPENDED is not a duty status somebody picked — it is
+  // imposed by the disciplinary module and cannot be changed from the grid — so
+  // it should not look like one more colour in the same family.
+  SUSPENDED: "bg-slate-800 text-white",
   NONE: "bg-white text-slate-300",
 };
 
