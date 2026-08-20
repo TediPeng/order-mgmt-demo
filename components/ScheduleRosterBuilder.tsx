@@ -153,13 +153,38 @@ export function ScheduleRosterBuilder({
         next[`${p.agent_id}|${p.schedule_date}`] = statusOf(p);
       }
       setLoaded(next);
-      setCells(next);
+
+      /**
+       * Approved leave fills itself in, on any day the roster has not spoken
+       * for.
+       *
+       * It goes into `cells` and not into `loaded`, and that difference is the
+       * whole point: `loaded` is what the database holds, `cells` is what the
+       * screen proposes. So these arrive already marked, already counted in
+       * "Save N changes", and one press writes them — instead of a scheduler
+       * being told about the leave and then having to type it in themselves,
+       * fifteen cells at a time.
+       *
+       * Never over a day that already says something. That entry is somebody's
+       * decision, including the decision to roster work over approved leave,
+       * and it keeps its amber mark rather than being quietly corrected here.
+       */
+      const withLeave = { ...next };
+      for (const l of approvedLeave) {
+        if (!onRoster.has(l.agent_id)) continue;
+        for (const d of dates) {
+          if (d < l.leave_start || d > l.leave_end) continue;
+          const key = `${l.agent_id}|${d}`;
+          if (!withLeave[key]) withLeave[key] = "ON LEAVE";
+        }
+      }
+      setCells(withLeave);
     } catch {
       setError("Could not read the current roster for this cut-off.");
     } finally {
       setLoading(false);
     }
-  }, [cutoff]);
+  }, [cutoff, approvedLeave, dates, onRoster]);
 
   useEffect(() => {
     load();

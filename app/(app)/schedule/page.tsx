@@ -98,6 +98,25 @@ export default async function SchedulePage({
     }
   }
 
+  /**
+   * A day nobody has rostered, on which the agent's leave is already approved,
+   * reads as ON LEAVE — derived, exactly as a suspended day is.
+   *
+   * Nothing is written to do this. The leave is a fact the roster does not hold
+   * (approval writes to attendance, never to schedules) and the alternative was
+   * a dash: the grid said "nothing decided here" about a day that had been
+   * decided a week earlier by a Team Lead. A dash is what invites somebody to
+   * fill it with ON DUTY.
+   *
+   * Only over an empty cell. If the roster actually says something — even ON
+   * DUTY over the leave — that is a real entry somebody made, and overwriting
+   * it on the way to the screen would hide a clash rather than show it. Those
+   * keep their own status and take the amber mark instead.
+   */
+  for (const key of Object.keys(leaveDays)) {
+    if (!cells[key]) cells[key] = "ON LEAVE";
+  }
+
   // The tiles stay on today, deliberately — they answer "who is on right now",
   // which does not become a different question because the grid is showing
   // next fortnight.
