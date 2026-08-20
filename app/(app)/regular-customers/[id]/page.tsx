@@ -19,6 +19,7 @@ import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { LinkButton } from "@/components/ui/Button";
 import { shareCustomerAction, untagRegularCustomerAction } from "@/lib/actions/regular-customers";
 import { ShareCustomerButton } from "@/components/ShareCustomerButton";
+import { CustomerReturnRate } from "@/components/CustomerReturnRate";
 
 /**
  * One regular customer, and every order on their record.
@@ -88,7 +89,14 @@ export default async function RegularCustomerDetailPage({
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h1 className="text-page-title text-slate-900">{customer.full_name}</h1>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-page-title text-slate-900">{customer.full_name}</h1>
+            {/* Beside the name, not buried in the details below. This is a
+                repeat buyer — how their parcels have ended is the first thing
+                worth knowing about them, and the panel behind it answers the
+                question the rate always raises. */}
+            <CustomerReturnRate phone={customer.phone_raw} />
+          </div>
           <p className="mt-1 text-sm text-slate-500">
             Regular customer of {owner ? displayUserName(owner) : "—"}
             {customer.regular_since ? ` since ${formatDate(customer.regular_since)}` : ""}.
