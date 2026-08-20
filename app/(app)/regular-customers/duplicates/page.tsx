@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
-import { listOpenDuplicates, scanDuplicateCustomers } from "@/lib/customers";
+import { listOpenDuplicates, scanDuplicateCustomers, sharesForCustomers } from "@/lib/customers";
 import { formatDateTime } from "@/lib/utils";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
@@ -47,6 +47,27 @@ export default async function DuplicatesPage({
   const canDecide = isFullAccess(user.role) || can(user.role, "regular_customers", "manage", db.role_permissions);
   const [matches, scanned] = await Promise.all([listOpenDuplicates(), scanDuplicateCustomers()]);
   const nameById = new Map(db.profiles.map((p) => [p.id, p.full_name]));
+
+  /**
+   * Who each of these records is shared with.
+   *
+   * A shared customer is not a duplicate: the owner handed it over on purpose,
+   * and the second agent works it with permission. This page could not tell the
+   * two apart — it showed a name, a number and an agent, which is exactly what
+   * a genuine duplicate looks like too — so the deliberate arrangement and the
+   * accident were being reviewed as if they were the same thing.
+   *
+   * Asked once for every record on the page rather than per card.
+   */
+  const sharedWith = await sharesForCustomers([
+    ...scanned.flatMap((g) => g.customers.map((c) => c.id)),
+    ...matches.flatMap((m) => [m.customer?.id, m.matched?.id].filter(Boolean) as string[]),
+  ]);
+  const shareNote = (id: string | undefined) => {
+    const targets = id ? sharedWith.get(id) : undefined;
+    if (!targets || targets.length === 0) return null;
+    return targets.map((t) => nameById.get(t) || "another agent").join(", ");
+  };
 
   return (
     <div className="space-y-4">
@@ -108,6 +129,11 @@ export default async function DuplicatesPage({
                         {c.total_orders === 1 ? "" : "s"} · since{" "}
                         {c.regular_since ? formatDateTime(c.regular_since) : "—"}
                       </p>
+                      {shareNote(c.id) && (
+                        <p className="mt-1.5 rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-800">
+                          Shared with {shareNote(c.id)} — deliberate, not a duplicate.
+                        </p>
+                      )}
                       {/* This page is where a duplicate is looked at side by
                           side, so it is where the decision to remove one gets
                           made. The link goes to the same confirmation page as
@@ -165,6 +191,11 @@ export default async function DuplicatesPage({
                   <p className="mt-1 text-xs text-slate-400">
                     Agent: {c?.owner_agent_id ? nameById.get(c.owner_agent_id) || "—" : "—"}
                   </p>
+                  {shareNote(c?.id) && (
+                    <p className="mt-1.5 rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-800">
+                      Shared with {shareNote(c?.id)} — deliberate, not a duplicate.
+                    </p>
+                  )}
                   {/* Same offer on this half of the page. `c` can be null here —
                       a recorded match outlives the record it names — and there
                       is nothing to delete when it is. */}
