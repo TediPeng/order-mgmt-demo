@@ -1,9 +1,40 @@
 import { allCustomers } from "@/lib/customers";
 import { ordersForPhones } from "@/lib/orders-lookup";
-import { protectedReason } from "@/lib/duplicate-leads";
 import { normalizePhone } from "@/lib/utils";
+import { PRE_SALE_STATUSES } from "@/lib/validation";
 import type { AgentScope } from "@/lib/leads-query";
 import type { Order } from "@/lib/types";
+
+/**
+ * Why this lead may not be swept, or null.
+ *
+ * Deliberately NOT `protectedReason` from lib/duplicate-leads.ts, which also
+ * protects every status past Ringing. That rule is right for the page beside
+ * this one: there both rows are leads, and choosing between two recorded call
+ * outcomes is a person's job — the sweep cannot know which of two agents' notes
+ * to keep.
+ *
+ * Here there is nothing to choose. The customer record already holds the
+ * history, the ownership and the sharing; the lead is a second copy of a person
+ * somebody already keeps, and a call outcome written on it — Cannot Be Reached,
+ * Reject Offer, Hung Up — is a note about a call that should not have been made
+ * from this row. Protecting those left almost nothing sweepable: every lead
+ * anyone had actually rung was out of reach, which is most of them.
+ *
+ * What stays protected is work that left the building. An order that reached
+ * Packaging stamped an order date and counts as a sale. One that reached Pancake
+ * exists in a system this database cannot cancel, so deleting the row here would
+ * not cancel the parcel — it would only lose our side of it. And any fulfillment
+ * status at all means the order is somewhere in that pipeline.
+ */
+export function sweepBlockReason(order: Order): string | null {
+  if (order.pancake_order_id || order.forwarded_to_pancake_at) return "Sent to Pancake POS";
+  if (order.order_date) return "Reached Packaging (counts as a sale)";
+  if (!(PRE_SALE_STATUSES as readonly string[]).includes(order.status)) {
+    return `In fulfillment — status is ${order.status.replace(/_/g, " ")}`;
+  }
+  return null;
+}
 
 /**
  * Leads sitting on a number that is already somebody's regular customer.
@@ -47,11 +78,10 @@ export interface RegularCustomerLeadReport {
  * `orders_for_phone_keys` takes the whole key set in one call. Reading every
  * order and asking each whether it matches would be the wrong way round.
  *
- * `protectedReason` is the same judgement the Duplicate Leads page makes, and
- * deliberately so: a lead that reached Packaging stamped an order date and
- * counts as a sale, and one that reached Pancake exists in a system this
- * database cannot cancel. Those are reconciled by a person. Only untouched
- * leads are offered for deletion.
+ * What may be swept is `sweepBlockReason` above, not the Duplicate Leads page's
+ * own rule — a call outcome on one of these leads is a note about a call that
+ * should not have been made from this row, and protecting those left almost
+ * nothing sweepable.
  */
 export async function regularCustomerLeads(scope: AgentScope): Promise<RegularCustomerLeadReport> {
   const customers = (await allCustomers()).filter((c) => c.is_regular_customer && c.phone_normalized);
@@ -81,7 +111,7 @@ export async function regularCustomerLeads(scope: AgentScope): Promise<RegularCu
       order,
       customerName: match.name,
       customerOwnerId: match.ownerId,
-      protectedReason: protectedReason(order),
+      protectedReason: sweepBlockReason(order),
     });
   }
 

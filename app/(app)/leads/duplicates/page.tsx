@@ -192,11 +192,12 @@ export default async function DuplicateLeadsPage({
                   a regular customer
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
-                  The customer record is kept — only the lead goes. {rcReport.removableIds.length} can be removed
+                  The customer record is kept — only the lead goes. {rcReport.removableIds.length} can be removed,
+                  including leads with a call outcome on them
                   {rcReport.protectedCount > 0 && (
                     <>
-                      ; {rcReport.protectedCount} {rcReport.protectedCount === 1 ? "is" : "are"} protected because work
-                      has already been done on {rcReport.protectedCount === 1 ? "it" : "them"}
+                      ; {rcReport.protectedCount} {rcReport.protectedCount === 1 ? "is" : "are"} protected — an order
+                      that reached Packaging or Pancake POS is a sale in another system&apos;s hands
                     </>
                   )}
                   .
