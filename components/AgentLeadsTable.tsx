@@ -6,7 +6,8 @@ import { LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { OrderDetailsModal } from "@/components/OrderDetailsModal";
 import { TrackingCell } from "@/components/TrackingCell";
 import type { EditorLine } from "@/components/OrderItemsEditor";
-import { formatCurrency, formatDate, cn } from "@/lib/utils";
+import { formatCurrency, formatDate, normalizePhone, cn } from "@/lib/utils";
+import type { ReturnStats } from "@/lib/orders-lookup";
 import { useGridKeys } from "@/components/useGridKeys";
 import { useFrozenOffset } from "@/components/useFrozenOffset";
 import { LeadCallCell, LeadStatusCell } from "@/components/LeadStatusCell";
@@ -34,6 +35,7 @@ export function AgentLeadsTable({
   orders,
   careStaffById,
   duplicateWarningsByOrderId = {},
+  returnStatsByPhoneKey = {},
   canTagRegular = false,
   productNameByOrderId,
   activeProducts,
@@ -50,6 +52,8 @@ export function AgentLeadsTable({
   /** Matches on another agent's regular customers. The agent is shown these
    * now and cannot save past them; the same refusal is enforced server-side. */
   duplicateWarningsByOrderId?: Record<string, DuplicateWarning[]>;
+  /** Keyed by lead_phone_key, so one entry serves every lead on that number. */
+  returnStatsByPhoneKey?: Record<string, ReturnStats>;
   canTagRegular?: boolean;
   productNameByOrderId: Record<string, string>;
   activeProducts: {
@@ -300,6 +304,7 @@ export function AgentLeadsTable({
           // statuses; both are also refused server-side.
           canSeeFulfillment={false}
           duplicateWarnings={duplicateWarningsByOrderId[openOrder.id] || []}
+          returnStats={returnStatsByPhoneKey[normalizePhone(openOrder.customer_phone || "")]}
           canTagRegular={canTagRegular}
           canSetFulfillmentStatus={false}
           canManageIntegrations={false}

@@ -18,6 +18,8 @@ import { AddressSelect } from "@/components/AddressSelect";
 import { CallingPanel } from "@/components/CallingPanel";
 import { CallHistory } from "@/components/CallHistory";
 import { DuplicateBlockDialog, type DuplicateWarning } from "@/components/DuplicateBlockDialog";
+import { ReturnRateBar } from "@/components/ReturnRateBar";
+import type { ReturnStats } from "@/lib/orders-lookup";
 import { validateForPancake as computePancakeCheck } from "@/lib/pancake/validate";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 import { buildRawFromOrder } from "@/lib/lead-payload";
@@ -110,6 +112,7 @@ export function OrderDetailsModal({
   canSeeFulfillment = false,
   canSetFulfillmentStatus = false,
   duplicateWarnings = [],
+  returnStats,
   canOverrideDuplicate = false,
   canTagRegular = false,
   requiresCallSession = false,
@@ -148,6 +151,9 @@ export function OrderDetailsModal({
    * are the one person who can still stop before a second agent works a
    * customer somebody else already has. */
   duplicateWarnings?: DuplicateWarning[];
+  /** How this number's parcels have ended, from what Pancake has reported.
+   * Absent when nothing on it has finished, which is most numbers so far. */
+  returnStats?: ReturnStats;
   /** Agents must have a calling session open before editing; Management does not. */
   requiresCallSession?: boolean;
   callSessions?: CallSession[];
@@ -590,7 +596,13 @@ export function OrderDetailsModal({
               </div>
               <div>
                 <p className="text-xs uppercase text-slate-400">Phone Number</p>
-                <p className="text-slate-800">{order.customer_phone || "—"}</p>
+                <p className="flex flex-wrap items-center gap-2 text-slate-800">
+                  {order.customer_phone || "—"}
+                  {/* Beside the number, because it is a fact about the number
+                      rather than about this order — and the moment it is worth
+                      knowing is before the call, not after. */}
+                  {returnStats && <ReturnRateBar stats={returnStats} />}
+                </p>
               </div>
               <div className="col-span-2">
                 <p className="text-xs uppercase text-slate-400">Complete Address</p>
@@ -642,7 +654,14 @@ export function OrderDetailsModal({
           ) : (
             <div className="space-y-4">
 
-              <h4 className="border-b border-slate-100 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Customer</h4>
+              {/* Beside the section heading in the edit view, because that is
+                  where this modal opens for anyone who can edit — the read view
+                  below is rarely the one on screen, and a warning nobody sees
+                  is not a warning. */}
+              <h4 className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <span>Customer</span>
+                {returnStats && <ReturnRateBar stats={returnStats} />}
+              </h4>
               {(
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">
