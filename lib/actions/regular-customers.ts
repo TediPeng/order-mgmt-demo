@@ -54,26 +54,74 @@ async function foreignRegularOwnerReason(
   profiles: Profile[],
   phone: string,
   ownerAgentId: string,
+  /** Name and address, for the case a second number hides the same person.
+   * Omitted, only the phone is checked. */
+  identity?: { full_name: string; purok?: string | null; barangay?: string | null; city?: string | null; province?: string | null },
   /** A batch's already-loaded customer list, so an import does not make a round
    * trip per row. Omitted, the question goes to the database. */
   existing?: Customer[]
 ): Promise<string | null> {
   const key = canonicalPhone(phone);
-  if (!key) return null;
 
-  const others = existing
-    ? existing.filter((c) => c.is_regular_customer && c.phone_normalized === key && c.owner_agent_id !== ownerAgentId)
-    : await regularCustomersOnPhoneElsewhere(phone, ownerAgentId);
+  const onPhone = key
+    ? existing
+      ? existing.filter((c) => c.is_regular_customer && c.phone_normalized === key && c.owner_agent_id !== ownerAgentId)
+      : await regularCustomersOnPhoneElsewhere(phone, ownerAgentId)
+    : [];
+
+  /**
+   * The same person on a second number.
+   *
+   * The phone check above cannot see this one: two SIMs, or a digit typed
+   * wrong, and the same customer becomes two records under two agents. Every
+   * such pair in the live data was one person — one had the two numbers
+   * transposed (…2288 against …8228), and two had a name typed into the phone
+   * field entirely.
+   *
+   * Only the full address counts, never barangay and city alone. A shared
+   * surname in one barangay is ordinary, and refusing on that would start
+   * telling agents that real, different people already belong to somebody
+   * else. Those stay in the review queue, where a person reads them.
+   */
+  const onNameAndAddress =
+    identity && identity.full_name.trim()
+      ? (existing ?? (await allCustomers())).filter(
+          (c) =>
+            c.is_regular_customer &&
+            c.owner_agent_id !== ownerAgentId &&
+            addressKey(c.purok, c.barangay, c.city, c.province) !== "" &&
+            nameKey(c.full_name) === nameKey(identity.full_name) &&
+            addressKey(c.purok, c.barangay, c.city, c.province) ===
+              addressKey(identity.purok, identity.barangay, identity.city, identity.province)
+        )
+      : [];
+
+  const others = onPhone.length > 0 ? onPhone : onNameAndAddress;
   if (others.length === 0) return null;
+  const byPhone = onPhone.length > 0;
 
   if (isFullAccess(actor.role) || actor.role === "team_lead") {
     const owner = profiles.find((p) => p.id === others[0].owner_agent_id);
     return (
       `${others[0].full_name} is already ${owner ? displayUserName(owner) : "another agent"}'s regular customer ` +
-      `on that number. Share or reassign that record rather than creating a second one.`
+      `${byPhone ? "on that number" : "at that name and address"}. Share or reassign that record rather than ` +
+      `creating a second one.`
     );
   }
-  return "That number is already another agent's regular customer. Please contact your Team Lead for this concern.";
+  return byPhone
+    ? "That number is already another agent's regular customer. Please contact your Team Lead for this concern."
+    : "That name and address is already another agent's regular customer. Please contact your Team Lead for this concern.";
+}
+
+/** Case, punctuation and repeated spaces are noise, not identity — the same
+ * rule findDuplicates() applies, so the guard and the review queue agree about
+ * what counts as the same name. */
+function nameKey(value: string): string {
+  return (value || "").toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function addressKey(...parts: (string | null | undefined)[]): string {
+  return nameKey(parts.filter(Boolean).join(" "));
 }
 
 export interface ExistingRegularOwner {
@@ -176,7 +224,13 @@ export async function createRegularCustomerAction(formData: FormData) {
 
   // And one per person across the floor — the warning this form already shows
   // on the number, made into the rule it was always describing.
-  const foreign = await foreignRegularOwnerReason(user, db.profiles, data.phone, ownerAgentId);
+  const foreign = await foreignRegularOwnerReason(user, db.profiles, data.phone, ownerAgentId, {
+    full_name: data.full_name,
+    purok: data.purok,
+    barangay: data.barangay,
+    city: data.city,
+    province: data.province,
+  });
   if (foreign) redirect(`${NEW_PATH}?error=${encodeURIComponent(foreign)}`);
 
   const customer = await createRegularCustomer(
@@ -264,7 +318,13 @@ export async function tagRegularCustomerAction(orderId: string) {
 
   // The assigned agent is who the record would be filed under, so they are who
   // the number has to be free for — not whoever is pressing the button.
-  const foreign = await foreignRegularOwnerReason(user, db.profiles, order!.customer_phone, order!.agent_id);
+  const foreign = await foreignRegularOwnerReason(user, db.profiles, order!.customer_phone, order!.agent_id, {
+    full_name: order!.customer_name,
+    purok: order!.purok,
+    barangay: order!.barangay,
+    city: order!.city,
+    province: order!.province,
+  });
   if (foreign) redirect(`/leads?error=${encodeURIComponent(foreign)}`);
 
   const customer = await upsertRegularCustomer(order!, order!.agent_id);
@@ -579,7 +639,20 @@ export async function importRegularCustomersAction(
     }
     // Compared against the batch's own list rather than the database, so a
     // five-hundred-row file stays one read instead of five hundred.
-    const foreign = await foreignRegularOwnerReason(user, db.profiles, phoneRaw, ownerAgentId, existingCustomers);
+    const foreign = await foreignRegularOwnerReason(
+      user,
+      db.profiles,
+      phoneRaw,
+      ownerAgentId,
+      {
+        full_name: fullName,
+        purok: String(data.purok ?? ""),
+        barangay: String(data.barangay ?? ""),
+        city: String(data.city ?? ""),
+        province: String(data.province ?? ""),
+      },
+      existingCustomers
+    );
     if (foreign) {
       reject("duplicate", foreign);
       continue;
