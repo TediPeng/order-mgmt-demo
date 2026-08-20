@@ -6,8 +6,7 @@ import { SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { OrderDetailsModal } from "@/components/OrderDetailsModal";
 import { TrackingCell } from "@/components/TrackingCell";
 import type { EditorLine } from "@/components/OrderItemsEditor";
-import { formatCurrency, formatDate, normalizePhone, cn } from "@/lib/utils";
-import type { ReturnStats } from "@/lib/orders-lookup";
+import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { useGridKeys } from "@/components/useGridKeys";
 import { useFrozenOffset } from "@/components/useFrozenOffset";
 import { LeadCallCell, LeadStatusCell } from "@/components/LeadStatusCell";
@@ -27,7 +26,6 @@ export function LeadsTable({
   canManageIntegrations = false,
   canSetFulfillmentStatus = false,
   duplicateWarningsByOrderId = {},
-  returnStatsByPhoneKey = {},
   canTagRegular = false,
   requiresCallSession = false,
   callSessionsByOrderId = {},
@@ -57,8 +55,6 @@ export function LeadsTable({
   canManageIntegrations?: boolean;
   canSetFulfillmentStatus?: boolean;
   duplicateWarningsByOrderId?: Record<string, DuplicateWarning[]>;
-  /** Keyed by lead_phone_key, so one entry serves every lead on that number. */
-  returnStatsByPhoneKey?: Record<string, ReturnStats>;
   canTagRegular?: boolean;
   requiresCallSession?: boolean;
   callSessionsByOrderId?: Record<string, CallSession[]>;
@@ -299,7 +295,6 @@ export function LeadsTable({
           canManageIntegrations={canManageIntegrations}
           canSetFulfillmentStatus={canSetFulfillmentStatus}
           duplicateWarnings={duplicateWarningsByOrderId[openOrder.id] || []}
-          returnStats={returnStatsByPhoneKey[normalizePhone(openOrder.customer_phone || "")]}
           // Team Lead and above decide duplicates, so they may save past one.
           canOverrideDuplicate
           canTagRegular={canTagRegular}

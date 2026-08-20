@@ -1,5 +1,14 @@
 import { cn } from "@/lib/utils";
-import type { ReturnStats } from "@/lib/orders-lookup";
+
+/** How a customer's parcels have ended, as Pancake POS reports them. */
+export interface ReturnStats {
+  /** Parcels the customer accepted — Pancake's mapped `delivered`. */
+  delivered: number;
+  /** Parcels that came back — Pancake's mapped `returned`. `returning` is
+   * deliberately not counted: it is in transit and may yet be delivered, and a
+   * rate that moves backwards is worse than one that arrives late. */
+  returned: number;
+}
 
 /**
  * How this customer's parcels have ended, as a bar the width of a word.

@@ -40,47 +40,6 @@ export async function ordersForPhones(phones: string[]): Promise<Order[]> {
   return (data || []) as Order[];
 }
 
-/** How a number's parcels have actually ended, once Pancake has said. */
-export interface ReturnStats {
-  /** Parcels the customer accepted. */
-  delivered: number;
-  /** Parcels that came back. `returning` is deliberately not counted — it is in
-   * transit and may yet be delivered, and a rate that moves backwards is worse
-   * than one that arrives late. */
-  returned: number;
-}
-
-/**
- * Delivered and returned counts per phone number.
- *
- * The rate this feeds is `returned / (delivered + returned)` — a share of the
- * deliveries that finished, which is what Pancake's own customer indicator
- * shows and the only form that survives one order.
- *
- * Deliberately NOT computeRtsPercentage's `returned / delivered`. That works
- * for an agent, who has hundreds of deliveries under them, and breaks for a
- * person: a return and a delivery are different statuses on the same order, so
- * a customer whose only parcel came back has zero delivered, and dividing by it
- * reports 0% for exactly the customer worth flagging. Every one of the six
- * returns in the live data is that shape.
- *
- * Aggregated here rather than in SQL because the row set is already bounded by
- * the numbers on one page, and a new database function is a migration for
- * arithmetic a loop does in microseconds.
- */
-export async function returnStatsForPhones(phones: string[]): Promise<Record<string, ReturnStats>> {
-  const orders = await ordersForPhones(phones);
-  const stats: Record<string, ReturnStats> = {};
-  for (const order of orders) {
-    const key = normalizePhone(order.customer_phone || "");
-    if (!key) continue;
-    const row = (stats[key] ??= { delivered: 0, returned: 0 });
-    if (order.status === "delivered") row.delivered += 1;
-    else if (order.status === "returned") row.returned += 1;
-  }
-  return stats;
-}
-
 /** Products that appear on at least one order — the Delete/Deactivate rule. */
 export async function productIdsInUse(): Promise<Set<string>> {
   const { data, error } = await supabaseAdmin.rpc("product_ids_in_use");

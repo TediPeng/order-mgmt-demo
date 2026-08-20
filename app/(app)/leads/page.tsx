@@ -9,7 +9,6 @@ import { BreakControls } from "@/components/BreakControls";
 import { BackToCallButton } from "@/components/BackToCallButton";
 import { getActiveBioBreak } from "@/lib/bio-breaks";
 import { findDuplicates, latestOrderDateByCustomer } from "@/lib/customers";
-import { returnStatsForPhones } from "@/lib/orders-lookup";
 import { leadScopeFor, leadStatusCounts, previousStatusCounts, duplicatePhoneCount, regularCustomerOrderCount, queryLeads, orderForScope } from "@/lib/leads-query";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
@@ -259,16 +258,6 @@ export default async function LeadsPage({
     }
   }
 
-  /**
-   * How each number on this page has ended its parcels, from Pancake.
-   *
-   * One bounded call for the whole page rather than one per row, and keyed by
-   * phone rather than by order so a number holding several leads is asked about
-   * once. Most numbers come back with nothing — Pancake has only been reporting
-   * since 2026-08-10 — and the bar simply does not render for those.
-   */
-  const returnStatsByPhoneKey = await returnStatsForPhones(pageOrders.map((o) => o.customer_phone));
-
   // The active session is provided app-wide by CallSessionProvider (mounted in
   // the layout), so this page no longer fetches or forwards it.
   const callSessionsByOrderId: Record<string, CallSession[]> = {};
@@ -469,7 +458,6 @@ export default async function LeadsPage({
           orders={pageOrders}
           careStaffById={careStaffById}
           duplicateWarningsByOrderId={duplicateWarningsByOrderId}
-          returnStatsByPhoneKey={returnStatsByPhoneKey}
           canTagRegular={canTagRegular}
           productNameByOrderId={productNameByOrderId}
           activeProducts={activeProducts}
@@ -493,7 +481,6 @@ export default async function LeadsPage({
         canManageIntegrations={canManageIntegrations}
         canSetFulfillmentStatus={isFullAccess(user.role)}
         duplicateWarningsByOrderId={duplicateWarningsByOrderId}
-          returnStatsByPhoneKey={returnStatsByPhoneKey}
         canTagRegular={canTagRegular}
         requiresCallSession={!isFullAccess(user.role)}
         callSessionsByOrderId={callSessionsByOrderId}

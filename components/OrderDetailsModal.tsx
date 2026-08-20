@@ -18,8 +18,7 @@ import { AddressSelect } from "@/components/AddressSelect";
 import { CallingPanel } from "@/components/CallingPanel";
 import { CallHistory } from "@/components/CallHistory";
 import { DuplicateBlockDialog, type DuplicateWarning } from "@/components/DuplicateBlockDialog";
-import { ReturnRateBar } from "@/components/ReturnRateBar";
-import type { ReturnStats } from "@/lib/orders-lookup";
+import { ReturnRateBar, type ReturnStats } from "@/components/ReturnRateBar";
 import { validateForPancake as computePancakeCheck } from "@/lib/pancake/validate";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 import { buildRawFromOrder } from "@/lib/lead-payload";
@@ -112,7 +111,6 @@ export function OrderDetailsModal({
   canSeeFulfillment = false,
   canSetFulfillmentStatus = false,
   duplicateWarnings = [],
-  returnStats,
   canOverrideDuplicate = false,
   canTagRegular = false,
   requiresCallSession = false,
@@ -151,9 +149,6 @@ export function OrderDetailsModal({
    * are the one person who can still stop before a second agent works a
    * customer somebody else already has. */
   duplicateWarnings?: DuplicateWarning[];
-  /** How this number's parcels have ended, from what Pancake has reported.
-   * Absent when nothing on it has finished, which is most numbers so far. */
-  returnStats?: ReturnStats;
   /** Agents must have a calling session open before editing; Management does not. */
   requiresCallSession?: boolean;
   callSessions?: CallSession[];
@@ -177,6 +172,34 @@ export function OrderDetailsModal({
   const [historyOpen, setHistoryOpen] = useState(true);
   const [historyMaximized, setHistoryMaximized] = useState(false);
   const [duplicateBlock, setDuplicateBlock] = useState(false);
+
+  /**
+   * This customer's delivered/returned counts, from Pancake POS.
+   *
+   * Fetched when the popup opens rather than with the list: one number is one
+   * outbound call, and a page of twenty-five would be twenty-five calls for
+   * numbers nobody looked at. Nothing renders until it arrives and nothing
+   * renders if it fails — a blank is honest, whereas a zero would read as "this
+   * customer has never sent anything back".
+   */
+  const [pancakeHistory, setPancakeHistory] = useState<ReturnStats | null>(null);
+  useEffect(() => {
+    const phone = (order.customer_phone || "").trim();
+    if (!phone) return;
+    let cancelled = false;
+    fetch(`/api/pancake/customer-history?phone=${encodeURIComponent(phone)}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled || !j?.ok || !j.history || j.history.error) return;
+        setPancakeHistory({ delivered: j.history.delivered, returned: j.history.returned });
+      })
+      .catch(() => {
+        /* Silent: the bar is extra context, not something to interrupt a call over. */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [order.customer_phone]);
 
   // The sync panel appears once the order has reached Packaging (Section 4
   // step 5) — before that there is nothing to sync and nothing to report.
@@ -601,7 +624,7 @@ export function OrderDetailsModal({
                   {/* Beside the number, because it is a fact about the number
                       rather than about this order — and the moment it is worth
                       knowing is before the call, not after. */}
-                  {returnStats && <ReturnRateBar stats={returnStats} />}
+                  {pancakeHistory && <ReturnRateBar stats={pancakeHistory} />}
                 </p>
               </div>
               <div className="col-span-2">
@@ -660,7 +683,7 @@ export function OrderDetailsModal({
                   is not a warning. */}
               <h4 className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <span>Customer</span>
-                {returnStats && <ReturnRateBar stats={returnStats} />}
+                {pancakeHistory && <ReturnRateBar stats={pancakeHistory} />}
               </h4>
               {(
                 <div className="space-y-3">
