@@ -286,9 +286,54 @@ const dateCell = z.preprocess(
 export const ORDER_TAGS = [] as const;
 export type OrderTag = (typeof ORDER_TAGS)[number];
 
+/**
+ * What counts as a phone number anybody can ring.
+ *
+ * Every phone field took any string at all — the lead form did not check it
+ * even for emptiness — so a name typed into the wrong box saved and stayed. Two
+ * of the duplicate pairs in the live data are exactly that: a customer whose
+ * stored "number" is the tail of their own surname. A number like that cannot
+ * be dialled, cannot reach Pancake, and cannot be matched, so the customer
+ * quietly becomes a second record under a second agent.
+ *
+ * The rule is measured against the 82,206 numbers already on file rather than
+ * invented: 81,109 are eleven digits (`09171234567`, and formatted variants
+ * like `(0997) 658 5240`), 675 carry the `63` country code, and 410 are ten
+ * digits because a spreadsheet ate the leading zero. All three normalise to ten
+ * digits starting with 9, which is what a PH mobile is. What it turns away is
+ * the handful that were always broken — one digit, no digits, a backtick.
+ *
+ * Punctuation and spacing are not the app's business: parentheses, dashes and
+ * spaces are stripped before the check, and the number is stored as the agent
+ * typed it.
+ */
+export function isDialablePhone(value: string): boolean {
+  const digits = (value || "").replace(/\D/g, "");
+  const core = digits.startsWith("63") ? digits.slice(2) : digits.startsWith("0") ? digits.slice(1) : digits;
+  return core.length === 10 && core.startsWith("9");
+}
+
+const PHONE_MESSAGE = "Enter a mobile number like 09171234567";
+
+/** Required — the field cannot be left blank and must be dialable. */
+const requiredPhone = z
+  .string()
+  .trim()
+  .min(1, "Phone number is required")
+  .refine(isDialablePhone, PHONE_MESSAGE);
+
+/** Optional, but not a licence to hold nonsense: blank is allowed, anything
+ * else has to be a number somebody could actually call. */
+const optionalPhone = z
+  .string()
+  .trim()
+  .optional()
+  .default("")
+  .refine((v) => v === "" || isDialablePhone(v), PHONE_MESSAGE);
+
 export const leadFormSchema = z.object({
   customer_name: z.string().trim().min(1, "Customer name is required"),
-  customer_phone: z.string().trim().optional().default(""),
+  customer_phone: optionalPhone,
   purok: z.string().trim().optional().default(""),
   barangay: z.string().trim().optional().default(""),
   city: z.string().trim().optional().default(""),
@@ -345,7 +390,7 @@ export const leadFormSchema = z.object({
  * matched on (a lead may be saved without one). */
 export const regularCustomerFormSchema = z.object({
   full_name: z.string().trim().min(1, "Customer name is required"),
-  phone: z.string().trim().min(1, "Phone number is required"),
+  phone: requiredPhone,
   purok: z.string().trim().optional().default(""),
   barangay: z.string().trim().optional().default(""),
   city: z.string().trim().optional().default(""),
@@ -407,7 +452,10 @@ const numberCell = z.preprocess((v) => {
 export const leadImportRowSchema = z.object({
   agent_name: textCell,
   customer_name: textCell.refine((v) => v.length > 0, "Customer Name is required"),
-  customer_phone: textCell,
+  customer_phone: textCell.refine(
+    (v) => v === "" || isDialablePhone(v),
+    "Phone Number is not a mobile number — check for a name or a typo in this cell",
+  ),
   purok: textCell,
   barangay: textCell,
   city: textCell,
@@ -568,7 +616,11 @@ export const callLogRowSchema = z.object({
   // Required now that it is one of only two columns: a row with no number
   // records nothing, and a blank cell in a two-column sheet is a mistake worth
   // naming rather than importing.
-  phone_number: z.string().trim().min(1, "Phone Number is required"),
+  phone_number: z
+    .string()
+    .trim()
+    .min(1, "Phone Number is required")
+    .refine(isDialablePhone, "Phone Number is not a mobile number"),
   call_date: z.string().trim().optional().default(""),
   duration_seconds: z.number().nonnegative("Duration must be zero or more").default(0),
   call_type: z.string().trim().optional().default(""),

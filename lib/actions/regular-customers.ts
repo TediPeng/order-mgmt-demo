@@ -22,7 +22,7 @@ import {
 } from "@/lib/customers";
 import { canonicalPhone, restoreTrunkZero } from "@/lib/utils";
 import { allowedAssigneeIds } from "@/lib/order-access";
-import { regularCustomerFormSchema } from "@/lib/validation";
+import { isDialablePhone, regularCustomerFormSchema } from "@/lib/validation";
 import { describeParseFailure } from "@/lib/zod-error";
 import { requireUserLite } from "./guards";
 import { displayUserName } from "@/lib/types";
@@ -629,8 +629,14 @@ export async function importRegularCustomersAction(
     }
 
     const phoneKey = canonicalPhone(phoneRaw);
-    if (!phoneKey) {
-      reject("invalid", `"${phoneRaw}" has no digits in it.`);
+    // "Has any digits at all" was the whole test, so "Barcial 123" passed and
+    // so did a nine-digit number. That is how a surname reached phone_raw: a
+    // customer nobody can ring, that Pancake cannot match, and that no
+    // phone-based duplicate guard can see — so they quietly became a second
+    // record under a second agent. Held to the same rule as every other phone
+    // field in the app now.
+    if (!isDialablePhone(phoneRaw)) {
+      reject("invalid", `"${phoneRaw}" is not a mobile number — expected something like 09171234567.`);
       continue;
     }
     if (takenByUploader.has(phoneKey)) {

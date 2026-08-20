@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { uploadFile, deleteFile } from "@/lib/storage";
-import { canonicalPhone, normalizePhone } from "@/lib/utils";
+import { canonicalPhone } from "@/lib/utils";
+import { isDialablePhone } from "@/lib/validation";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { writeDb } from "@/lib/db";
@@ -67,8 +68,15 @@ export async function importAgentCallLogAction(rows: RawCallRow[], fileName: str
 
   for (const r of rows) {
     const phoneRaw = String(r.phone ?? "").trim();
-    if (!phoneRaw || !normalizePhone(phoneRaw)) {
+    if (!phoneRaw) {
       errors.push({ row: r.row, reason: "Phone number is required", value: phoneRaw });
+      continue;
+    }
+    // A call log is matched to a customer on the number and nothing else, so a
+    // row carrying something that is not a number records a call against
+    // nobody. "Any digit at all" let those through; a real mobile is the bar.
+    if (!isDialablePhone(phoneRaw)) {
+      errors.push({ row: r.row, reason: "Not a mobile number — expected something like 09171234567", value: phoneRaw });
       continue;
     }
     const parsed = parseCallDate(r.call_date, dateOrder);
