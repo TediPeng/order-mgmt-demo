@@ -65,12 +65,22 @@ export const STATUS_STYLE: Record<CellStatus, string> = {
   "ON LEAVE": "bg-blue-500 text-white",
   OFF: "bg-red-600 text-white",
   TRAINING: "bg-violet-600 text-white",
-  // Near-black rather than the orange it used to carry, for two reasons. Orange
-  // sat next to HALF DAY's amber and the two were hard to tell apart in a row of
-  // fifteen cells. And SUSPENDED is not a duty status somebody picked — it is
-  // imposed by the disciplinary module and cannot be changed from the grid — so
-  // it should not look like one more colour in the same family.
-  SUSPENDED: "bg-slate-800 text-white",
+  // Hazard stripes rather than a flat fill, and still no hue of its own.
+  //
+  // The reasoning against orange stands: it sat beside HALF DAY's amber and the
+  // two were hard to tell apart down a row of fifteen cells, and SUSPENDED is
+  // not a duty status somebody picked — it is imposed by the disciplinary
+  // module and cannot be changed from the grid, so it should not read as one
+  // more colour in the same family.
+  //
+  // But flat slate-800 solved that by disappearing. Next to green, amber, blue
+  // and red it reads as an empty dark box rather than as a state, and in the
+  // legend it looked like the swatch had failed to render at all. Stripes are
+  // the convention for "blocked, not chosen" — they carry no hue to confuse
+  // with a duty colour, and they are unmistakable at a glance in a grid that
+  // scrolls. The base stays dark enough for white text to hold AA.
+  SUSPENDED:
+    "bg-slate-800 bg-[repeating-linear-gradient(135deg,#1e293b,#1e293b_5px,#475569_5px,#475569_10px)] text-white",
   NONE: "bg-white text-slate-300",
 };
 
