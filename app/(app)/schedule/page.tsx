@@ -10,6 +10,7 @@ import { statusOf } from "@/lib/duty-status";
 import { Download, Upload, ChevronLeft, ChevronRight } from "lucide-react";
 import { StatCard } from "@/components/StatCard";
 import { ScheduleGrid, type ScheduleGridCells, type CellState } from "@/components/ScheduleGrid";
+import { RosterHeadsUp } from "@/components/RosterHeadsUp";
 import { ScheduleBulkActions } from "@/components/ScheduleBulkActions";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { PrintButton } from "@/components/PrintButton";
@@ -78,6 +79,25 @@ export default async function SchedulePage({
     }
   }
 
+  /**
+   * Approved leave, laid over the same period.
+   *
+   * Unlike a suspension this does not replace the cell — the roster may
+   * legitimately say something else and only a person can settle it — so it
+   * arrives as a mark the grid draws on top. It was not read here at all
+   * before: leave is written to attendance on approval and never to the roster,
+   * so a supervisor reading a fortnight had no way to see who was already off.
+   */
+  const approvedLeave = db.leave_requests.filter(
+    (r) => r.status === "approved" && scopedAgentIds.has(r.agent_id) && r.leave_start <= cutoff.end && r.leave_end >= cutoff.start
+  );
+  const leaveDays: Record<string, string> = {};
+  for (const leave of approvedLeave) {
+    for (const date of dates) {
+      if (date >= leave.leave_start && date <= leave.leave_end) leaveDays[`${leave.agent_id}|${date}`] = leave.leave_type;
+    }
+  }
+
   // The tiles stay on today, deliberately — they answer "who is on right now",
   // which does not become a different question because the grid is showing
   // next fortnight.
@@ -98,6 +118,31 @@ export default async function SchedulePage({
   }));
 
   const qs = (start: string) => `/schedule?start=${start}`;
+
+  // The chips above the grid, one per person per stretch. Clamped to the period
+  // on screen so a month-long suspension does not read as one.
+  const nameOf = (id: string) => scopedAgents.find((a) => a.id === id)?.full_name || "Unknown";
+  const clampSpan = (from: string, to: string) => {
+    const a = from < cutoff.start ? cutoff.start : from;
+    const b = to > cutoff.end ? cutoff.end : to;
+    return a === b ? shortDate(a) : `${shortDate(a)} – ${shortDate(b)}`;
+  };
+
+  const suspendedChips = suspensions
+    .filter((s) => dates.some((d) => isDateWithinSuspension(s, d, d)))
+    .map((s) => ({
+      key: `${s.employee_id}|${s.start_date}`,
+      name: nameOf(s.employee_id),
+      span: clampSpan(s.start_date, s.end_date),
+      title: `Suspension: ${s.reason}`,
+    }));
+
+  const leaveChips = approvedLeave.map((r) => ({
+    key: `${r.agent_id}|${r.leave_start}|${r.leave_end}`,
+    name: nameOf(r.agent_id),
+    span: clampSpan(r.leave_start, r.leave_end),
+    title: `${r.leave_type} leave, approved`,
+  }));
 
   return (
     <div className="space-y-4">
@@ -155,6 +200,11 @@ export default async function SchedulePage({
         <StatCard label="Unassigned Today" value={unassignedToday} accent="text-slate-500" />
       </div>
 
+      {/* Before the grid, deliberately. Who cannot be rostered and who is
+          already spoken for is what the fortnight has to be built around, and
+          reading it off three hundred cells is the slow way to find out. */}
+      <RosterHeadsUp periodLabel={cutoff.shortLabel} suspended={suspendedChips} leave={leaveChips} />
+
       <ScheduleGrid
         agents={scopedAgents.map((a) => ({
           id: a.id,
@@ -164,6 +214,7 @@ export default async function SchedulePage({
         columns={columns}
         cells={cells}
         canEdit={canEditGrid}
+        leaveDays={leaveDays}
       />
     </div>
   );

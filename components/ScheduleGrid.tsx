@@ -47,11 +47,23 @@ export function ScheduleGrid({
   columns,
   cells: initialCells,
   canEdit,
+  leaveDays = {},
 }: {
   agents: ScheduleGridAgent[];
   columns: ScheduleGridColumn[];
   cells: ScheduleGridCells;
   canEdit: boolean;
+  /**
+   * Keyed `agentId|date`, the value being the kind of leave ("sick").
+   *
+   * Approved leave is not a cell state — the roster may legitimately say
+   * something else, and only a person can decide which is right. It is shown as
+   * a mark ON the cell rather than in place of it: blue when the roster agrees,
+   * amber when it has the agent working a day their leave was already signed
+   * off. Before this the grid could not see leave at all, so a supervisor
+   * reading the fortnight had no way to know.
+   */
+  leaveDays?: Record<string, string>;
 }) {
   const router = useRouter();
   /**
@@ -186,8 +198,32 @@ export function ScheduleGrid({
                   const key = `${agent.id}|${col.date}`;
                   const state = cells[key] ?? "NONE";
                   const locked = state === "SUSPENDED" || !canEdit;
+                  const leave = leaveDays[key];
+                  // The three statuses that put somebody on the floor. A day
+                  // rostered as one of these over approved leave is the clash
+                  // worth seeing; OFF and ON LEAVE agree with it.
+                  const conflicting = !!leave && (state === "ON DUTY" || state === "HALF DAY" || state === "TRAINING");
                   return (
-                    <td key={col.date} className="border-b border-r border-slate-200 p-0">
+                    <td
+                      key={col.date}
+                      className="relative border-b border-r border-slate-200 p-0"
+                      title={
+                        leave
+                          ? conflicting
+                            ? `Approved ${leave} leave — but rostered as working`
+                            : `Approved ${leave} leave`
+                          : undefined
+                      }
+                    >
+                      {leave && state !== "SUSPENDED" && (
+                        <span
+                          aria-hidden
+                          className={cn(
+                            "pointer-events-none absolute right-0.5 top-0.5 z-10 h-1.5 w-1.5 rounded-full ring-1 ring-white",
+                            conflicting ? "bg-amber-400" : "bg-blue-600"
+                          )}
+                        />
+                      )}
                       {locked ? (
                         <div
                           className={cn(

@@ -8,6 +8,7 @@ import { cutoffFor, shiftCutoff, datesIn, shortDate, weekdayOf, isWeekend, addDa
 import { cn } from "@/lib/utils";
 import { DUTY_STATUSES, STATUS_STYLE, STATUS_LABEL, statusOf, type CellStatus } from "@/lib/duty-status";
 import type { AgentOption } from "@/components/ScheduleEventModal";
+import { RosterHeadsUp } from "@/components/RosterHeadsUp";
 
 type State = CellStatus;
 
@@ -314,59 +315,31 @@ export function ScheduleRosterBuilder({
         </Button>
       </div>
 
-      {/* Who cannot be rostered this cut-off, and who is already spoken for.
-          Above the grid, because it is what the fortnight has to be built
-          around. */}
-      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-        {suspendedPeople.length === 0 && leavePeople.length === 0 ? (
-          <p className="text-xs text-slate-500">
-            No suspensions and no approved leave in {cutoff.shortLabel}. Everyone on the roster is available.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {suspendedPeople.length > 0 && (
-              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1.5">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Suspended ({suspendedPeople.length})
-                </span>
-                {suspendedPeople.map(({ name, span }) => (
-                  <span
-                    key={`${span.employee_id}|${span.start_date}`}
-                    title={`Suspension: ${span.reason}`}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-slate-800 px-2.5 py-0.5 text-xs font-medium text-white"
-                  >
-                    {name}
-                    <span className="opacity-70">{spanLabel(span.start_date, span.end_date, cutoff)}</span>
-                  </span>
-                ))}
-                <span className="text-[11px] text-slate-400">Locked — lift it from Disciplinary.</span>
-              </div>
-            )}
-            {leavePeople.length > 0 && (
-              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1.5">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Approved leave ({leavePeople.length})
-                </span>
-                {leavePeople.map(({ name, span }) => (
-                  <span
-                    key={`${span.agent_id}|${span.leave_start}|${span.leave_end}`}
-                    title={`${span.leave_type} leave, approved`}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800"
-                  >
-                    {name}
-                    <span className="opacity-70">{spanLabel(span.leave_start, span.leave_end, cutoff)}</span>
-                  </span>
-                ))}
-                {unmarkedLeave.length > 0 && (
-                  <Button type="button" variant="outline" size="sm" onClick={applyApprovedLeave}>
-                    Mark {unmarkedLeave.length} day{unmarkedLeave.length === 1 ? "" : "s"} ON LEAVE
-                  </Button>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      {/* Same panel the roster page shows, so the two screens read as one
+          feature. This one can also offer to write the leave days in; the
+          roster page has nothing to offer, so it passes no action. */}
+      <RosterHeadsUp
+        periodLabel={cutoff.shortLabel}
+        suspended={suspendedPeople.map(({ name, span }) => ({
+          key: `${span.employee_id}|${span.start_date}`,
+          name,
+          span: spanLabel(span.start_date, span.end_date, cutoff),
+          title: `Suspension: ${span.reason}`,
+        }))}
+        leave={leavePeople.map(({ name, span }) => ({
+          key: `${span.agent_id}|${span.leave_start}|${span.leave_end}`,
+          name,
+          span: spanLabel(span.leave_start, span.leave_end, cutoff),
+          title: `${span.leave_type} leave, approved`,
+        }))}
+        action={
+          unmarkedLeave.length > 0 ? (
+            <Button type="button" variant="outline" size="sm" onClick={applyApprovedLeave}>
+              Mark {unmarkedLeave.length} day{unmarkedLeave.length === 1 ? "" : "s"} ON LEAVE
+            </Button>
+          ) : undefined
+        }
+      />
 
       {/* Not a blocker: leave is approved by a Team Lead and the roster may
           still have a reason to override it. It just may not happen by
