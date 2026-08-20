@@ -253,6 +253,37 @@ export async function regularCustomersOnPhoneElsewhere(
   return (data || []).map(mapCustomer);
 }
 
+/**
+ * Which of these numbers already belong to a regular customer, floor-wide.
+ *
+ * Asked once for a whole batch rather than per row: a lead import runs a few
+ * hundred rows at a time, and a query each would be a few hundred round trips
+ * inside one request. Chunked because PostgREST builds the `in` list into the
+ * URL and a thousand numbers overflows it.
+ *
+ * Returns canonical `+63…` keys, matching `phone_normalized` as it is stored —
+ * the caller must compare against `canonicalPhone(...)`, not `normalizePhone`.
+ * That difference is not cosmetic: the two produce different strings, and a
+ * comparison across them silently matches nothing, which is exactly how the
+ * regular-customer import's own duplicate check came to never fire.
+ */
+export async function regularCustomerPhonesAmong(phones: string[]): Promise<Set<string>> {
+  const keys = Array.from(new Set(phones.map((p) => canonicalPhone(p)).filter(Boolean)));
+  const found = new Set<string>();
+  const CHUNK = 200;
+  for (let i = 0; i < keys.length; i += CHUNK) {
+    const slice = keys.slice(i, i + CHUNK);
+    const { data, error } = await supabaseAdmin
+      .from("customers")
+      .select("phone_normalized")
+      .eq("is_regular_customer", true)
+      .in("phone_normalized", slice);
+    if (error) throw new Error(`customers read failed: ${error.message}`);
+    for (const row of data || []) found.add(String(row.phone_normalized));
+  }
+  return found;
+}
+
 /** The regular customer an agent already owns for this phone number, if any.
  *
  * Used both to refuse a duplicate entry on the Add Regular Customer form and

@@ -16,8 +16,10 @@ import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import {
   deleteAllDuplicatesAction,
   deleteDuplicateOrderAction,
+  deleteRegularCustomerLeadsAction,
   resolveDuplicateGroupAction,
 } from "@/lib/actions/lead-duplicates";
+import { regularCustomerLeads } from "@/lib/regular-customer-leads";
 
 const PAGE_SIZE = 50;
 
@@ -51,7 +53,7 @@ export const maxDuration = 300;
 export default async function DuplicateLeadsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; deleted?: string; error?: string }>;
+  searchParams: Promise<{ page?: string; deleted?: string; rc_deleted?: string; error?: string }>;
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
@@ -66,9 +68,10 @@ export default async function DuplicateLeadsPage({
 
   const scope = leadScopeFor(user, db);
   const page = Math.max(1, Number(sp.page) || 1);
-  const [summary, groups] = await Promise.all([
+  const [summary, groups, rcReport] = await Promise.all([
     duplicateSummary(scope),
     duplicateGroupPage(scope, page, PAGE_SIZE),
+    regularCustomerLeads(scope),
   ]);
   const nameById = new Map(db.profiles.map((p) => [p.id, displayUserName(p)]));
   const pageCount = Math.max(1, Math.ceil(summary.groups / PAGE_SIZE));
@@ -90,6 +93,12 @@ export default async function DuplicateLeadsPage({
       {sp.deleted && (
         <Alert kind="success" className="mb-4">
           {sp.deleted} duplicate lead{sp.deleted === "1" ? "" : "s"} permanently deleted.
+        </Alert>
+      )}
+      {sp.rc_deleted && (
+        <Alert kind="success" className="mb-4">
+          {sp.rc_deleted} lead{sp.rc_deleted === "1" ? "" : "s"} on a regular customer&apos;s number removed. The
+          customer record{sp.rc_deleted === "1" ? " was" : "s were"} kept.
         </Alert>
       )}
       {sp.error && (
@@ -168,10 +177,99 @@ export default async function DuplicateLeadsPage({
         </Card>
       )}
 
-      {summary.groups === 0 && (
+      {/* A different collision from the groups below, and invisible to them: a
+          regular customer's own orders are flagged out of Leads, so the lead
+          and the customer never appear in the same list to be compared. The
+          customer record is the one that survives — it holds the history, the
+          ownership and the sharing. */}
+      {rcReport.rows.length > 0 && (
+        <Card className="mb-4 border-amber-200">
+          <CardContent className="p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-slate-800">
+                  {rcReport.rows.length} lead{rcReport.rows.length === 1 ? " is" : "s are"} on a number that is already
+                  a regular customer
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  The customer record is kept — only the lead goes. {rcReport.removableIds.length} can be removed
+                  {rcReport.protectedCount > 0 && (
+                    <>
+                      ; {rcReport.protectedCount} {rcReport.protectedCount === 1 ? "is" : "are"} protected because work
+                      has already been done on {rcReport.protectedCount === 1 ? "it" : "them"}
+                    </>
+                  )}
+                  .
+                </p>
+              </div>
+              {canDelete && rcReport.removableIds.length > 0 && (
+                <form action={deleteRegularCustomerLeadsAction} className="flex items-center gap-2">
+                  <Input
+                    name="confirm_count"
+                    inputMode="numeric"
+                    placeholder={String(rcReport.removableIds.length)}
+                    className="w-28"
+                  />
+                  <Button type="submit" variant="danger">
+                    Remove {rcReport.removableIds.length}
+                  </Button>
+                </form>
+              )}
+            </div>
+
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 text-left text-xs uppercase text-slate-400">
+                    <th className="py-2 pr-3">Lead</th>
+                    <th className="py-2 pr-3">On the lead</th>
+                    <th className="py-2 pr-3">Regular customer</th>
+                    <th className="py-2 pr-3">Status</th>
+                    <th className="py-2">Outcome</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rcReport.rows.slice(0, 50).map((r) => (
+                    <tr key={r.order.id} className="border-b border-slate-50">
+                      <td className="py-2 pr-3 font-mono text-xs text-slate-500">{r.order.order_number}</td>
+                      <td className="py-2 pr-3">
+                        <span className="text-slate-800">{r.order.customer_name}</span>
+                        <span className="block text-xs text-slate-400">{r.order.customer_phone}</span>
+                      </td>
+                      <td className="py-2 pr-3">
+                        <span className="text-slate-800">{r.customerName}</span>
+                        <span className="block text-xs text-slate-400">
+                          {r.customerOwnerId ? nameById.get(r.customerOwnerId) || "another agent" : "unassigned"}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-3">
+                        <StatusBadge status={r.order.status} />
+                      </td>
+                      <td className="py-2 text-xs">
+                        {r.protectedReason ? (
+                          <span className="text-slate-500">Kept — {r.protectedReason}</span>
+                        ) : (
+                          <span className="font-medium text-red-700">Lead will be deleted</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {rcReport.rows.length > 50 && (
+                <p className="mt-2 text-xs text-slate-400">
+                  Showing the 50 oldest of {rcReport.rows.length}. The button acts on all of them.
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {summary.groups === 0 && rcReport.rows.length === 0 && (
         <Card>
           <CardContent className="p-10 text-center text-sm text-slate-400">
-            No contact number appears twice. Nothing to clean up.
+            No contact number appears twice, and no lead sits on a regular customer&apos;s number. Nothing to clean up.
           </CardContent>
         </Card>
       )}

@@ -34,6 +34,7 @@ import {
   findRegularCustomerByPhone,
   getCustomer,
   recordCustomerOrder,
+  regularCustomerPhonesAmong,
   sharedCustomerIdsForAgent,
 } from "@/lib/customers";
 import { forwardOrderToPancake } from "@/lib/pancake/forward";
@@ -1215,6 +1216,15 @@ export async function importLeadsAction(
     const key = normalizePhone(o.customer_phone || "");
     if (key && !existingByPhone.has(key)) existingByPhone.set(key, o.order_number);
   }
+  // Numbers in this file that are already somebody's regular customer.
+  //
+  // The check above only asks whether a number is already a LEAD, and a regular
+  // customer has no lead by design — tagging one takes its orders out of the
+  // active list. So the one number the floor most wants kept out of an upload
+  // was the one the upload could not see, and re-importing a customer list
+  // pushed every repeat buyer back into Leads as a fresh lead for whoever the
+  // spreadsheet named.
+  const regularPhones = await regularCustomerPhonesAmong(rawRows.map((r) => String(r.data.customer_phone ?? "")));
   const seenInFile = new Map<string, number>();
   const results: LeadImportRowResult[] = [];
   const now = nowIso();
@@ -1251,6 +1261,20 @@ export async function importLeadsAction(
     }
     if (!agentName) {
       results.push({ row, category: "missing_info", reason: "Agent username is required", data: raw });
+      continue;
+    }
+    // Ahead of the lead check, because it is the stronger statement: a regular
+    // customer is a person somebody already keeps, and re-importing them as a
+    // lead is what the Regular Customers section exists to prevent. The owner
+    // is deliberately not named — an uploader is not necessarily entitled to
+    // learn whose customer a number is, the same rule the Add form follows.
+    if (regularPhones.has(canonicalPhone(String(raw.customer_phone ?? "")))) {
+      results.push({
+        row,
+        category: "duplicate",
+        reason: "This number is already a regular customer, so it was not imported as a lead",
+        data: raw,
+      });
       continue;
     }
     const heldBy = existingByPhone.get(key);

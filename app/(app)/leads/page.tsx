@@ -379,6 +379,34 @@ export default async function LeadsPage({
             defaultValue={sp.q || sp.phone}
           />
         </div>
+        {/* Previous order date. The range has been filtered on since the query
+            layer was written — prev_from / prev_to reach `previous_order_date`
+            — but there was no way to set it without typing the parameters into
+            the address bar, so the filter existed and nobody could use it.
+            Kept as a pair of plain date inputs in the same GET form as the
+            search, so one Search press applies both. */}
+        <div className="flex shrink-0 items-center gap-2">
+          <label htmlFor="prev_from" className="whitespace-nowrap text-xs font-medium text-slate-500">
+            Prev. order
+          </label>
+          <Input
+            id="prev_from"
+            name="prev_from"
+            type="date"
+            aria-label="Previous order date from"
+            className="w-[9.5rem]"
+            defaultValue={sp.prev_from}
+          />
+          <span className="text-xs text-slate-400">to</span>
+          <Input
+            id="prev_to"
+            name="prev_to"
+            type="date"
+            aria-label="Previous order date to"
+            className="w-[9.5rem]"
+            defaultValue={sp.prev_to}
+          />
+        </div>
         <Button type="submit" variant="secondary">
           Search
         </Button>

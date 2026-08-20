@@ -8,6 +8,7 @@ import { orderInScope } from "@/lib/order-access";
 import { leadScopeFor } from "@/lib/leads-query";
 import { duplicateRemovable, ordersByIds, phoneKeyOf } from "@/lib/duplicates-query";
 import { protectedReason } from "@/lib/duplicate-leads";
+import { regularCustomerLeads } from "@/lib/regular-customer-leads";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireUserLite, requirePermission } from "./guards";
 import type { DbShape, Order, Profile } from "@/lib/types";
@@ -146,4 +147,37 @@ export async function deleteAllDuplicatesAction(formData: FormData) {
 
   const deleted = await deleteOrders(db, user, all.ids, "all");
   redirect(`${PATH}?deleted=${deleted}`);
+}
+
+/**
+ * Sweeps leads sitting on a number that is already a regular customer.
+ *
+ * The customer record is never touched — it holds the order history, the
+ * ownership and the sharing, and the lead is the accident. Only the lead goes,
+ * and only when nothing has been done to it: `regularCustomerLeads` marks the
+ * ones that reached Packaging or Pancake, and those are counted and left for a
+ * person, exactly as the duplicate sweep beside it does.
+ *
+ * The count is re-derived here rather than taken from the form. The page that
+ * offered the button was rendered at some earlier moment, and between then and
+ * this click somebody may have tagged a customer or worked one of these leads;
+ * deleting the ids the page happened to be holding would act on a picture that
+ * is no longer true.
+ */
+export async function deleteRegularCustomerLeadsAction(formData: FormData) {
+  const { user, db } = await requireUserLite();
+  requirePermission(user, "orders", "delete", db, PATH);
+
+  const report = await regularCustomerLeads(leadScopeFor(user, db));
+  if (report.removableIds.length === 0) {
+    back("There are no leads to remove — every match is protected or already gone.");
+  }
+
+  const typed = String(formData.get("confirm_count") || "").trim();
+  if (typed !== String(report.removableIds.length)) {
+    back(`Type ${report.removableIds.length} to confirm. Nothing was deleted.`);
+  }
+
+  const deleted = await deleteOrders(db, user, report.removableIds, "regular_customer_match");
+  redirect(`${PATH}?rc_deleted=${deleted}`);
 }

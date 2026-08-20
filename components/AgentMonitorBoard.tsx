@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Phone, Coffee, Utensils, Hourglass, LogOut, Minus, Plane, CalendarOff, Ban, UserRound, Star } from "lucide-react";
 import { StatWidget, type StatTone } from "@/components/StatCard";
+import { formatTime } from "@/lib/utils";
 import type { CallTargetInfo } from "@/lib/call-sessions";
 
 /** How often the board pulls fresh server state. Faster than the shell's own
@@ -27,6 +28,21 @@ export type MonitorState =
   | "rest_day"
   | "suspended"
   | "not_in";
+
+/** The tiles, in the order they are shown — and the set a `?state=` in the URL
+ * is checked against, so a hand-edited or stale link filters to something real
+ * or to nothing at all, never to an empty board with no explanation. */
+export const MONITOR_STATES: MonitorState[] = [
+  "on_call",
+  "standby",
+  "bio_break",
+  "break",
+  "timed_out",
+  "not_in",
+  "on_leave",
+  "rest_day",
+  "suspended",
+];
 
 export interface MonitorRow {
   agentId: string;
@@ -92,6 +108,27 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
   const router = useRouter();
   const [now, setNow] = useState(() => Date.now());
 
+  /**
+   * How far this browser's clock sits from the server's.
+   *
+   * Every timestamp on this board is minted by the server, and the elapsed
+   * figures were being measured against `Date.now()` — the clock on whichever
+   * PC happens to be showing the board. A machine five minutes fast reported
+   * every agent as five minutes further into their call, and a machine five
+   * minutes slow showed calls that had not started yet. Nothing on screen said
+   * so; the numbers simply read wrong, and only for whoever was looking.
+   *
+   * `generatedAt` is the server's own clock at render, so the difference is the
+   * skew. It is re-measured on every refresh, which also absorbs drift. The
+   * estimate carries the request's latency with it — a fraction of a second,
+   * and always in the direction of under-reporting, which is the safe way to be
+   * wrong about how long somebody has been on a call.
+   */
+  const [skewMs, setSkewMs] = useState(0);
+  useEffect(() => {
+    setSkewMs(Date.now() - new Date(generatedAt).getTime());
+  }, [generatedAt]);
+
   // One clock for the whole board rather than a timer per row.
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -106,7 +143,8 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
     return () => clearInterval(id);
   }, [router]);
 
-  const elapsedSince = (iso: string | null) => (iso ? Math.max(0, (now - new Date(iso).getTime()) / 1000) : 0);
+  const elapsedSince = (iso: string | null) =>
+    iso ? Math.max(0, (now - skewMs - new Date(iso).getTime()) / 1000) : 0;
 
   const counts = rows.reduce<Record<string, number>>((acc, r) => {
     acc[r.state] = (acc[r.state] || 0) + 1;
@@ -115,7 +153,33 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
 
   // Which tile is in force, if any. The counts above stay whole whatever is
   // selected — a tile that zeroed the others would leave no way back.
-  const [filter, setFilter] = useState<MonitorState | null>(null);
+  /**
+   * Which tile is in force, kept in the URL rather than in component state.
+   *
+   * It was `useState`, which survives the board's own 20s refresh — that is a
+   * `router.refresh()` and does not remount — but not the browser's. Somebody
+   * filtered to On Call, pressed F5 out of habit or was reloaded by the
+   * network, and landed on the unfiltered board with no sign that a filter had
+   * ever been set. In the URL it survives a reload, the back button steps
+   * through selections, and the view can be sent to somebody else.
+   *
+   * `replace` rather than `push` so the board does not build a history entry
+   * per click, and `scroll: false` so the page does not jump to the top on a
+   * board somebody has scrolled down.
+   */
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const requested = searchParams.get("state");
+  const filter = MONITOR_STATES.includes(requested as MonitorState) ? (requested as MonitorState) : null;
+
+  const setFilter = (next: MonitorState | null) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next) params.set("state", next);
+    else params.delete("state");
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
+
   const visible = filter ? rows.filter((r) => r.state === filter) : rows;
 
   return (
@@ -132,7 +196,7 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
           the URL because the board reloads itself every twenty seconds, and a
           filter that survives that is the whole point. */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
-        {(["on_call", "standby", "bio_break", "break", "timed_out", "not_in", "on_leave", "rest_day", "suspended"] as MonitorState[]).map((s) => (
+        {MONITOR_STATES.map((s) => (
           <StatWidget
             key={s}
             label={STATE_META[s].label}
@@ -280,7 +344,11 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
 
       <p className="text-xs text-slate-400">
         Timers run live in the browser; figures refresh from the server every {REFRESH_MS / 1000}s, and pause while this
-        tab is in the background. Server data as of {new Date(generatedAt).toLocaleTimeString()}.
+        {/* The floor's own time, not the viewer's. toLocaleTimeString() renders
+            in whatever zone the machine is set to, so a laptop left on another
+            timezone showed a stamp that disagreed with every attendance record
+            on the same screen. */}
+        tab is in the background. Server data as of {formatTime(generatedAt)}.
       </p>
     </div>
   );
