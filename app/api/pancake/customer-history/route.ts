@@ -4,7 +4,9 @@ import { readDbLite } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { listAccounts } from "@/lib/pancake/store";
 import { pancakeCustomerHistory, type PancakeCustomerHistory } from "@/lib/pancake/customerHistory";
+import { mockMode } from "@/lib/pancake/config";
 import { normalizePhone } from "@/lib/utils";
+import type { PancakeAccount } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -56,13 +58,16 @@ export async function GET(req: NextRequest) {
 
   const accounts = (await listAccounts()).filter((a) => a.is_active);
   const account = accounts.find((a) => a.is_default) || accounts[0];
-  if (!account) {
+  if (!account && mockMode() === "off") {
     // Not an error the agent can act on, and not a zero either — the popup
     // shows nothing rather than claiming a clean record.
     return NextResponse.json({ ok: true, history: null });
   }
+  // Mock mode needs no credentials — the same allowance /api/pancake/geo makes,
+  // and the reason the panel can be looked at outside production at all.
+  const shop = account ?? ({ id: "mock" } as unknown as PancakeAccount);
 
-  const history = await pancakeCustomerHistory(account, phone);
+  const history = await pancakeCustomerHistory(shop, phone);
   // A failed lookup is not cached: the next open should try again rather than
   // repeat a stale failure for a quarter of an hour.
   if (!history.error) cache.set(key, { value: history, fetchedAt: Date.now() });

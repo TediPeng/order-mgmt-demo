@@ -24,18 +24,44 @@ import { normalizePhone } from "@/lib/utils";
  * disagreed with the mapping would report one thing while the order list showed
  * another.
  */
+/** One parcel, as the history panel lists it. */
+export interface PancakeOrderRow {
+  /** Pancake's own display id, so it can be found in Pancake. */
+  id: string;
+  /** ISO, or null when Pancake sent no date on the row. */
+  date: string | null;
+  /** The mapped internal status — what the badge colours off. */
+  status: string;
+  /** Pancake's own label for the code, shown when it has one. */
+  statusName: string | null;
+  total: number | null;
+}
+
+/**
+ * The four statuses the list shows.
+ *
+ * Narrower than everything Pancake returns, and deliberately: a customer's
+ * carts, confirmations and cancellations are noise against the question being
+ * asked, which is what happened to the parcels that were actually sent. Shipped
+ * and returning are in flight — they say something is on its way back or out,
+ * which is worth seeing beside a rate they do not yet count toward.
+ */
+const LISTED_STATUSES = ["delivered", "returned", "shipped", "returning"];
+
 export interface PancakeCustomerHistory {
   delivered: number;
   returned: number;
   /** Rows the search returned for this number, whatever their status — context
    * for a rate built on very few. */
   totalOrders: number;
+  /** The parcels worth listing, newest first. */
+  orders: PancakeOrderRow[];
   /** Set when Pancake could not be asked. The caller shows nothing rather than
    * a zero: "no returns" and "we could not check" must never look alike. */
   error: string | null;
 }
 
-const EMPTY: PancakeCustomerHistory = { delivered: 0, returned: 0, totalOrders: 0, error: null };
+const EMPTY: PancakeCustomerHistory = { delivered: 0, returned: 0, totalOrders: 0, orders: [], error: null };
 
 /** How far back to look. Two years covers a repeat buyer's history without
  * asking Pancake to scan its whole archive for every popup. */
@@ -52,9 +78,30 @@ export async function pancakeCustomerHistory(
   const target = normalizePhone(phone || "");
   if (!target) return EMPTY;
 
-  // Mock mode has no real order history to count, and inventing one would put
-  // a fabricated return rate in front of an agent.
-  if (mockMode() !== "off") return EMPTY;
+  // Mock mode answers like the rest of the adapter does — getOrder pretends
+  // Pancake confirmed an order, and this pretends it holds a history. Without
+  // it the panel cannot be opened at all outside production, which is where it
+  // most needs looking at. The shape is deterministic so a screenshot taken
+  // locally means something.
+  const mode = mockMode();
+  if (mode === "fail") return { ...EMPTY, error: "MOCK_MODE=fail: simulated Pancake API failure" };
+  if (mode === "success") {
+    const day = (n: number) => new Date(Date.now() - n * 86400000).toISOString();
+    return {
+      delivered: 7,
+      returned: 5,
+      totalOrders: 13,
+      orders: [
+        { id: "23486", date: day(2), status: "returned", statusName: "returned", total: 1200 },
+        { id: "23289", date: day(6), status: "delivered", statusName: "received", total: 850 },
+        { id: "23186", date: day(11), status: "returned", statusName: "returned", total: 1500 },
+        { id: "23126", date: day(18), status: "delivered", statusName: "received", total: 950 },
+        { id: "22984", date: day(23), status: "shipped", statusName: "shipped", total: 700 },
+        { id: "22871", date: day(30), status: "returning", statusName: "returning", total: 1100 },
+      ],
+      error: null,
+    };
+  }
 
   const to = Math.floor(Date.now() / 1000) + 60;
   const from = to - WINDOW_DAYS * 24 * 60 * 60;
@@ -63,6 +110,7 @@ export async function pancakeCustomerHistory(
   let delivered = 0;
   let returned = 0;
   let totalOrders = 0;
+  const orders: PancakeOrderRow[] = [];
 
   for (let page = 1; page <= MAX_PAGES; page++) {
     const path =
@@ -83,12 +131,30 @@ export async function pancakeCustomerHistory(
       if (normalizePhone(String(row.bill_phone_number ?? "")) !== target) continue;
       totalOrders += 1;
       const internal = mapStatus(String(row.status ?? ""), statusMap);
+      // The rate counts only what finished. Shipped and returning are still
+      // moving and would make a rate that changes without anything happening.
       if (internal === "delivered") delivered += 1;
       else if (internal === "returned") returned += 1;
+
+      if (internal && LISTED_STATUSES.includes(internal)) {
+        const date = row.inserted_at ?? row.updated_at ?? null;
+        const total = Number(row.total_price);
+        orders.push({
+          id: String(row.display_id ?? row.id ?? ""),
+          date: date ? String(date) : null,
+          status: internal,
+          statusName: row.status_name != null ? String(row.status_name) : null,
+          total: Number.isFinite(total) ? total : null,
+        });
+      }
     }
 
     if (rows.length < PAGE_SIZE) break;
   }
 
-  return { delivered, returned, totalOrders, error: null };
+  // Newest first: the question is usually "what happened lately", and a
+  // customer whose returns are all a year old is a different conversation.
+  orders.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+
+  return { delivered, returned, totalOrders, orders, error: null };
 }

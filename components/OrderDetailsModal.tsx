@@ -19,6 +19,7 @@ import { CallingPanel } from "@/components/CallingPanel";
 import { CallHistory } from "@/components/CallHistory";
 import { DuplicateBlockDialog, type DuplicateWarning } from "@/components/DuplicateBlockDialog";
 import { ReturnRateBar, type ReturnStats } from "@/components/ReturnRateBar";
+import { PancakeHistoryDialog, type PancakeHistoryOrder } from "@/components/PancakeHistoryDialog";
 import { validateForPancake as computePancakeCheck } from "@/lib/pancake/validate";
 import { MAX_ATTEMPTS } from "@/lib/pancake/retry";
 import { buildRawFromOrder } from "@/lib/lead-payload";
@@ -183,6 +184,8 @@ export function OrderDetailsModal({
    * customer has never sent anything back".
    */
   const [pancakeHistory, setPancakeHistory] = useState<ReturnStats | null>(null);
+  const [pancakeOrders, setPancakeOrders] = useState<PancakeHistoryOrder[]>([]);
+  const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
   useEffect(() => {
     const phone = (order.customer_phone || "").trim();
     if (!phone) return;
@@ -192,6 +195,7 @@ export function OrderDetailsModal({
       .then((j) => {
         if (cancelled || !j?.ok || !j.history || j.history.error) return;
         setPancakeHistory({ delivered: j.history.delivered, returned: j.history.returned });
+        setPancakeOrders(Array.isArray(j.history.orders) ? j.history.orders : []);
       })
       .catch(() => {
         /* Silent: the bar is extra context, not something to interrupt a call over. */
@@ -455,6 +459,16 @@ export function OrderDetailsModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={requestClose}>
       {/* Above the popup's own backdrop (z-50) and stopping its click-to-close,
           so pressing anywhere in the warning cannot dismiss the order behind it. */}
+      {historyPanelOpen && pancakeHistory && (
+        <PancakeHistoryDialog
+          phone={order.customer_phone}
+          delivered={pancakeHistory.delivered}
+          returned={pancakeHistory.returned}
+          orders={pancakeOrders}
+          onClose={() => setHistoryPanelOpen(false)}
+        />
+      )}
+
       {duplicateBlock && (
         <div onClick={(e) => e.stopPropagation()}>
           <DuplicateBlockDialog
@@ -624,7 +638,7 @@ export function OrderDetailsModal({
                   {/* Beside the number, because it is a fact about the number
                       rather than about this order — and the moment it is worth
                       knowing is before the call, not after. */}
-                  {pancakeHistory && <ReturnRateBar stats={pancakeHistory} />}
+                  {pancakeHistory && <ReturnRateBar stats={pancakeHistory} onClick={() => setHistoryPanelOpen(true)} />}
                 </p>
               </div>
               <div className="col-span-2">
@@ -683,7 +697,7 @@ export function OrderDetailsModal({
                   is not a warning. */}
               <h4 className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <span>Customer</span>
-                {pancakeHistory && <ReturnRateBar stats={pancakeHistory} />}
+                {pancakeHistory && <ReturnRateBar stats={pancakeHistory} onClick={() => setHistoryPanelOpen(true)} />}
               </h4>
               {(
                 <div className="space-y-3">
