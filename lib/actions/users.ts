@@ -14,6 +14,13 @@ import { describeParseFailure } from "@/lib/zod-error";
 import { isMailConfigured, sendMail } from "@/lib/mail/transport";
 import { accountCreatedEmail } from "@/lib/mail/templates";
 import { appBaseUrl } from "@/lib/app-url";
+import { clearTempPasswordFlash, setTempPasswordFlash } from "@/lib/temp-password-flash";
+
+/** Called by the banner once it has rendered, so a temporary password is shown
+ * to one page view and not to every refresh until the cookie expires. */
+export async function dismissTempPasswordAction(): Promise<void> {
+  await clearTempPasswordFlash();
+}
 
 export async function createUserAction(formData: FormData) {
   const { user, db } = await requireUser();
@@ -121,9 +128,12 @@ export async function createUserAction(formData: FormData) {
     }
   }
 
-  redirect(
-    `/users?created=1&temp_pw=${encodeURIComponent(tempPassword)}&temp_for=${encodeURIComponent(newUser.username)}&mail=${mail}`
-  );
+  // The password rides in a short-lived httpOnly cookie, not the query string —
+  // see lib/temp-password-flash.ts for why a URL is the wrong carrier for a
+  // live credential. `created=1` stays in the URL because it is not a secret
+  // and the page needs it when the flash has already been consumed.
+  await setTempPasswordFlash({ username: newUser.username, password: tempPassword, kind: "created", mail });
+  redirect("/users?created=1");
 }
 
 /**
@@ -336,5 +346,6 @@ export async function adminResetPasswordAction(userId: string) {
     ...info,
   });
   await writeDb(db);
-  redirect(`/users?reset_pw=${encodeURIComponent(tempPassword)}&reset_for=${encodeURIComponent(target!.username)}`);
+  await setTempPasswordFlash({ username: target!.username, password: tempPassword, kind: "reset" });
+  redirect("/users");
 }

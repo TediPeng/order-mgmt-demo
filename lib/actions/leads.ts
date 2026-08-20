@@ -103,6 +103,64 @@ function buildLeadFieldErrors(formData: FormData): Record<string, unknown> {
   };
 }
 
+/**
+ * Why this user may not put an order on this customer, or null if they may.
+ *
+ * An agent may not work somebody who is already another agent's regular
+ * customer. The popup says so before Save is pressed, but a dialog is not a
+ * rule: this is the check a crafted request also meets.
+ *
+ * Shared by creating and saving, deliberately. It used to live only in the save
+ * path, so a lead on a foreign customer could be created freely and was refused
+ * afterwards — the worst order to find out in, because by then the call has
+ * happened and the record exists. The number is refused at the door now, in the
+ * same words either way.
+ *
+ * Only for roles scoped to their own leads. A Team Lead or Administrator is who
+ * the agent is being sent to, and blocking them would leave the pair with
+ * nobody able to act on it.
+ *
+ * Scoped to matches owned by SOMEBODY ELSE. An agent taking a repeat order from
+ * their own regular customer is ordinary work — and it comes through this same
+ * action — so refusing it would make every repeat purchase impossible for the
+ * person who owns the relationship.
+ */
+async function foreignCustomerBlockReason(
+  user: Profile,
+  db: DbShape,
+  candidate: { full_name: string; phone: string; purok: string; barangay: string; city: string; province: string }
+): Promise<string | null> {
+  if (isFullAccess(user.role) || user.role === "team_lead") return null;
+  const phone = canonicalPhone(candidate.phone);
+  if (!phone) return null;
+
+  const findings = await findDuplicates({
+    full_name: candidate.full_name,
+    phone_normalized: phone,
+    purok: candidate.purok,
+    barangay: candidate.barangay,
+    city: candidate.city,
+    province: candidate.province,
+  });
+  // A customer shared with this agent is not foreign to them: the owner handed
+  // it over deliberately, and refusing the order here would make the share look
+  // broken rather than granted.
+  const sharedToMe = new Set(
+    await sharedCustomerIdsForAgent(
+      findings.map((f) => f.matched.id),
+      user.id
+    )
+  );
+  const foreign = findings.filter((f) => f.matched.owner_agent_id !== user.id && !sharedToMe.has(f.matched.id));
+  if (foreign.length === 0) return null;
+
+  const owner = db.profiles.find((p) => p.id === foreign[0].matched.owner_agent_id);
+  return (
+    `This customer is already a regular customer of ${owner ? displayCallName(owner) : "another agent"}. ` +
+    `Please contact your Team Lead for this concern.`
+  );
+}
+
 export async function createLeadAction(formData: FormData) {
   // Nothing here reads an existing order: the new one is pushed into the empty
   // array, marked dirty, and writeDb() upserts that row alone. The two
@@ -134,6 +192,18 @@ export async function createLeadAction(formData: FormData) {
 
   const blocked = pipelineBlockReason({ order_date: null }, data.status);
   if (blocked) redirect(`/leads/new?error=${encodeURIComponent(blocked)}`);
+
+  // Before anything is written. The same rule the duplicate dialog states, at
+  // the door rather than on the way out — see foreignCustomerBlockReason.
+  const foreignCustomer = await foreignCustomerBlockReason(user, db, {
+    full_name: data.customer_name,
+    phone: data.customer_phone || "",
+    purok: data.purok || "",
+    barangay: data.barangay || "",
+    city: data.city || "",
+    province: data.province || "",
+  });
+  if (foreignCustomer) redirect(`/leads/new?error=${encodeURIComponent(foreignCustomer)}`);
 
   const now = nowIso();
   const today = todayInTz();
@@ -458,53 +528,15 @@ export async function applyLeadUpdate(
   const notTimedIn = timeInBlockReason(db, user);
   if (notTimedIn) return { ok: false, code: "forbidden", error: notTimedIn };
 
-  // An agent may not save an order for somebody who is already another agent's
-  // regular customer. The popup says so before they press Save, but a dialog is
-  // not a rule: this is the check a crafted request also meets.
-  //
-  // Only for roles scoped to their own leads. A Team Lead or Administrator is
-  // who the agent is being sent to, and blocking them would leave the pair with
-  // nobody able to act on it.
-  //
-  // Scoped to matches owned by SOMEBODY ELSE. An agent re-saving their own
-  // regular customer's order is ordinary work, and refusing it would make every
-  // repeat order unsaveable by the person who owns the relationship.
-  const scopedToOwnLeads = !isFullAccess(user.role) && user.role !== "team_lead";
-  if (scopedToOwnLeads) {
-    const phone = canonicalPhone(String(raw.customer_phone ?? order.customer_phone ?? ""));
-    if (phone) {
-      const findings = await findDuplicates({
-        full_name: String(raw.customer_name ?? order.customer_name ?? ""),
-        phone_normalized: phone,
-        purok: String(raw.purok ?? order.purok ?? ""),
-        barangay: String(raw.barangay ?? order.barangay ?? ""),
-        city: String(raw.city ?? order.city ?? ""),
-        province: String(raw.province ?? order.province ?? ""),
-      });
-      // A customer shared with this agent is not foreign to them: the owner
-      // handed it over deliberately, and refusing the order here would make the
-      // share look broken rather than granted.
-      const sharedToMe = new Set(
-        await sharedCustomerIdsForAgent(
-          findings.map((f) => f.matched.id),
-          user.id
-        )
-      );
-      const foreign = findings.filter(
-        (f) => f.matched.owner_agent_id !== user.id && !sharedToMe.has(f.matched.id)
-      );
-      if (foreign.length > 0) {
-        const owner = db.profiles.find((p) => p.id === foreign[0].matched.owner_agent_id);
-        return {
-          ok: false,
-          code: "duplicate",
-          error:
-            `This customer is already a regular customer of ${owner ? displayCallName(owner) : "another agent"}. ` +
-            `Please contact your Team Lead for this concern.`,
-        };
-      }
-    }
-  }
+  const foreignCustomer = await foreignCustomerBlockReason(user, db, {
+    full_name: String(raw.customer_name ?? order.customer_name ?? ""),
+    phone: String(raw.customer_phone ?? order.customer_phone ?? ""),
+    purok: String(raw.purok ?? order.purok ?? ""),
+    barangay: String(raw.barangay ?? order.barangay ?? ""),
+    city: String(raw.city ?? order.city ?? ""),
+    province: String(raw.province ?? order.province ?? ""),
+  });
+  if (foreignCustomer) return { ok: false, code: "duplicate", error: foreignCustomer };
 
   const requestedAgentId = String(raw.agent_id || order.agent_id);
   raw.agent_id = isFullAccess(user.role) ? requestedAgentId : order.agent_id;

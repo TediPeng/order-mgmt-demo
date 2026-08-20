@@ -55,17 +55,41 @@ export const EMPTY_ADDRESS: AddressValue = {
   barangay: "",
 };
 
-// One in-flight request per key serves every instance of the control, and the
-// resolved list is reused for the life of the page.
+// One in-flight request per key serves every instance of the control, and a
+// resolved LIST is reused for the life of the page.
 const cache = new Map<string, Promise<{ options: Option[]; error: string | null }>>();
 
-function load(key: string, url: string) {
+/**
+ * A list, from the cache or from the network.
+ *
+ * A failure is deliberately not cached. It used to be — the promise went in
+ * whatever it resolved to — and that made a one-second blip permanent: the list
+ * stayed empty for the life of the page, and because the key is shared, every
+ * order popup opened afterwards read the same poisoned entry and showed the
+ * same error. Pancake could be back before the agent finished reading the
+ * warning and the boxes would still be empty until a full reload.
+ *
+ * In-flight sharing is unaffected: callers that arrive while the request is
+ * running still get this promise. Only the next caller after a failed one
+ * starts a fresh request.
+ *
+ * `force` drops a cached entry first, which is what Retry presses — after an
+ * outage there may be a successful-but-empty list from another instance, and
+ * the point of pressing Retry is to ask again rather than be told the same
+ * thing faster.
+ */
+function load(key: string, url: string, force = false) {
+  if (force) cache.delete(key);
   const hit = cache.get(key);
   if (hit) return hit;
   const p = fetch(url)
     .then((r) => r.json())
     .then((j) => (j.ok ? { options: j.options as Option[], error: null } : { options: [], error: String(j.error) }))
-    .catch((e) => ({ options: [] as Option[], error: (e as Error).message }));
+    .catch((e) => ({ options: [] as Option[], error: (e as Error).message }))
+    .then((result) => {
+      if (result.error) cache.delete(key);
+      return result;
+    });
   cache.set(key, p);
   return p;
 }
@@ -200,6 +224,14 @@ export function AddressSelect({
   const [barangays, setBarangays] = useState<Option[]>([]);
   const [loading, setLoading] = useState({ province: true, city: false, barangay: false });
   const [loadError, setLoadError] = useState<string | null>(null);
+  /**
+   * Bumped by Retry, and part of every load's input rather than a side channel.
+   *
+   * Worth having because the failure this control shows is usually transient —
+   * a blip reaching Pancake — and without a way to ask again the agent's only
+   * move is to reload the page mid-call, losing what they have typed.
+   */
+  const [attempt, setAttempt] = useState(0);
 
   /**
    * What the import said, kept from the first render.
@@ -220,7 +252,8 @@ export function AddressSelect({
 
   useEffect(() => {
     let cancelled = false;
-    load("provinces", "/api/pancake/geo?level=provinces").then((r) => {
+    setLoading((l) => ({ ...l, province: true }));
+    load("provinces", "/api/pancake/geo?level=provinces", attempt > 0).then((r) => {
       if (cancelled) return;
       setProvinces(r.options);
       setLoadError(r.error);
@@ -229,7 +262,7 @@ export function AddressSelect({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
 
   useEffect(() => {
     if (!value.province_id) {
@@ -238,18 +271,20 @@ export function AddressSelect({
     }
     let cancelled = false;
     setLoading((l) => ({ ...l, city: true }));
-    load(`cities:${value.province_id}`, `/api/pancake/geo?level=districts&province_id=${encodeURIComponent(value.province_id)}`).then(
-      (r) => {
-        if (cancelled) return;
-        setCities(r.options);
-        if (r.error) setLoadError(r.error);
-        setLoading((l) => ({ ...l, city: false }));
-      }
-    );
+    load(
+      `cities:${value.province_id}`,
+      `/api/pancake/geo?level=districts&province_id=${encodeURIComponent(value.province_id)}`,
+      attempt > 0
+    ).then((r) => {
+      if (cancelled) return;
+      setCities(r.options);
+      if (r.error) setLoadError(r.error);
+      setLoading((l) => ({ ...l, city: false }));
+    });
     return () => {
       cancelled = true;
     };
-  }, [value.province_id]);
+  }, [value.province_id, attempt]);
 
   useEffect(() => {
     if (!value.province_id || !value.city_id) {
@@ -261,7 +296,7 @@ export function AddressSelect({
     const url =
       `/api/pancake/geo?level=communes&province_id=${encodeURIComponent(value.province_id)}` +
       `&district_id=${encodeURIComponent(value.city_id)}`;
-    load(`brgy:${value.province_id}:${value.city_id}`, url).then((r) => {
+    load(`brgy:${value.province_id}:${value.city_id}`, url, attempt > 0).then((r) => {
       if (cancelled) return;
       setBarangays(r.options);
       if (r.error) setLoadError(r.error);
@@ -270,7 +305,7 @@ export function AddressSelect({
     return () => {
       cancelled = true;
     };
-  }, [value.province_id, value.city_id]);
+  }, [value.province_id, value.city_id, attempt]);
 
   const setProvince = useCallback(
     (o: Option | null) =>
@@ -342,9 +377,23 @@ export function AddressSelect({
   return (
     <div className="space-y-2">
       {loadError && (
-        <p className="rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
-          Address options could not be loaded from Pancake POS: {loadError}
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+          <span>Address options could not be loaded from Pancake POS: {loadError}</span>
+          {/* The failure is usually a blip, and the agent is on the call. One
+              press asks again, in place, rather than reloading the page and
+              retyping the order. */}
+          <button
+            type="button"
+            onClick={() => {
+              setLoadError(null);
+              setAttempt((n) => n + 1);
+            }}
+            disabled={loading.province || loading.city || loading.barangay}
+            className="shrink-0 rounded border border-amber-300 bg-white px-2 py-0.5 font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+          >
+            {loading.province || loading.city || loading.barangay ? "Retrying…" : "Retry"}
+          </button>
+        </div>
       )}
       {/* Two different things, deliberately: what the import said, and whether
           anything was chosen for the agent on the strength of it. */}

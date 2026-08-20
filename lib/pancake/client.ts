@@ -23,6 +23,29 @@ function baseUrl(account: PancakeAccount): string {
   return (account.api_endpoint || DEFAULT_API_BASE_URL).replace(/\/+$/, "");
 }
 
+/**
+ * What actually went wrong, for the failures whose message says nothing.
+ *
+ * Node reports every network-layer failure as the same three words — "fetch
+ * failed" — and puts the reason in `cause`: ENOTFOUND for DNS, ECONNREFUSED for
+ * a closed port, ETIMEDOUT, or a TLS message for a certificate that will not
+ * verify. Read on its own the message cannot tell an outage from a firewall
+ * from a typo in the account's endpoint, and those are three different people's
+ * jobs — so a report of it could not be acted on without reproducing it by
+ * hand. `cause` is sometimes nested one deeper, which is why this looks twice.
+ *
+ * Our own error text throughout, never a response body, so nothing here can
+ * carry a credential into a log.
+ */
+function describeTransportFailure(e: unknown): string {
+  const err = e as { message?: string; cause?: { code?: string; message?: string; cause?: { code?: string } } };
+  const base = err?.message || "Request failed";
+  const detail = err?.cause?.code || err?.cause?.cause?.code || err?.cause?.message;
+  if (!detail) return base;
+  const trimmed = detail.length > 200 ? `${detail.slice(0, 200)}…` : detail;
+  return `${base} (${trimmed})`;
+}
+
 export function resolvePath(template: string, account: PancakeAccount, orderId?: string): string {
   return template
     .replace("{shopId}", encodeURIComponent(account.shop_or_page_id))
@@ -76,7 +99,8 @@ export async function pancakeFetch(
       error: res.ok ? null : `Pancake API responded ${res.status}: ${summarizeErrorBody(body, text)}`,
     };
   } catch (e) {
-    const msg = (e as Error).name === "AbortError" ? `Request timed out after ${timeoutMs}ms` : (e as Error).message;
+    const msg =
+      (e as Error).name === "AbortError" ? `Request timed out after ${timeoutMs}ms` : describeTransportFailure(e);
     return { ok: false, httpStatus: null, body: null, error: msg };
   } finally {
     clearTimeout(timer);

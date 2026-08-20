@@ -18,6 +18,8 @@ import { CreateUserForm } from "@/components/CreateUserForm";
 import { EditUserButton } from "@/components/EditUserButton";
 import { RoleSelect } from "@/components/RoleSelect";
 import { TeamLeadSelect } from "@/components/TeamLeadSelect";
+import { TempPasswordBanner } from "@/components/TempPasswordBanner";
+import { readTempPasswordFlash } from "@/lib/temp-password-flash";
 
 /**
  * Full Name and Username are frozen to the left edge: the table is 1500px wide
@@ -41,11 +43,10 @@ export default async function UsersPage({
     error?: string;
     created?: string;
     updated?: string;
-    reset_pw?: string;
-    reset_for?: string;
-    temp_pw?: string;
-    temp_for?: string;
-    mail?: string;
+    // No reset_pw / temp_pw here any more. A temporary password is a live
+    // credential and the query string is a place it cannot be taken back from
+    // — server logs, browser history, the hosting platform's request log. It
+    // now arrives in a short-lived httpOnly cookie; see lib/temp-password-flash.ts.
     deleted_account?: string;
     handling?: string;
     show_deleted?: string;
@@ -57,6 +58,9 @@ export default async function UsersPage({
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
+  // Read, not consumed: a Server Component cannot write cookies, so the banner
+  // clears it once it has rendered.
+  const tempPassword = await readTempPasswordFlash();
   // Lite: this page is about accounts. It never reads an order, and loading
   // tens of thousands of them to render a user table is the whole reason the
   // app got slow after a large import.
@@ -217,26 +221,11 @@ export default async function UsersPage({
           {sp.error}
         </Alert>
       )}
-      {sp.temp_pw && (
-        <Alert kind="warning" className="mb-4">
-          Temporary password for <strong>{sp.temp_for}</strong>:{" "}
-          <code className="rounded bg-white/60 px-1.5 py-0.5 font-mono">{sp.temp_pw}</code>
-          <span className="mt-1 block text-xs">
-            Shown once only — copy it now. They must change it before they can use the system.
-          </span>
-          {/* The password stays on screen whatever happened to the email, so
-              the Administrator is never left without a way to hand it over. */}
-          {sp.mail === "sent" && (
-            <span className="mt-1 block text-xs">A copy has been emailed to them.</span>
-          )}
-          {sp.mail === "failed" && (
-            <span className="mt-1 block text-xs font-medium">
-              The welcome email could not be sent — pass this password on yourself.
-            </span>
-          )}
-        </Alert>
-      )}
-      {sp.created && !sp.temp_pw && (
+      {/* One banner for both ways a temporary password is minted — creating an
+          account and resetting one — because the thing being shown is the same
+          and it must be cleared the same way. */}
+      {tempPassword && <TempPasswordBanner flash={tempPassword} />}
+      {sp.created && !tempPassword && (
         <Alert kind="success" className="mb-4">
           User created successfully.
         </Alert>
@@ -254,14 +243,6 @@ export default async function UsersPage({
             : "was permanently deleted."}
         </Alert>
       )}
-      {sp.reset_pw && (
-        <Alert kind="warning" className="mb-4">
-          Temporary password for <strong>{sp.reset_for}</strong>:{" "}
-          <code className="rounded bg-white/60 px-1.5 py-0.5 font-mono">{sp.reset_pw}</code>
-          <span className="mt-1 block text-xs">Shown once only. They must change it on next login.</span>
-        </Alert>
-      )}
-
       {canCreate && (
         <Card className="mb-6">
           <CardHeader>

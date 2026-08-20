@@ -219,25 +219,20 @@ export function RegularCustomerForm({
               </ul>
             )}
 
+            {/* This used to say "adding them is not blocked" and offer an Add
+                anyway button, which was true while the rule was only a warning.
+                The server refuses the save now — one number, one owner — so the
+                button led to a dialog approving something the next screen
+                rejected. A dead end that reads as approval is worse than no
+                button, and the honest thing is to say what to do instead. */}
             <div className="px-5 py-4">
               <p className="text-xs text-slate-500">
-                Adding them is not blocked — two agents can genuinely serve the same household. Check with your Team
-                Lead first if this looks like the same person.
+                A number belongs to one agent, so this cannot be saved as a second record for the same person. Ask the
+                owner to share the customer with you, or ask a Team Lead to reassign it.
               </p>
-              <div className="mt-4 flex justify-end gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={() => setDuplicate(null)}>
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => {
-                    confirmed.current = true;
-                    setDuplicate(null);
-                    formRef.current?.requestSubmit();
-                  }}
-                >
-                  Add anyway
+              <div className="mt-4 flex justify-end">
+                <Button type="button" size="sm" onClick={() => setDuplicate(null)}>
+                  Back to the form
                 </Button>
               </div>
             </div>

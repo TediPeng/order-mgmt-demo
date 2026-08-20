@@ -20,16 +20,61 @@ import {
   shareTargetsFor,
   upsertRegularCustomer,
 } from "@/lib/customers";
-import { normalizePhone, restoreTrunkZero } from "@/lib/utils";
+import { canonicalPhone, restoreTrunkZero } from "@/lib/utils";
 import { allowedAssigneeIds } from "@/lib/order-access";
 import { regularCustomerFormSchema } from "@/lib/validation";
 import { describeParseFailure } from "@/lib/zod-error";
 import { requireUserLite } from "./guards";
 import { displayUserName } from "@/lib/types";
-import type { Customer, DuplicateStatus } from "@/lib/types";
+import type { Customer, DuplicateStatus, Profile } from "@/lib/types";
 
 const PATH = "/regular-customers";
 const NEW_PATH = "/regular-customers/new";
+
+/**
+ * Why this number may not be filed as this agent's regular customer, or null.
+ *
+ * One number, one owner. The Add form has warned for a while that a number is
+ * already held somewhere else, but a warning is not a rule: both records got
+ * made anyway, and the collision surfaced weeks later on somebody's Save, in
+ * the duplicate dialog, after two agents had each worked the person.
+ *
+ * Applied to every way in — the form, the spreadsheet, and tagging a lead —
+ * because a guard on one of the three is not a guard: the other two write the
+ * same row.
+ *
+ * The reason names the owner only for a role that can already see across
+ * agents. An Agent is told the number is taken and to raise it with their Team
+ * Lead, and nothing more: naming the owner here would turn this into a lookup —
+ * type any number, learn whose customer it is — which is precisely what
+ * regularCustomerOwnersElsewhereAction above is written to avoid.
+ */
+async function foreignRegularOwnerReason(
+  actor: Profile,
+  profiles: Profile[],
+  phone: string,
+  ownerAgentId: string,
+  /** A batch's already-loaded customer list, so an import does not make a round
+   * trip per row. Omitted, the question goes to the database. */
+  existing?: Customer[]
+): Promise<string | null> {
+  const key = canonicalPhone(phone);
+  if (!key) return null;
+
+  const others = existing
+    ? existing.filter((c) => c.is_regular_customer && c.phone_normalized === key && c.owner_agent_id !== ownerAgentId)
+    : await regularCustomersOnPhoneElsewhere(phone, ownerAgentId);
+  if (others.length === 0) return null;
+
+  if (isFullAccess(actor.role) || actor.role === "team_lead") {
+    const owner = profiles.find((p) => p.id === others[0].owner_agent_id);
+    return (
+      `${others[0].full_name} is already ${owner ? displayUserName(owner) : "another agent"}'s regular customer ` +
+      `on that number. Share or reassign that record rather than creating a second one.`
+    );
+  }
+  return "That number is already another agent's regular customer. Please contact your Team Lead for this concern.";
+}
 
 export interface ExistingRegularOwner {
   /** Null for an Agent — see the note on the action below. */
@@ -129,6 +174,11 @@ export async function createRegularCustomerAction(formData: FormData) {
     );
   }
 
+  // And one per person across the floor — the warning this form already shows
+  // on the number, made into the rule it was always describing.
+  const foreign = await foreignRegularOwnerReason(user, db.profiles, data.phone, ownerAgentId);
+  if (foreign) redirect(`${NEW_PATH}?error=${encodeURIComponent(foreign)}`);
+
   const customer = await createRegularCustomer(
     {
       full_name: data.full_name,
@@ -211,6 +261,11 @@ export async function tagRegularCustomerAction(orderId: string) {
   if (!order!.customer_phone.trim()) {
     redirect(`/leads?error=${encodeURIComponent("A phone number is required before tagging a Regular Customer.")}`);
   }
+
+  // The assigned agent is who the record would be filed under, so they are who
+  // the number has to be free for — not whoever is pressing the button.
+  const foreign = await foreignRegularOwnerReason(user, db.profiles, order!.customer_phone, order!.agent_id);
+  if (foreign) redirect(`/leads?error=${encodeURIComponent(foreign)}`);
 
   const customer = await upsertRegularCustomer(order!, order!.agent_id);
   const now = new Date().toISOString();
@@ -485,6 +540,11 @@ export async function importRegularCustomersAction(
   // created so that two identical numbers inside the same file cannot both be
   // written.
   const existingCustomers = await allCustomers();
+  // Keyed the way `phone_normalized` is actually stored — canonicalPhone, so
+  // "+639171234567". This was normalizePhone ("9171234567"), which is a
+  // different string and therefore matched nothing: the check read as a
+  // duplicate guard and was never once true, and the summary's duplicate count
+  // was always zero however many collisions the file held.
   const takenByUploader = new Set(
     existingCustomers.filter((c) => c.owner_agent_id === ownerAgentId).map((c) => c.phone_normalized)
   );
@@ -508,13 +568,20 @@ export async function importRegularCustomersAction(
       continue;
     }
 
-    const phoneKey = normalizePhone(phoneRaw);
+    const phoneKey = canonicalPhone(phoneRaw);
     if (!phoneKey) {
       reject("invalid", `"${phoneRaw}" has no digits in it.`);
       continue;
     }
     if (takenByUploader.has(phoneKey)) {
       reject("duplicate", `You already keep a regular customer on ${phoneRaw}.`);
+      continue;
+    }
+    // Compared against the batch's own list rather than the database, so a
+    // five-hundred-row file stays one read instead of five hundred.
+    const foreign = await foreignRegularOwnerReason(user, db.profiles, phoneRaw, ownerAgentId, existingCustomers);
+    if (foreign) {
+      reject("duplicate", foreign);
       continue;
     }
 

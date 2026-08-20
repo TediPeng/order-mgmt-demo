@@ -5,10 +5,10 @@ import { ScheduleImportClient } from "@/components/ScheduleImportClient";
 import { getCurrentUser } from "@/lib/auth";
 import { readDbLite } from "@/lib/db";
 import { can } from "@/lib/permissions";
-import { scopeAgentsForSchedule, rosterAgents } from "@/lib/schedule-access";
+import { scopeAgentsForSchedule, rosterAgents, scopeSuspensions } from "@/lib/schedule-access";
 import { ScheduleRosterBuilder } from "@/components/ScheduleRosterBuilder";
 import { DUTY_STATUSES, shiftForStatus } from "@/lib/schedule-import";
-import { cutoffFor } from "@/lib/cutoff";
+import { addDays, cutoffFor } from "@/lib/cutoff";
 import { todayInTz } from "@/lib/utils";
 
 const TEMPLATE_HREF = "/api/schedule/template";
@@ -39,6 +39,45 @@ export default async function ImportSchedulePage() {
   // /api/schedule/template with no parameters returns exactly this period.
   const currentCutoff = cutoffFor(todayInTz());
 
+  /**
+   * What the builder has to know before anybody fills a cell: who is suspended,
+   * and whose leave is already approved.
+   *
+   * Sent for a window rather than for the one cut-off on screen, because the
+   * builder pages between cut-offs client-side and would otherwise be right on
+   * the period it loaded with and blank on every other. Ninety days back is
+   * three cut-offs either side of a roster anybody is still setting, and it
+   * keeps the payload from growing with every leave request ever filed.
+   *
+   * A lifted suspension is dropped — it constrains nothing — but a completed
+   * one is kept, so paging back to a past fortnight still shows why those days
+   * were not worked.
+   */
+  const roster = rosterAgents(db, user);
+  const rosterIds = new Set(roster.map((a) => a.id));
+  const horizon = addDays(todayInTz(), -90);
+
+  const suspensions = scopeSuspensions(user, db.suspensions, db)
+    .filter((s) => rosterIds.has(s.employee_id) && s.status !== "lifted" && s.end_date >= horizon)
+    .map((s) => ({
+      employee_id: s.employee_id,
+      start_date: s.start_date,
+      end_date: s.end_date,
+      reason: s.reason,
+    }));
+
+  // Approved only. A pending request is not a constraint on the roster — it may
+  // still be rejected, and showing it as one would have Team Leads rostering
+  // around leave nobody granted.
+  const approvedLeave = db.leave_requests
+    .filter((r) => r.status === "approved" && rosterIds.has(r.agent_id) && r.leave_end >= horizon)
+    .map((r) => ({
+      agent_id: r.agent_id,
+      leave_start: r.leave_start,
+      leave_end: r.leave_end,
+      leave_type: r.leave_type,
+    }));
+
   return (
     <div className="mx-auto max-w-6xl">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -58,7 +97,11 @@ export default async function ImportSchedulePage() {
           <CardTitle>Build the cut-off</CardTitle>
         </CardHeader>
         <CardContent>
-          <ScheduleRosterBuilder agents={rosterAgents(db, user).map((a) => ({ id: a.id, full_name: a.full_name }))} />
+          <ScheduleRosterBuilder
+            agents={roster.map((a) => ({ id: a.id, full_name: a.full_name }))}
+            suspensions={suspensions}
+            approvedLeave={approvedLeave}
+          />
         </CardContent>
       </Card>
 
