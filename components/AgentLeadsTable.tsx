@@ -10,6 +10,7 @@ import { formatCurrency, formatDate, maskPhone, cn } from "@/lib/utils";
 import { useGridKeys } from "@/components/useGridKeys";
 import { useFrozenOffset } from "@/components/useFrozenOffset";
 import { LeadCallCell, LeadStatusCell } from "@/components/LeadStatusCell";
+import { isOrderLocked } from "@/lib/lead-workflow";
 import { useCallSession } from "@/components/CallSessionProvider";
 import type { DuplicateWarning } from "@/components/DuplicateBlockDialog";
 import type { CallSession, Order, OrderStatus } from "@/lib/types";
@@ -223,13 +224,20 @@ export function AgentLeadsTable({
                   <td style={{ left: prevLeft }} className={cn("sticky z-20 whitespace-nowrap border-r border-slate-100 px-2.5 py-1.5 text-slate-600", style.row)}>{o.previous_order_status ? o.previous_order_status.toUpperCase() : "—"}</td>
                   <td className={cell}>{o.order_date ? formatDate(o.order_date) : "—"}</td>
                   <td className={cell}>{o.customer_name}</td>
-                  {/* Readable only while this lead is the one being called.
-                      The number is the thing that lets an agent work outside
-                      the app entirely, so it is what waits for Start. */}
+                  {/* Readable while this lead is the one being called — the
+                      number is what lets an agent work outside the app, so it
+                      is what waits for Start.
+
+                      A synced order is the exception, and it has to be: CALL is
+                      not offered once Pancake has the order, so masking it left
+                      275 leads with a hidden number and no way to reveal it —
+                      exactly the orders where somebody needs to ring about a
+                      delivery. Nothing is being protected there anyway; the
+                      lead is out of the calling pipeline. */}
                   <td className={cell}>
                     {!o.customer_phone ? (
                       "—"
-                    ) : session?.order_id === o.id ? (
+                    ) : session?.order_id === o.id || isOrderLocked(o) ? (
                       <a href={`tel:${o.customer_phone}`} className="font-medium text-slate-800 hover:underline">
                         {o.customer_phone}
                       </a>

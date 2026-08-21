@@ -268,7 +268,9 @@ export function OrderDetailsModal({
   // Withheld until this order is the one on the phone. The board only learns
   // about a call because Start was pressed, so a number the agent can read
   // without pressing it is a call the board will never see.
-  const phoneHidden = maskPhoneUntilCall && callSession?.order_id !== order.id;
+  // `locked` is the same exception the leads table makes: Pancake has the
+  // order, CALL is not offered, so a masked number here could never be revealed.
+  const phoneHidden = maskPhoneUntilCall && callSession?.order_id !== order.id && !syncedLocked;
 
   const editing = canEdit && !locked;
 
