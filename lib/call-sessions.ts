@@ -51,6 +51,32 @@ export async function getActiveSessionForOrder(agentId: string, orderId: string)
   return active && active.order_id === orderId ? active : null;
 }
 
+/**
+ * The longest an open session is still believed to be a call.
+ *
+ * Nothing closes a session except the agent pressing End, so one left behind by
+ * a closed tab or a dead battery runs until somebody notices. Measured over the
+ * 13,364 sessions on record: 72 ran past fifteen minutes, and those 72 hold 90
+ * of the 433 recorded talk hours — a fifth of all talk time, out of half a
+ * percent of the calls. The longest was 13.6 hours.
+ *
+ * Three things go wrong while one is open. The board shows the agent On Call
+ * indefinitely. The day's standby is elapsed-minus-talk, so it collapses to
+ * zero once the session finally closes. And the partial unique index allows one
+ * open session per agent, so the agent cannot start their next call at all —
+ * every press of Start answers 409 until they think to press End first.
+ *
+ * Thirty minutes is far past a real retention call — the median is 70 seconds
+ * and the mean 97 — and past all but 27 sessions ever recorded, so a genuinely
+ * long call is left alone.
+ */
+export const MAX_CALL_SECONDS = 30 * 60;
+
+/** True once an open session has run longer than any real call would. */
+export function isAbandoned(startedAt: string, now: number = Date.now()): boolean {
+  return now - new Date(startedAt).getTime() > MAX_CALL_SECONDS * 1000;
+}
+
 export type StartResult =
   | { ok: true; session: CallSession }
   | { ok: false; reason: "already_active"; session: CallSession };
@@ -72,6 +98,23 @@ export async function startSession(agentId: string, target: CallTarget): Promise
   if (error) {
     if (error.code === UNIQUE_VIOLATION) {
       const active = await getActiveSession(agentId);
+      // An abandoned session is not a call in progress, and refusing the new
+      // call because of one strands the agent: the only way out was to press
+      // End on a call that finished hours ago, and an agent who does not know
+      // that simply stops using the button — which is exactly when the board
+      // starts reporting them as standing by while they are on the phone.
+      if (active && isAbandoned(active.started_at)) {
+        // Tolerant of a race: if another request closed it first, fall through
+        // and report what is actually open rather than failing the call.
+        try {
+          await endSession(active.id, { remarks: "Closed automatically — left open past the maximum call length." });
+          return startSession(agentId, target);
+        } catch {
+          const still = await getActiveSession(agentId);
+          if (still) return { ok: false, reason: "already_active", session: still };
+          return startSession(agentId, target);
+        }
+      }
       if (active) return { ok: false, reason: "already_active", session: active };
     }
     throw new Error(`Could not start the call: ${error.message}`);
@@ -161,7 +204,16 @@ export async function getActiveSessions(agentIds: string[]): Promise<Map<string,
     .in("agent_id", agentIds)
     .is("ended_at", null);
   if (error) throw new Error(`call_sessions read failed: ${error.message}`);
-  for (const row of data || []) out.set(String(row.agent_id), map(row));
+  for (const row of data || []) {
+    const session = map(row);
+    // An open session past the maximum call length is a leftover, not a live
+    // call. Showing it as one had the board reporting "On Call 6:41:22" — which
+    // is worse than saying nothing, because a supervisor reads it as a real
+    // conversation. It is closed on the agent's next Start; until then the row
+    // simply does not count as a call in progress.
+    if (isAbandoned(session.started_at)) continue;
+    out.set(String(row.agent_id), session);
+  }
   return out;
 }
 
@@ -371,7 +423,9 @@ export async function callTotalsForDay(agentIds: string[], workDate: string): Pr
     const key = String(row.agent_id);
     const current = out.get(key) || { count: 0, seconds: 0, lastEndedAt: null };
     current.count += 1;
-    current.seconds += Number(row.duration_seconds ?? 0);
+    // Capped: an abandoned session would otherwise donate its whole open-ended
+    // length to the day, and standby is what is left after talk is subtracted.
+    current.seconds += Math.min(Number(row.duration_seconds ?? 0), MAX_CALL_SECONDS);
     const ended = row.ended_at ? String(row.ended_at) : null;
     if (ended && (!current.lastEndedAt || ended > current.lastEndedAt)) current.lastEndedAt = ended;
     out.set(key, current);
@@ -407,7 +461,9 @@ export async function callTotalsForRange(
     const key = String(row.agent_id);
     const current = out.get(key) || { count: 0, seconds: 0, lastEndedAt: null };
     current.count += 1;
-    current.seconds += Number(row.duration_seconds ?? 0);
+    // Same cap as the daily totals, so the Activity Report and the monitor
+    // cannot disagree about how long an agent spent talking.
+    current.seconds += Math.min(Number(row.duration_seconds ?? 0), MAX_CALL_SECONDS);
     out.set(key, current);
   }
   return out;
