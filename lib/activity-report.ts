@@ -150,3 +150,23 @@ export function formatDuration(totalSeconds: number): string {
   if (h === 0) return `${m}m`;
   return `${h}h ${String(m).padStart(2, "0")}m`;
 }
+
+/**
+ * One call's length, to the second.
+ *
+ * formatDuration rounds to the minute, which is right for a shift or a day's
+ * talk time and wrong for a single call. The median call is 70 seconds and the
+ * shortest on record is 2, so rounding turned 18% of a day's calls into "0m"
+ * and another 47% into "1m" — two thirds of the column saying nothing. A
+ * supervisor reading it cannot tell a number that rang out from a conversation,
+ * which is most of what the column is for.
+ */
+export function formatCallLength(totalSeconds: number): string {
+  const s = Math.max(0, Math.round(totalSeconds));
+  if (s < 60) return `${s}s`;
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const rem = s % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m ${String(rem).padStart(2, "0")}s`;
+  return `${m}m ${String(rem).padStart(2, "0")}s`;
+}

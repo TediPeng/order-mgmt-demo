@@ -6,7 +6,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { todayInTz, formatTime } from "@/lib/utils";
 import { displayUserName, type OrderStatus } from "@/lib/types";
-import { formatDuration } from "@/lib/activity-report";
+import { formatCallLength, formatDuration } from "@/lib/activity-report";
 import { listCallsForDay, callTotalsForDay } from "@/lib/call-sessions";
 import { LEAD_STATUSES } from "@/lib/validation";
 import { listBioBreaksForDay } from "@/lib/bio-breaks";
@@ -246,7 +246,7 @@ export default async function AgentActivityPage({
                           </Badge>
                         </td>
                         <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-slate-600">
-                          {c.ended_at ? formatDuration(c.duration_seconds ?? 0) : "on call"}
+                          {c.ended_at ? formatCallLength(c.duration_seconds ?? 0) : "on call"}
                         </td>
                         <td className="px-4 py-2">
                           {/* The outcome the agent recorded when they hung up.
