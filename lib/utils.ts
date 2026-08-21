@@ -47,6 +47,65 @@ export function todayInTz(): string {
   return dateInTz(new Date());
 }
 
+/** The app timezone, for the few callers that must hand it to the database. */
+export const APP_TIMEZONE = TZ;
+
+/** How far `timeZone` is ahead of UTC at a given instant, in milliseconds. */
+function offsetMsAt(utcMs: number, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(new Date(utcMs));
+  const p: Record<string, string> = {};
+  for (const part of parts) p[part.type] = part.value;
+  // The wall clock re-read as if it were UTC; the difference from the real
+  // instant is the offset. `hour` comes back as 24 at midnight under hour12
+  // false, which would roll the date forward.
+  const asUtc = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second);
+  return asUtc - utcMs;
+}
+
+/**
+ * The instant midnight begins, in the app timezone, for a YYYY-MM-DD.
+ *
+ * A calendar date and a timestamp are different things, and the gap between
+ * them is eight hours here. Filtering `started_at >= '2026-08-21T00:00:00Z'`
+ * for the Manila day 2026-08-21 asks for the window that opens at 08:00 Manila
+ * — so a call placed at 07:12 was silently dropped from that day's totals,
+ * while calls after midnight were counted into the day before. On the floor
+ * that cost five to eleven calls a day; on an earlier shift it would cost the
+ * first hour of everybody's morning.
+ *
+ * Measured twice: the second pass re-reads the offset at the instant the first
+ * pass produced, so a date that lands on a daylight-saving change resolves to
+ * the offset actually in force. The Philippines has no DST, but this is the
+ * kind of thing that is wrong for a year before anyone notices.
+ */
+export function startOfDayUtc(ymd: string, timeZone: string = TZ): string {
+  const naive = Date.parse(`${ymd}T00:00:00Z`);
+  let ms = naive - offsetMsAt(naive, timeZone);
+  ms = naive - offsetMsAt(ms, timeZone);
+  return new Date(ms).toISOString();
+}
+
+/**
+ * The half-open UTC window covering whole local days, `from` to `to` inclusive.
+ *
+ * Half-open on purpose: the end is the next day's midnight rather than
+ * 23:59:59, which as a `<=` bound also threw away anything in the final second
+ * of the day.
+ */
+export function dayRangeUtc(from: string, to: string = from, timeZone: string = TZ): { start: string; endExclusive: string } {
+  const next = new Date(Date.parse(`${to}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+  return { start: startOfDayUtc(from, timeZone), endExclusive: startOfDayUtc(next, timeZone) };
+}
+
 /** Strips everything but digits and treats a leading 0 the same as +63/63 (PH trunk prefix), so 0917... and +63917... compare equal. */
 export function normalizePhone(phone: string): string {
   const digits = phone.replace(/\D/g, "");

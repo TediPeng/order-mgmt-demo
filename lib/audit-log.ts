@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "./supabaseAdmin";
 import type { ActivityLogEntry } from "./types";
+import { dayRangeUtc } from "./utils";
 
 /**
  * Scoped reads of the audit trail.
@@ -29,16 +30,6 @@ export interface AuditFilters {
   to?: string;
 }
 
-/** The day after `ymd`, so an inclusive "to" date keeps entries logged during
- * that day. Comparing created_at <= "2026-08-07" would silently drop everything
- * after midnight, which the previous in-memory `created_at.slice(0, 10) <= to`
- * did include. Dates are compared in UTC, as they were before. */
-function dayAfter(ymd: string): string {
-  const d = new Date(`${ymd}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d.toISOString();
-}
-
 /** The equality filters as a plain object for .match(). Kept separate from the
  * date bounds because those are range comparisons, and because threading the
  * builder through a generic helper defeats its type inference. */
@@ -64,8 +55,11 @@ export async function queryAuditLog(
 ): Promise<{ entries: ActivityLogEntry[]; total: number }> {
   const offset = (page - 1) * pageSize;
   let q = supabaseAdmin.from(TABLE).select("*", { count: "exact" }).match(equalityFilters(filters));
-  if (filters.from) q = q.gte("created_at", `${filters.from}T00:00:00Z`);
-  if (filters.to) q = q.lt("created_at", dayAfter(filters.to));
+  // A date the user picked is a local calendar date, so it is bounded by the
+  // local day. Bounded by UTC midnight it opened eight hours late and hid
+  // everything logged before 08:00.
+  if (filters.from) q = q.gte("created_at", dayRangeUtc(filters.from).start);
+  if (filters.to) q = q.lt("created_at", dayRangeUtc(filters.to).endExclusive);
 
   const { data, error, count } = await q
     .order("created_at", { ascending: false })
@@ -79,8 +73,11 @@ export async function queryAuditLog(
  * one. Nothing else should use it. */
 export async function queryAuditLogForExport(filters: AuditFilters): Promise<ActivityLogEntry[]> {
   let q = supabaseAdmin.from(TABLE).select("*").match(equalityFilters(filters));
-  if (filters.from) q = q.gte("created_at", `${filters.from}T00:00:00Z`);
-  if (filters.to) q = q.lt("created_at", dayAfter(filters.to));
+  // A date the user picked is a local calendar date, so it is bounded by the
+  // local day. Bounded by UTC midnight it opened eight hours late and hid
+  // everything logged before 08:00.
+  if (filters.from) q = q.gte("created_at", dayRangeUtc(filters.from).start);
+  if (filters.to) q = q.lt("created_at", dayRangeUtc(filters.to).endExclusive);
 
   const { data, error } = await q.order("created_at", { ascending: false });
   if (error) throw new Error(`Audit log export query failed: ${error.message}`);

@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { SALE_STATUSES } from "@/lib/validation";
+import { dayRangeUtc, APP_TIMEZONE } from "@/lib/utils";
 import type { CallSession } from "@/lib/types";
 
 /** Calling sessions.
@@ -372,6 +373,10 @@ export async function listCallsForDay(
     p_page_size: pageSize,
     p_kind: filters.kind ?? "all",
     p_ordered_only: Boolean(filters.orderedOnly),
+    // The day is a local calendar day, and the function has no way to know
+    // which zone that is. Handed in for the same reason p_sale_statuses is:
+    // one definition, in the app, rather than a second copy living in SQL.
+    p_timezone: APP_TIMEZONE,
     // Handed in rather than written in SQL, following agent_daily_order_stats:
     // lib/validation.ts stays the only place that defines what counts as a sale.
     p_sale_statuses: SALE_STATUSES as unknown as string[],
@@ -415,8 +420,11 @@ export async function callTotalsForDay(agentIds: string[], workDate: string): Pr
     .select("agent_id, duration_seconds, ended_at")
     .in("agent_id", agentIds)
     .not("ended_at", "is", null)
-    .gte("started_at", `${workDate}T00:00:00Z`)
-    .lte("started_at", `${workDate}T23:59:59Z`);
+    // The local day, not the UTC one. See dayRangeUtc: bounding a Manila date
+    // with UTC midnight opened the window at 08:00 and dropped the calls before
+    // it.
+    .gte("started_at", dayRangeUtc(workDate).start)
+    .lt("started_at", dayRangeUtc(workDate).endExclusive);
   if (error) throw new Error(`call_sessions read failed: ${error.message}`);
 
   for (const row of data || []) {
@@ -453,8 +461,8 @@ export async function callTotalsForRange(
     .select("agent_id, duration_seconds")
     .in("agent_id", agentIds)
     .not("ended_at", "is", null)
-    .gte("started_at", `${from}T00:00:00Z`)
-    .lte("started_at", `${to}T23:59:59Z`);
+    .gte("started_at", dayRangeUtc(from, to).start)
+    .lt("started_at", dayRangeUtc(from, to).endExclusive);
   if (error) throw new Error(`call_sessions read failed: ${error.message}`);
 
   for (const row of data || []) {
@@ -486,8 +494,8 @@ export async function countCompletedSessions(
     .select("agent_id, started_at, duration_seconds")
     .in("agent_id", agentIds)
     .not("ended_at", "is", null)
-    .gte("started_at", `${from}T00:00:00Z`)
-    .lte("started_at", `${to}T23:59:59Z`);
+    .gte("started_at", dayRangeUtc(from, to).start)
+    .lt("started_at", dayRangeUtc(from, to).endExclusive);
   if (error) throw new Error(`call_sessions read failed: ${error.message}`);
 
   for (const row of data || []) {
