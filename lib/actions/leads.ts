@@ -12,6 +12,7 @@ import { can, isFullAccess } from "@/lib/permissions";
 import { protectedReason } from "@/lib/duplicate-leads";
 import { requireUserLite, requirePermission, requireAdministrator } from "./guards";
 import { describeParseFailure } from "@/lib/zod-error";
+import { identityKey, identityBlockReason, leadsByIdentity } from "@/lib/lead-identity";
 import { leadFormSchema, leadImportRowSchema, normalizePreviousStatus, parseOrderItemFields, type OrderItemFields, PACKAGING_STATUS, PRE_SALE_STATUSES } from "@/lib/validation";
 import { listItems, replaceItems, summarizeItems, totalsFor } from "@/lib/order-items";
 import type { OrderItemInput } from "@/lib/types";
@@ -1225,7 +1226,14 @@ export async function importLeadsAction(
   // pushed every repeat buyer back into Leads as a fresh lead for whoever the
   // spreadsheet named.
   const regularPhones = await regularCustomerPhonesAmong(rawRows.map((r) => String(r.data.customer_phone ?? "")));
+  // The same person on a SECOND number — invisible to every check above, which
+  // all compare phone numbers. One indexed round trip for the batch.
+  const identityMatches = await leadsByIdentity(rawRows.map((r) => r.data));
   const seenInFile = new Map<string, number>();
+  // The identity twin of seenInFile. New rows are written only after the loop,
+  // so two rows of one file naming the same person on two numbers would both
+  // pass the database check — neither is in the database yet.
+  const identityInFile = new Map<string, { row: number; phone: string; purok: string }>();
   const results: LeadImportRowResult[] = [];
   const now = nowIso();
   // Built once. Doing this per row walked every order for every line of the
@@ -1296,6 +1304,24 @@ export async function importLeadsAction(
       });
       continue;
     }
+    // Same person, different number. Only the two confident cases refuse: a
+    // number one or two digits from an existing one, or an exact house-and-lot
+    // address. A different number at a bare barangay is let through — two
+    // people can share a name in one barangay, and a wrongly refused lead is
+    // invisible in a way a wrongly imported one is not.
+    const ik = identityKey(raw);
+    const earlier = ik ? identityInFile.get(ik) : undefined;
+    const sameIdentity = [
+      ...((ik ? identityMatches.get(ik) : undefined) ?? []),
+      ...(earlier ? [{ order_number: `row ${earlier.row} of this file`, customer_phone: earlier.phone, purok: earlier.purok }] : []),
+    ];
+    if (sameIdentity.length > 0) {
+      const why = identityBlockReason(raw, sameIdentity);
+      if (why) {
+        results.push({ row, category: "duplicate", reason: why, data: raw });
+        continue;
+      }
+    }
     let match = agentCache.get(agentName);
     if (match === undefined) {
       match = matchAgentByCallName(agentName, db.profiles) || null;
@@ -1312,6 +1338,13 @@ export async function importLeadsAction(
     }
 
     seenInFile.set(key, row);
+    if (ik) {
+      identityInFile.set(ik, {
+        row,
+        phone: String(raw.customer_phone ?? ""),
+        purok: String(raw.purok ?? ""),
+      });
+    }
     const hasProvidedPreviousInfo =
       data.previous_order_date ||
       data.previous_order_product ||
