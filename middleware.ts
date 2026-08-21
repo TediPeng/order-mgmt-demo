@@ -17,6 +17,22 @@ export function middleware(req: NextRequest) {
   const hasSession = Boolean(req.cookies.get("session")?.value);
 
   if (!hasSession) {
+    // A redirect is useless to fetch(). It obeys the 307 without telling the
+    // caller, receives the login page's HTML, and the caller then fails trying
+    // to read JSON out of it — which every screen in the app reported as a
+    // network error. So an expired session looked like a broken save, and the
+    // one thing the user needed to be told was the one thing hidden from them.
+    //
+    // Data endpoints get a 401 they can actually read. A top-level navigation
+    // still gets the login page, because a download link opened in a tab should
+    // land on a form rather than on a line of JSON.
+    const isNavigation = req.headers.get("sec-fetch-mode") === "navigate";
+    if (pathname.startsWith("/api/") && !isNavigation) {
+      return NextResponse.json(
+        { ok: false, error: "Your session has expired. Log in again, then retry." },
+        { status: 401 }
+      );
+    }
     const loginUrl = new URL("/login", req.url);
     return NextResponse.redirect(loginUrl);
   }

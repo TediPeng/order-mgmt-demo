@@ -294,7 +294,26 @@ export function ScheduleRosterBuilder({
           confirm_replace: true,
         }),
       });
-      const json = await res.json();
+      // Only read as JSON what claims to be JSON. This used to parse blind, so
+      // any HTML the platform put in the way — a login page, an error page —
+      // became a parse failure reported as "Network error. Nothing was saved.",
+      // a message that both hid the real cause and asserted something we did
+      // not know to be true.
+      const isJson = (res.headers.get("content-type") || "").includes("application/json");
+      const json = isJson ? await res.json() : null;
+
+      if (res.status === 401) {
+        setError("You have been logged out. Sign in again in another tab, then press Save — nothing painted here has been lost.");
+        setSaving(false);
+        return;
+      }
+      if (!json) {
+        setError(
+          `The server replied with ${res.status} instead of a result. Refresh to check whether the cut-off saved before painting it again.`
+        );
+        setSaving(false);
+        return;
+      }
       if (!json.ok) {
         setError(json.error || "Could not save the roster.");
         setSaving(false);
@@ -304,7 +323,11 @@ export function ScheduleRosterBuilder({
       setLoaded(cells);
       router.refresh();
     } catch {
-      setError("Network error. Nothing was saved.");
+      // fetch itself threw, so the request did not complete. That usually does
+      // mean nothing was written, but not always — a connection dropped while
+      // the reply was coming back leaves the save done and unreported — so the
+      // message says what to check rather than making a promise it cannot keep.
+      setError("Could not reach the server. Press Save again; if it keeps failing, refresh first to see what was recorded.");
     } finally {
       setSaving(false);
     }
