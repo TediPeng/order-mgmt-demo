@@ -267,7 +267,17 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
               return (
                 <tr key={r.agentId} className={r.state === "on_call" ? "bg-green-50/40" : undefined}>
                   <td className="px-4 py-3">
-                    <span className="font-medium text-slate-800">{r.name}</span>
+                    {/* The board says what an agent is doing now; the name is
+                        the way to why. A row that reads Standby for the third
+                        time in an hour is a question, and it was one a
+                        supervisor had no way to ask from here. */}
+                    <Link
+                      href={`/attendance/monitor/${r.agentId}`}
+                      className="font-medium text-slate-800 hover:text-[var(--brand-primary)] hover:underline"
+                      title={`See ${r.name}'s day — every call and every quiet stretch`}
+                    >
+                      {r.name}
+                    </Link>
                     {r.callName && <span className="ml-2 text-xs text-slate-400">{r.callName}</span>}
                     {r.teamLead && <span className="block text-xs text-slate-400">{r.teamLead}</span>}
                   </td>
