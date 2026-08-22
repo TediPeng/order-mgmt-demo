@@ -86,6 +86,32 @@ function causeOf(error: string | null): Cause {
     };
   }
 
+  // One group per held customer, the same reasoning as the staff and source
+  // groups above: each is a different order to go and settle in Pancake.
+  const held = message.match(/^Held: last Pancake order (.+?) is (.+?), not delivered/i);
+  if (held) {
+    return {
+      key: `held:${held[1]}`,
+      title: `Their last Pancake order (${held[1]}) is ${held[2]}`,
+      detail:
+        "This is a repeat buyer, and their previous parcel has not landed — it came back, or it is still moving. Sending another now risks a second parcel for one customer, with the floor paying for both. Settle that order in Pancake, then retry. A retry before that will simply hold again.",
+      needsPerson: true,
+    };
+  }
+
+  // Falls here otherwise, and the raw sentence becomes the heading — two lines
+  // of it. The address is the one an agent can actually fix, so it gets a
+  // title short enough to read and a detail that says where.
+  if (/Address not valid in Pancake POS/i.test(message)) {
+    return {
+      key: "address",
+      title: "Address is not mapped to Pancake",
+      detail:
+        "Pancake takes province, city and barangay as its own IDs, not as text, so each one has to be picked from its dropdown rather than typed. Open the order, re-select the address, and retry.",
+      needsPerson: true,
+    };
+  }
+
   if (/timed out|responded 5\d\d|Could not read/i.test(message)) {
     return {
       key: "unreachable",

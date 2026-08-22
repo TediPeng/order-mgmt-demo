@@ -248,10 +248,11 @@ export async function forwardOrderToPancake(
     }
     if (latest.found && latest.status !== "delivered") {
       const label = latest.statusName || latest.status || "an unknown status";
-      const reason =
-        `Held: this regular customer's last Pancake order (${latest.id || "no id"}) is ${label}, not delivered. ` +
-        `Sending another while the previous one is unresolved risks a second parcel. ` +
-        `Settle that order in Pancake first, then Retry.`;
+      // Short on purpose. The Sync Failed page groups by this string and shows
+      // it as the group's heading, so the sentence has to read as a title; the
+      // reasoning and the instruction live in that page's `detail`, written
+      // once rather than repeated on every held order.
+      const reason = `Held: last Pancake order ${latest.id || "(no id)"} is ${label}, not delivered.`;
       await failSync(order, reason, opts, { accountId: account.id });
       return { ok: false, skipped: false, message: reason };
     }
