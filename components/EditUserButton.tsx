@@ -40,7 +40,7 @@ export function EditUserButton({ user, action }: { user: EditableUser; action: (
       </Button>
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 whitespace-normal"
           onClick={() => !saving && setOpen(false)}
         >
           <div className="w-full max-w-lg rounded-lg bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>

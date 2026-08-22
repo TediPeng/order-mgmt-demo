@@ -29,7 +29,7 @@ export function ConfirmButton({
         {label}
       </Button>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 whitespace-normal">
           <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
             <h3 className="text-base font-semibold text-slate-900">{confirmTitle}</h3>
             <p className="mt-2 text-sm text-slate-600">{confirmBody}</p>

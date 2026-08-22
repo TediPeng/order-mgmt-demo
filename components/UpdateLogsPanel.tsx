@@ -44,7 +44,7 @@ export function UpdateLogsPanel({ releases }: { releases: UpdateLog[] }) {
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex justify-end">
+        <div className="fixed inset-0 z-50 flex justify-end whitespace-normal">
           <button
             type="button"
             aria-label="Close update logs"

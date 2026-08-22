@@ -58,7 +58,7 @@ export function OverBreakDialog({
     // No click-outside-to-close. Everything else in this app closes on the
     // backdrop, and this is the one dialog where an accidental click past it
     // would dismiss the only warning the agent gets.
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 whitespace-normal">
       <div
         role="alertdialog"
         aria-modal="true"

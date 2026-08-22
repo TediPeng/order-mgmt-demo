@@ -108,7 +108,7 @@ export function AttendanceCalendar({
       </div>
 
       {openDate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setOpenDate(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 whitespace-normal" onClick={() => setOpenDate(null)}>
           <div className="w-full max-w-sm rounded-xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
               <h3 className="text-sm font-semibold text-slate-800">{openDate}</h3>

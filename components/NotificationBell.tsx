@@ -29,7 +29,7 @@ export function NotificationBell({ notifications }: { notifications: AppNotifica
 
       {open && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="fixed inset-0 z-40 whitespace-normal" onClick={() => setOpen(false)} />
           <div className="absolute right-0 z-50 mt-2 w-80 rounded-lg border border-slate-200 bg-white shadow-lg">
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
               <p className="text-sm font-semibold text-slate-800">Notifications</p>

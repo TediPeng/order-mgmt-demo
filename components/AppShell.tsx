@@ -118,7 +118,7 @@ export function AppShell({
       </div>
 
       {drawerOpen && (
-        <div className="fixed inset-0 z-50 flex lg:hidden">
+        <div className="fixed inset-0 z-50 flex lg:hidden whitespace-normal">
           <button
             aria-label="Close menu"
             className="absolute inset-0 cursor-pointer bg-black/50"

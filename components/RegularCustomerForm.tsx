@@ -187,7 +187,7 @@ export function RegularCustomerForm({
 
       {duplicate && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 whitespace-normal"
           onClick={() => setDuplicate(null)}
         >
           <div className="w-full max-w-md rounded-xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>

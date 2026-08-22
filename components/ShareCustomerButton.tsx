@@ -83,7 +83,7 @@ export function ShareCustomerButton({
 
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 whitespace-normal"
           onClick={() => setOpen(false)}
         >
           <div

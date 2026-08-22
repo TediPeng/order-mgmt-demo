@@ -47,7 +47,7 @@ export function PancakeHistoryDialog({
   const tooThin = finished < 3;
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4 whitespace-normal" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"

@@ -45,8 +45,15 @@ export function SyncResolveMenu({
       </Button>
 
       {open && (
+        // `whitespace-normal` is load-bearing. This dialog is opened from a
+        // cell in the failed-syncs table, whose row carries `whitespace-nowrap`
+        // to keep the columns on one line. `position: fixed` moves the overlay
+        // to the viewport but does not move it in the DOM, so it still inherits
+        // that nowrap — every paragraph inside rendered as one long line, the
+        // panel grew to 756px inside a 371px box, and the help text was clipped
+        // mid-word behind a horizontal scrollbar.
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-[70] flex items-center justify-center whitespace-normal bg-black/50 p-4"
           onClick={() => setOpen(false)}
         >
           <div

@@ -436,7 +436,7 @@ export function OrderDetailsModal({
   const style = LEAD_STATUS_STYLES[order.status];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={requestClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 whitespace-normal" onClick={requestClose}>
       {/* Above the popup's own backdrop (z-50) and stopping its click-to-close,
           so pressing anywhere in the warning cannot dismiss the order behind it. */}
 

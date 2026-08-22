@@ -15,7 +15,7 @@ export function LiftSuspensionButton({ action, id }: { action: (formData: FormDa
         Lift Suspension
       </Button>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 whitespace-normal" onClick={() => setOpen(false)}>
           <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-semibold text-slate-900">Lift this suspension?</h3>
             <p className="mt-2 text-sm text-slate-600">
