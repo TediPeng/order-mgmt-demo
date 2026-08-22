@@ -383,6 +383,17 @@ export async function linkExistingPancakeOrderAction(orderId: string, formData: 
     pancake_sync_status: "synced",
     pancake_sync_error: null,
     pancake_synced_at: nowIso(),
+    // Linking asserts the order IS in Pancake — that is the whole point of the
+    // action. Without this it was only half-asserted: applyIncomingUpdate()
+    // refuses any update for an order with no forwarded_to_pancake_at, so a
+    // linked order accepted its Pancake id, went green as Synced, and then
+    // ignored every status Pancake ever sent it. Four orders linked on 16
+    // August sat frozen at Packaging for six days while polling rejected their
+    // updates 10,365 times — a quarter of all Pancake logging in the week.
+    //
+    // Now, rather than when it actually reached Pancake, which nobody knows:
+    // the order was created there by hand, outside this system.
+    forwarded_to_pancake_at: nowIso(),
   });
 
   await insertSyncLog({
