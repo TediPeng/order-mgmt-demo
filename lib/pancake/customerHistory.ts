@@ -158,3 +158,93 @@ export async function pancakeCustomerHistory(
 
   return { delivered, returned, totalOrders, orders, error: null };
 }
+
+/**
+ * What happened to this number's most recent Pancake order, whatever it was.
+ *
+ * Deliberately not `pancakeCustomerHistory().orders[0]`. That list is filtered
+ * to the four statuses worth showing a supervisor, so a customer whose newest
+ * order is sitting unconfirmed does not appear in it at all — and the newest
+ * row that DOES appear could be a delivery from months ago. A gate that reads
+ * "the latest order was delivered" off that list would wave through exactly the
+ * customer it exists to stop.
+ *
+ * `found: false` means Pancake holds no order for this number. That is a new
+ * customer, not a bad one.
+ */
+export interface LatestPancakeOrder {
+  found: boolean;
+  /** The mapped internal status, or null when the code is unknown to us. */
+  status: string | null;
+  /** Pancake's own wording, which is what the agent will see in Pancake. */
+  statusName: string | null;
+  id: string;
+  date: string | null;
+  /** Set when Pancake could not be asked. Never conflated with "no orders". */
+  error: string | null;
+}
+
+const NO_LATEST: LatestPancakeOrder = { found: false, status: null, statusName: null, id: "", date: null, error: null };
+
+export async function latestPancakeOrder(account: PancakeAccount, phone: string): Promise<LatestPancakeOrder> {
+  const target = normalizePhone(phone || "");
+  if (!target) return NO_LATEST;
+
+  const mode = mockMode();
+  if (mode === "fail") return { ...NO_LATEST, error: "MOCK_MODE=fail: simulated Pancake API failure" };
+  if (mode === "success") {
+    return {
+      found: true,
+      status: "delivered",
+      statusName: "received",
+      id: "23486",
+      date: new Date(Date.now() - 2 * 86400000).toISOString(),
+      error: null,
+    };
+  }
+
+  const to = Math.floor(Date.now() / 1000) + 60;
+  const from = to - WINDOW_DAYS * 24 * 60 * 60;
+  const statusMap = await listStatusMap();
+
+  let best: { date: string; row: Record<string, unknown> } | null = null;
+  let sawAny = false;
+
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const path =
+      `${resolvePath(CREATE_ORDER_PATH, account)}?search=${encodeURIComponent(phone)}` +
+      `&startDateTime=${from}&endDateTime=${to}&page_size=${PAGE_SIZE}&page_number=${page}`;
+
+    const res = await pancakeFetch(account, path, { method: "GET" });
+    if (!res.ok) {
+      return { ...NO_LATEST, error: res.error || "Could not read this customer's history from Pancake POS." };
+    }
+
+    const body = (res.body || {}) as Record<string, unknown>;
+    const rows = Array.isArray(body.data) ? (body.data as Record<string, unknown>[]) : [];
+    if (rows.length === 0) break;
+
+    for (const row of rows) {
+      // The search is fuzzy — a name containing the digits must not decide
+      // whether somebody's order is allowed to leave.
+      if (normalizePhone(String(row.bill_phone_number ?? "")) !== target) continue;
+      sawAny = true;
+      const date = String(row.inserted_at ?? row.updated_at ?? "");
+      if (!best || date > best.date) best = { date, row };
+    }
+
+    if (rows.length < PAGE_SIZE) break;
+  }
+
+  if (!sawAny || !best) return NO_LATEST;
+
+  const internal = mapStatus(String(best.row.status ?? ""), statusMap);
+  return {
+    found: true,
+    status: internal || null,
+    statusName: best.row.status_name != null ? String(best.row.status_name) : null,
+    id: String(best.row.display_id ?? best.row.id ?? ""),
+    date: best.date || null,
+    error: null,
+  };
+}

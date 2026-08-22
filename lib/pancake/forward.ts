@@ -6,6 +6,7 @@ import { createOrder } from "./createOrder";
 import { CREATE_STATUS_PACKAGING_LABEL, LOOKUP_REFRESH_ON_MISS_AFTER_MS } from "./config";
 import { validateForPancake } from "./validate";
 import { verifyAddressIds } from "./address";
+import { latestPancakeOrder } from "./customerHistory";
 import { findRecentOrderForRetry } from "./findExisting";
 import { MAX_ATTEMPTS } from "./retry";
 import {
@@ -217,6 +218,43 @@ export async function forwardOrderToPancake(
       "No Pancake account resolved for this order. Assign an account to the agent/team/order source, or mark exactly one active account as Default (Settings → Integrations).";
     await failSync(order, reason, opts);
     return { ok: false, skipped: false, message: reason };
+  }
+
+  // --- Repeat-buyer gate ----------------------------------------------------
+  //
+  // A regular customer is somebody who has bought before, so Pancake already
+  // holds their record — and what happened to their last parcel decides whether
+  // the next one should go out at all. If the previous order came back, or is
+  // still in flight, sending another is how a customer ends up with two parcels
+  // and the floor ends up paying for both.
+  //
+  // Only regular customers. A fresh lead has no history to judge and is not
+  // what this rule is about.
+  //
+  // Three answers, three outcomes:
+  //   delivered      — the last one arrived and was kept. Send.
+  //   no orders yet  — new to Pancake. Nothing to hold against them. Send.
+  //   anything else  — hold it, and say which status and which order, so the
+  //                    agent can look it up rather than guess.
+  //
+  // Pancake being unreachable is NOT a refusal. The order waits for the retry
+  // queue instead of being judged on an answer nobody got.
+  if (order.is_regular_customer) {
+    const latest = await latestPancakeOrder(account, order.customer_phone || "");
+    if (latest.error) {
+      const reason = `Could not check this customer's last Pancake order: ${latest.error}`;
+      await failSync(order, reason, opts, { accountId: account.id });
+      return { ok: false, skipped: false, message: reason };
+    }
+    if (latest.found && latest.status !== "delivered") {
+      const label = latest.statusName || latest.status || "an unknown status";
+      const reason =
+        `Held: this regular customer's last Pancake order (${latest.id || "no id"}) is ${label}, not delivered. ` +
+        `Sending another while the previous one is unresolved risks a second parcel. ` +
+        `Settle that order in Pancake first, then Retry.`;
+      await failSync(order, reason, opts, { accountId: account.id });
+      return { ok: false, skipped: false, message: reason };
+    }
   }
 
   // --- Product lines --------------------------------------------------------
