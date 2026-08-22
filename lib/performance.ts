@@ -1,5 +1,5 @@
 import type { DbShape, Order, Profile } from "./types";
-import { todayInTz, dateInTz } from "./utils";
+import { todayInTz, dateInTz, isYmd } from "./utils";
 import { isFullAccess } from "./permissions";
 import { FULFILLMENT_STATUSES } from "./validation";
 import type { DailyOrderStat } from "./performance-query";
@@ -498,7 +498,12 @@ const EPOCH = "1970-01-01";
 
 export function resolveDateRange(preset: string | undefined, customFrom?: string, customTo?: string): DateRange {
   const today = todayInTz();
-  if (preset === "custom" && customFrom && customTo) {
+  // Validated, not merely present. These come straight off the query string,
+  // and they end up in date arithmetic that throws on anything unparseable —
+  // a hand-edited `?from=` used to take the whole page down with a server
+  // exception. A malformed range falls through to the default below rather
+  // than being trusted or crashing.
+  if (preset === "custom" && isYmd(customFrom) && isYmd(customTo)) {
     return { from: customFrom, to: customTo, label: `${customFrom} to ${customTo}` };
   }
   if (preset === "yesterday") {

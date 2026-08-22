@@ -1,7 +1,7 @@
 import { v4 as uuid } from "uuid";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { POLLABLE_STATUSES } from "@/lib/validation";
-import { dayRangeUtc } from "@/lib/utils";
+import { dayRangeUtc, isYmd } from "@/lib/utils";
 import type {
   Order,
   PancakeAccount,
@@ -177,8 +177,8 @@ export async function listSyncLogs(filters: SyncLogFilters = {}): Promise<Pancak
   if (filters.source) q = q.eq("source", filters.source);
   // Same local-day bounds as everywhere else that filters a timestamp by a
   // date somebody typed.
-  if (filters.date_from) q = q.gte("request_at", dayRangeUtc(filters.date_from).start);
-  if (filters.date_to) q = q.lt("request_at", dayRangeUtc(filters.date_to).endExclusive);
+  if (isYmd(filters.date_from)) q = q.gte("request_at", dayRangeUtc(filters.date_from).start);
+  if (isYmd(filters.date_to)) q = q.lt("request_at", dayRangeUtc(filters.date_to).endExclusive);
   q = q.limit(filters.limit ?? 200);
   const { data, error } = await q;
   if (error) throw new Error(`pancake_sync_logs read failed: ${error.message}`);

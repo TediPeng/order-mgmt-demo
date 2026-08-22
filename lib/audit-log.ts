@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "./supabaseAdmin";
 import type { ActivityLogEntry } from "./types";
-import { dayRangeUtc } from "./utils";
+import { dayRangeUtc, isYmd } from "./utils";
 
 /**
  * Scoped reads of the audit trail.
@@ -58,8 +58,8 @@ export async function queryAuditLog(
   // A date the user picked is a local calendar date, so it is bounded by the
   // local day. Bounded by UTC midnight it opened eight hours late and hid
   // everything logged before 08:00.
-  if (filters.from) q = q.gte("created_at", dayRangeUtc(filters.from).start);
-  if (filters.to) q = q.lt("created_at", dayRangeUtc(filters.to).endExclusive);
+  if (isYmd(filters.from)) q = q.gte("created_at", dayRangeUtc(filters.from).start);
+  if (isYmd(filters.to)) q = q.lt("created_at", dayRangeUtc(filters.to).endExclusive);
 
   const { data, error, count } = await q
     .order("created_at", { ascending: false })
@@ -76,8 +76,8 @@ export async function queryAuditLogForExport(filters: AuditFilters): Promise<Act
   // A date the user picked is a local calendar date, so it is bounded by the
   // local day. Bounded by UTC midnight it opened eight hours late and hid
   // everything logged before 08:00.
-  if (filters.from) q = q.gte("created_at", dayRangeUtc(filters.from).start);
-  if (filters.to) q = q.lt("created_at", dayRangeUtc(filters.to).endExclusive);
+  if (isYmd(filters.from)) q = q.gte("created_at", dayRangeUtc(filters.from).start);
+  if (isYmd(filters.to)) q = q.lt("created_at", dayRangeUtc(filters.to).endExclusive);
 
   const { data, error } = await q.order("created_at", { ascending: false });
   if (error) throw new Error(`Audit log export query failed: ${error.message}`);

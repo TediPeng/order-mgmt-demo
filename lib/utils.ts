@@ -87,6 +87,23 @@ function offsetMsAt(utcMs: number, timeZone: string): number {
  * the offset actually in force. The Philippines has no DST, but this is the
  * kind of thing that is wrong for a year before anyone notices.
  */
+/**
+ * A real YYYY-MM-DD, and a date that exists.
+ *
+ * Every date these helpers receive is either generated here or typed into a
+ * URL, and the two must not be treated alike. `new Date(NaN).toISOString()`
+ * throws RangeError, so an unparseable date reaching startOfDayUtc is a 500 —
+ * which is what a hand-edited `?from=` did to the performance pages. The guard
+ * belongs at the boundary where the string arrives, not in the arithmetic.
+ */
+export function isYmd(value: string | undefined | null): value is string {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const t = Date.parse(`${value}T00:00:00Z`);
+  if (Number.isNaN(t)) return false;
+  // Rejects 2026-02-31, which Date.parse is happy to roll forward.
+  return new Date(t).toISOString().slice(0, 10) === value;
+}
+
 export function startOfDayUtc(ymd: string, timeZone: string = TZ): string {
   const naive = Date.parse(`${ymd}T00:00:00Z`);
   let ms = naive - offsetMsAt(naive, timeZone);
