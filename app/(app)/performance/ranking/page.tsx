@@ -9,15 +9,21 @@ import { countCompletedSessions } from "@/lib/call-sessions";
 import { formatCurrency } from "@/lib/utils";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { RankingBars } from "@/components/RankingBars";
+import { HallOfFame } from "@/components/HallOfFame";
 import { Badge } from "@/components/ui/Badge";
 import { Select } from "@/components/ui/Field";
 
+type Print = (v: number | null) => string;
+const money: Print = (v) => (v === null ? "—" : formatCurrency(v));
+const percent: Print = (v) => (v === null ? "—" : `${v}%`);
+const count: Print = (v) => (v === null ? "—" : String(v));
+
 const RANK_OPTIONS = [
-  { key: "sales", label: "Highest Sales", field: "amount", dir: -1 as const, direction: "higher_better" as const },
-  { key: "orders", label: "Highest Order Qty", field: "orders", dir: -1 as const, direction: "higher_better" as const },
-  { key: "conversion", label: "Highest Conversion Rate", field: "conversion_rate", dir: -1 as const, direction: "higher_better" as const },
-  { key: "aov", label: "Highest AOV", field: "aov", dir: -1 as const, direction: "higher_better" as const },
-  { key: "return_rate", label: "Lowest Return Rate", field: "return_rate", dir: 1 as const, direction: "lower_better" as const },
+  { key: "sales", label: "Highest Sales", field: "amount", dir: -1 as const, direction: "higher_better" as const, print: money },
+  { key: "orders", label: "Highest Order Qty", field: "orders", dir: -1 as const, direction: "higher_better" as const, print: count },
+  { key: "conversion", label: "Highest Conversion Rate", field: "conversion_rate", dir: -1 as const, direction: "higher_better" as const, print: percent },
+  { key: "aov", label: "Highest AOV", field: "aov", dir: -1 as const, direction: "higher_better" as const, print: money },
+  { key: "return_rate", label: "Lowest Return Rate", field: "return_rate", dir: 1 as const, direction: "lower_better" as const, print: percent },
 ];
 
 function statusBadge(value: number | null, average: number, direction: "higher_better" | "lower_better", topRatio: number, lowRatio: number) {
@@ -57,6 +63,7 @@ export default async function RankingPage({
   const rankOption = RANK_OPTIONS.find((r) => r.key === sp.rank_by) || RANK_OPTIONS[0];
   const field = rankOption.field as keyof AgentTotals;
   const isTableView = sp.view === "table";
+  const isHallView = sp.view === "hall";
 
   const sorted = [...totals].sort((a, b) => {
     const av = a[field] as number | null;
@@ -85,6 +92,13 @@ export default async function RankingPage({
     barValue: (t[field] as number | null) ?? 0,
   }));
 
+  const hallRows = sorted.map((t) => ({
+    agent_id: t.agent_id,
+    full_name: profileById.get(t.agent_id)?.full_name || "Unknown",
+    avatar_url: profileById.get(t.agent_id)?.avatar_url ?? null,
+    display: rankOption.print(t[field] as number | null),
+  }));
+
   const qs = (overrides: Record<string, string | undefined>) => {
     const params = new URLSearchParams();
     const merged = { ...sp, ...overrides };
@@ -99,18 +113,19 @@ export default async function RankingPage({
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-page-title text-slate-900">Agent Ranking</h1>
         <div className="flex rounded-md border border-slate-200 bg-white p-1 text-xs">
-          <Link
-            href={qs({ view: undefined })}
-            className={`rounded px-2.5 py-1 font-medium ${!isTableView ? "bg-[var(--brand-primary)] text-white" : "text-slate-500 hover:bg-slate-100"}`}
-          >
-            Bar Chart
-          </Link>
-          <Link
-            href={qs({ view: "table" })}
-            className={`rounded px-2.5 py-1 font-medium ${isTableView ? "bg-[var(--brand-primary)] text-white" : "text-slate-500 hover:bg-slate-100"}`}
-          >
-            Table
-          </Link>
+          {[
+            { view: undefined, label: "Bar Chart", on: !isTableView && !isHallView },
+            { view: "hall", label: "Hall of Fame", on: isHallView },
+            { view: "table", label: "Table", on: isTableView },
+          ].map((tab) => (
+            <Link
+              key={tab.label}
+              href={qs({ view: tab.view })}
+              className={`rounded px-2.5 py-1 font-medium ${tab.on ? "bg-[var(--brand-primary)] text-white" : "text-slate-500 hover:bg-slate-100"}`}
+            >
+              {tab.label}
+            </Link>
+          ))}
         </div>
       </div>
       <div className="mb-4">
@@ -184,6 +199,8 @@ export default async function RankingPage({
             </tbody>
           </table>
         </div>
+      ) : isHallView ? (
+        <HallOfFame rows={hallRows} metricLabel={rankOption.label} currentUserId={user.id} />
       ) : (
         <RankingBars rows={barRows} topValue={topValue} currentUserId={user.id} />
       )}
