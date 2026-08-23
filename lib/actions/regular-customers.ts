@@ -23,6 +23,7 @@ import {
 import { canonicalPhone, restoreTrunkZero } from "@/lib/utils";
 import { allowedAssigneeIds } from "@/lib/order-access";
 import { isDialablePhone, regularCustomerFormSchema } from "@/lib/validation";
+import { validateRegCxTagging, regCxAuditDetails } from "@/lib/reg-cx-validation";
 import { describeParseFailure } from "@/lib/zod-error";
 import { requireUserLite } from "./guards";
 import { displayUserName } from "@/lib/types";
@@ -233,6 +234,25 @@ export async function createRegularCustomerAction(formData: FormData) {
   });
   if (foreign) redirect(`${NEW_PATH}?error=${encodeURIComponent(foreign)}`);
 
+  // A regular customer is a claim about a history, and the history lives in
+  // Pancake. Checked against the OWNER, not whoever pressed the button: a Team
+  // Lead adding on an agent's behalf is asking whether THAT agent has the
+  // relationship, and the answer must not change with who holds the mouse.
+  const owner = db.profiles.find((pr) => pr.id === ownerAgentId) || user;
+  const decision = await validateRegCxTagging(owner, data.phone);
+  {
+    const info = await getRequestInfo();
+    // Recorded whether it passed or not — who ATTEMPTED is half of what the
+    // trail is for.
+    logActivity(db, user.id, "REGULAR_CUSTOMER_VALIDATED", "customer", null,
+      regCxAuditDetails(decision, { name: data.full_name, phone: data.phone }, ownerAgentId),
+      { module: "regular_customers", ...info });
+    if (!decision.allowed) {
+      await writeDb(db);
+      redirect(`${NEW_PATH}?error=${encodeURIComponent(decision.message)}`);
+    }
+  }
+
   const customer = await createRegularCustomer(
     {
       full_name: data.full_name,
@@ -326,6 +346,21 @@ export async function tagRegularCustomerAction(orderId: string) {
     province: order!.province,
   });
   if (foreign) redirect(`/leads?error=${encodeURIComponent(foreign)}`);
+
+  // Same rule as Add Regular Customer, same reason. Here the owner is the
+  // lead's assigned agent.
+  const owner = db.profiles.find((pr) => pr.id === order!.agent_id) || user;
+  const decision = await validateRegCxTagging(owner, order!.customer_phone);
+  {
+    const info = await getRequestInfo();
+    logActivity(db, user.id, "REGULAR_CUSTOMER_VALIDATED", "order", order!.id,
+      regCxAuditDetails(decision, { name: order!.customer_name, phone: order!.customer_phone }, order!.agent_id),
+      { module: "regular_customers", ...info });
+    if (!decision.allowed) {
+      await writeDb(db);
+      redirect(`/leads?error=${encodeURIComponent(decision.message)}`);
+    }
+  }
 
   const customer = await upsertRegularCustomer(order!, order!.agent_id);
   const now = new Date().toISOString();

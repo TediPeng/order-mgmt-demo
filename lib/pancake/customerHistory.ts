@@ -248,3 +248,116 @@ export async function latestPancakeOrder(account: PancakeAccount, phone: string)
     error: null,
   };
 }
+
+/**
+ * The evidence a REG CX tagging decision rests on, read from Pancake.
+ *
+ * Three questions, one pass: how many of this number's parcels were delivered,
+ * which Order Sources handled them, and which care staff. The tagging rule
+ * needs all three and must not ask Pancake three times for them.
+ *
+ * Only DELIVERED counts. Returned, cancelled, refused, still-moving and
+ * everything else are excluded deliberately — a customer who ordered five times
+ * and kept nothing is the opposite of a regular customer, and counting attempts
+ * would make them one.
+ *
+ * The attribution sets carry what Pancake actually stores on an order row,
+ * confirmed against 995 live payloads: `order_sources_name` is the agent's Call
+ * Name as Pancake knows it, and `assigning_care` is the care staff, matched by
+ * email because that is what ROMA sends when it creates the order.
+ */
+export interface RegCxEvidence {
+  /** Delivered parcels only. */
+  deliveredCount: number;
+  /** Every order of theirs Pancake holds, at any status — context for a refusal. */
+  totalOrders: number;
+  /** Lowercased, trimmed Order Source names off the delivered orders. */
+  sourceNames: string[];
+  /** Lowercased care-staff emails off the delivered orders. */
+  careEmails: string[];
+  /** Pancake's own care-staff ids, for a match that does not depend on email. */
+  careIds: string[];
+  error: string | null;
+}
+
+const NO_EVIDENCE: RegCxEvidence = {
+  deliveredCount: 0,
+  totalOrders: 0,
+  sourceNames: [],
+  careEmails: [],
+  careIds: [],
+  error: null,
+};
+
+export async function pancakeRegCxEvidence(account: PancakeAccount, phone: string): Promise<RegCxEvidence> {
+  const target = normalizePhone(phone || "");
+  if (!target) return NO_EVIDENCE;
+
+  const mode = mockMode();
+  if (mode === "fail") return { ...NO_EVIDENCE, error: "MOCK_MODE=fail: simulated Pancake API failure" };
+  if (mode === "success") {
+    // Three delivered under one source and one carer, so the happy path can be
+    // walked end to end outside production.
+    return {
+      deliveredCount: 3,
+      totalOrders: 5,
+      sourceNames: ["jade"],
+      careEmails: ["hmaureenjade@gmail.com"],
+      careIds: ["d105fb39-b13c-460d-a4d9-ba273b8c9a1e"],
+      error: null,
+    };
+  }
+
+  const to = Math.floor(Date.now() / 1000) + 60;
+  const from = to - WINDOW_DAYS * 24 * 60 * 60;
+  const statusMap = await listStatusMap();
+
+  let deliveredCount = 0;
+  let totalOrders = 0;
+  const sourceNames = new Set<string>();
+  const careEmails = new Set<string>();
+  const careIds = new Set<string>();
+
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const path =
+      `${resolvePath(CREATE_ORDER_PATH, account)}?search=${encodeURIComponent(phone)}` +
+      `&startDateTime=${from}&endDateTime=${to}&page_size=${PAGE_SIZE}&page_number=${page}`;
+
+    const res = await pancakeFetch(account, path, { method: "GET" });
+    if (!res.ok) {
+      return { ...NO_EVIDENCE, error: res.error || "Could not read this customer's history from Pancake POS." };
+    }
+
+    const body = (res.body || {}) as Record<string, unknown>;
+    const rows = Array.isArray(body.data) ? (body.data as Record<string, unknown>[]) : [];
+    if (rows.length === 0) break;
+
+    for (const row of rows) {
+      // The search is fuzzy — a name containing the digits must not earn
+      // somebody else's customer a REG CX tag.
+      if (normalizePhone(String(row.bill_phone_number ?? "")) !== target) continue;
+      totalOrders += 1;
+      if (mapStatus(String(row.status ?? ""), statusMap) !== "delivered") continue;
+
+      deliveredCount += 1;
+      const source = String(row.order_sources_name ?? "").trim().toLowerCase();
+      if (source) sourceNames.add(source);
+      const care = (row.assigning_care ?? null) as Record<string, unknown> | null;
+      const email = String(care?.email ?? "").trim().toLowerCase();
+      if (email) careEmails.add(email);
+      const careId = String(row.assigning_care_id ?? "").trim();
+      if (careId) careIds.add(careId);
+    }
+
+    if (rows.length < PAGE_SIZE) break;
+  }
+
+  return {
+    deliveredCount,
+    totalOrders,
+    sourceNames: [...sourceNames],
+    careEmails: [...careEmails],
+    careIds: [...careIds],
+    error: null,
+  };
+}
