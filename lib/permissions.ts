@@ -41,7 +41,15 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
 export const MODULE_ACTIONS: Record<ModuleKey, ActionKey[]> = {
   dashboard: ["view"],
   orders: ["view", "create", "edit", "delete", "upload", "export"],
-  products: ["view", "create", "edit", "delete"],
+  // "upload" is its own grant, not part of "create".
+  //
+  // The spreadsheet import used to ride on products.create, which made the two
+  // impossible to separate: granting a Team Lead the right to import a supplier
+  // catalogue also granted them the right to add products by hand, and — because
+  // the importer can overwrite by SKU — to rewrite the price of anything already
+  // in it. Splitting the action means "may import a catalogue" can be answered
+  // on its own, which is the question anybody actually asks.
+  products: ["view", "create", "edit", "delete", "upload"],
   call_logs: ["view", "upload", "download", "delete", "export"],
   performance: ["view", "export"],
   ranking: ["view", "export"],
@@ -89,6 +97,10 @@ const TEAM_LEAD_DEFAULTS: Grant[] = [
   ["products", "create"],
   ["products", "edit"],
   ["products", "delete"],
+  // Importing the catalogue is Team Lead work — they are the ones handed the
+  // supplier's file. Whether that import may overwrite existing products is a
+  // separate question, answered by products.edit at the moment of upload.
+  ["products", "upload"],
   ["call_logs", "view"],
   ["call_logs", "upload"],
   ["call_logs", "download"],

@@ -44,6 +44,7 @@ export default async function ProductsPage({
     );
   }
   const canCreate = can(user.role, "products", "create", db.role_permissions);
+  const canUpload = can(user.role, "products", "upload", db.role_permissions);
   const canEdit = can(user.role, "products", "edit", db.role_permissions);
   const canDelete = can(user.role, "products", "delete", db.role_permissions);
 
@@ -85,7 +86,7 @@ export default async function ProductsPage({
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-page-title text-slate-900">Products</h1>
         <div className="flex flex-wrap gap-2">
-          {canCreate && (
+          {canUpload && (
             <LinkButton href="/products/upload" variant="outline">
               Upload Product List
             </LinkButton>

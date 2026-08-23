@@ -31,7 +31,7 @@ const OUTCOME_LABEL: Record<string, string> = {
  * confirm, because the server re-parses and re-validates from the bytes rather
  * than trusting rows posted back from the browser.
  */
-export function ProductUploadClient() {
+export function ProductUploadClient({ canUpdateExisting = true }: { canUpdateExisting?: boolean }) {
   const [file, setFile] = useState<File | null>(null);
   const [updateExisting, setUpdateExisting] = useState(false);
   const [preview, setPreview] = useState<PreviewState | null>(null);
@@ -91,23 +91,33 @@ export function ProductUploadClient() {
               </p>
             </div>
 
-            <label className="flex items-start gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={updateExisting}
-                onChange={(e) => {
-                  setUpdateExisting(e.target.checked);
-                  setPreview(null);
-                }}
-                className="mt-0.5 h-4 w-4 rounded border-slate-300"
-              />
-              <span>
-                Update Existing Products
-                <span className="block text-xs text-slate-400">
-                  Rows whose SKU already exists overwrite that product instead of being skipped.
+            {/* Overwriting is an edit. A role allowed to import a catalogue
+                but not to edit products keeps the create half, and is told so
+                rather than left with a checkbox the server would ignore. */}
+            {canUpdateExisting ? (
+              <label className="flex items-start gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={updateExisting}
+                  onChange={(e) => {
+                    setUpdateExisting(e.target.checked);
+                    setPreview(null);
+                  }}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                />
+                <span>
+                  Update Existing Products
+                  <span className="block text-xs text-slate-400">
+                    Rows whose SKU already exists overwrite that product instead of being skipped.
+                  </span>
                 </span>
-              </span>
-            </label>
+              </label>
+            ) : (
+              <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                New products only. Rows whose SKU already exists are skipped — changing an existing product needs the
+                Products · Edit permission.
+              </p>
+            )}
 
             <div className="flex flex-wrap gap-2">
               <Button type="submit" disabled={busy || !file}>

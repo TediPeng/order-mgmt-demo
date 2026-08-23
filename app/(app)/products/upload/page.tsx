@@ -13,7 +13,7 @@ export default async function ProductUploadPage({
   const user = (await getCurrentUser())!;
   const db = await readDbLite();
 
-  if (!can(user.role, "products", "create", db.role_permissions)) {
+  if (!can(user.role, "products", "upload", db.role_permissions)) {
     return <Alert kind="error">You do not have permission to upload products.</Alert>;
   }
 
@@ -26,7 +26,7 @@ export default async function ProductUploadPage({
         </p>
       </div>
       {error && <Alert kind="error">{error}</Alert>}
-      <ProductUploadClient />
+      <ProductUploadClient canUpdateExisting={can(user.role, "products", "edit", db.role_permissions)} />
     </div>
   );
 }

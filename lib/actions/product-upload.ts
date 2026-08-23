@@ -6,6 +6,7 @@ import { writeDb, uuid, nowIso } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { can } from "@/lib/permissions";
 import { requireUserLite, requirePermission } from "./guards";
 import { MAX_PRODUCT_UPLOAD_BYTES } from "@/lib/validation";
 import {
@@ -56,7 +57,7 @@ export async function previewProductUploadAction(_prev: unknown, formData: FormD
   { ok: true; preview: PreviewState } | { ok: false; error: string }
 > {
   const { user, db } = await requireUserLite();
-  requirePermission(user, "products", "create", db, "/products");
+  requirePermission(user, "products", "upload", db, "/products");
 
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
@@ -68,7 +69,12 @@ export async function previewProductUploadAction(_prev: unknown, formData: FormD
     return { ok: false, error: `That file is ${(file.size / 1024 / 1024).toFixed(1)} MB. The limit is 10 MB.` };
   }
 
-  const updateExisting = formData.get("update_existing") === "on";
+  // Overwriting an existing product is an edit, and it does not stop being
+  // one because it arrived in a spreadsheet. A role that may import a
+  // catalogue but not edit products gets the create half and no more — asked
+  // here rather than trusted from the form, which the browser controls.
+  const updateExisting =
+    formData.get("update_existing") === "on" && can(user.role, "products", "edit", db.role_permissions);
   let preview;
   try {
     preview = buildProductUploadPreview(
@@ -97,10 +103,13 @@ export async function previewProductUploadAction(_prev: unknown, formData: FormD
  */
 export async function commitProductUploadAction(formData: FormData) {
   const { user, db } = await requireUserLite();
-  requirePermission(user, "products", "create", db, "/products");
+  requirePermission(user, "products", "upload", db, "/products");
 
   const { file, buffer, extension } = await readUpload(formData);
-  const updateExisting = formData.get("update_existing") === "on";
+  // Re-asked here, not carried over from the preview: the preview is posted
+  // back through the browser, and a hidden field is not a permission.
+  const updateExisting =
+    formData.get("update_existing") === "on" && can(user.role, "products", "edit", db.role_permissions);
 
   const preview = buildProductUploadPreview(
     buffer,
