@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Trash2 } from "lucide-react";
+import { Trash2, Undo2 } from "lucide-react";
 import { redirect } from "next/navigation";
 import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
@@ -10,7 +10,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { reviewDuplicateAction } from "@/lib/actions/regular-customers";
+import { reviewDuplicateAction, untagRegularCustomerAction } from "@/lib/actions/regular-customers";
 
 const MATCH_LABELS: Record<string, string> = {
   phone: "Same phone number",
@@ -145,14 +145,35 @@ export default async function DuplicatesPage({
                           Administrator only, matching the button on the
                           customer page: deciding a duplicate is a Team Lead
                           action, deleting a record is not. */}
-                      {isFullAccess(user.role) && (
-                        <Link
-                          href={`/regular-customers/${c.id}/delete`}
-                          className="mt-2 inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
-                        >
-                          <Trash2 className="h-3 w-3" aria-hidden /> Delete this one
-                        </Link>
-                      )}
+                      {/* Two ways to settle a duplicate, and the gentler one
+                          comes first because it is nearly always the right one.
+                          Returning the record to Leads takes the claim off this
+                          agent without destroying anything: the customer, their
+                          calls and any share survive, and the number is free
+                          for whoever should have it. Deleting cascades the call
+                          sessions away, which is rarely what a duplicate
+                          deserves. */}
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {canDecide && (
+                          <form action={untagRegularCustomerAction.bind(null, c.id)}>
+                            <button
+                              type="submit"
+                              className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                              title={`Takes ${c.full_name} off this agent and back into Leads. Nothing is deleted.`}
+                            >
+                              <Undo2 className="h-3 w-3" aria-hidden /> Remove from this agent
+                            </button>
+                          </form>
+                        )}
+                        {isFullAccess(user.role) && (
+                          <Link
+                            href={`/regular-customers/${c.id}/delete`}
+                            className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-3 w-3" aria-hidden /> Delete this one
+                          </Link>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -199,13 +220,28 @@ export default async function DuplicatesPage({
                   {/* Same offer on this half of the page. `c` can be null here —
                       a recorded match outlives the record it names — and there
                       is nothing to delete when it is. */}
-                  {isFullAccess(user.role) && c && (
-                    <Link
-                      href={`/regular-customers/${c.id}/delete`}
-                      className="mt-2 inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
-                    >
-                      <Trash2 className="h-3 w-3" aria-hidden /> Delete this one
-                    </Link>
+                  {c && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {canDecide && (
+                        <form action={untagRegularCustomerAction.bind(null, c.id)}>
+                          <button
+                            type="submit"
+                            className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                            title={`Takes ${c.full_name} off this agent and back into Leads. Nothing is deleted.`}
+                          >
+                            <Undo2 className="h-3 w-3" aria-hidden /> Remove from this agent
+                          </button>
+                        </form>
+                      )}
+                      {isFullAccess(user.role) && (
+                        <Link
+                          href={`/regular-customers/${c.id}/delete`}
+                          className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-3 w-3" aria-hidden /> Delete this one
+                        </Link>
+                      )}
+                    </div>
                   )}
                 </div>
               ))}
