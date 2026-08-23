@@ -10,7 +10,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { reviewDuplicateAction, untagRegularCustomerAction } from "@/lib/actions/regular-customers";
+import { reviewDuplicateAction, untagRegularCustomerAction, untagRegularCustomersAction } from "@/lib/actions/regular-customers";
 
 const MATCH_LABELS: Record<string, string> = {
   phone: "Same phone number",
@@ -33,7 +33,7 @@ const CONFIDENCE_STYLES: Record<string, string> = {
 export default async function DuplicatesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ reviewed?: string; error?: string }>;
+  searchParams: Promise<{ reviewed?: string; error?: string; cleared?: string }>;
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
@@ -79,6 +79,12 @@ export default async function DuplicatesPage({
       </div>
 
       {sp.reviewed && <Alert kind="success">Decision recorded.</Alert>}
+      {sp.cleared && (
+        <Alert kind="success">
+          {sp.cleared} record{sp.cleared === "1" ? "" : "s"} returned to Leads. Nothing was deleted — the customers,
+          their calls and any shares are intact.
+        </Alert>
+      )}
       {sp.error && <Alert kind="error">{sp.error}</Alert>}
 
       <Alert kind="info">
@@ -110,7 +116,24 @@ export default async function DuplicatesPage({
                 <CardTitle>
                   {group.match_type === "phone" ? "Same phone number" : "Same name and address"}
                 </CardTitle>
-                <Badge className="bg-amber-100 text-amber-800">{group.group_size} customers</Badge>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge className="bg-amber-100 text-amber-800">{group.group_size} customers</Badge>
+                  {/* When the whole group is an accident — one number uploaded
+                      twice, or a digit dropped — neither agent should keep the
+                      claim, and clearing them one at a time invites doing half
+                      the job and leaving the rest looking settled. */}
+                  {canDecide && group.customers.length > 1 && (
+                    <form action={untagRegularCustomersAction.bind(null, group.customers.map((c) => c.id))}>
+                      <button
+                        type="submit"
+                        className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                        title="Returns every record in this group to Leads. Nothing is deleted."
+                      >
+                        <Undo2 className="h-3 w-3" aria-hidden /> Remove from all {group.customers.length} agents
+                      </button>
+                    </form>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -246,7 +269,20 @@ export default async function DuplicatesPage({
                 </div>
               ))}
             </div>
-            <p className="text-xs text-slate-400">Detected {formatDateTime(m.created_at)}</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-slate-400">Detected {formatDateTime(m.created_at)}</p>
+              {canDecide && m.customer && m.matched && (
+                <form action={untagRegularCustomersAction.bind(null, [m.customer.id, m.matched.id])}>
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    title="Returns both records to Leads. Nothing is deleted."
+                  >
+                    <Undo2 className="h-3 w-3" aria-hidden /> Remove from both agents
+                  </button>
+                </form>
+              )}
+            </div>
 
             {canDecide && (
               <div className="flex flex-wrap gap-2">

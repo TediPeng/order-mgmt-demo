@@ -955,3 +955,58 @@ export async function regCxAuditBatchAction(customerIds: string[]): Promise<RegC
   await writeDb(db);
   return rows;
 }
+
+/**
+ * Returns several regular-customer records to Leads at once.
+ *
+ * The duplicates page groups two or more records of one person, and quite often
+ * neither agent should keep the claim — the number was uploaded twice, or typed
+ * with a digit missing, and both copies are accidents. Clearing them one button
+ * at a time invites doing half the job and leaving the other half looking
+ * settled.
+ *
+ * Same act as untagRegularCustomerAction, repeated: nothing is deleted, the
+ * calls and shares survive, and each record is audited on its own so the trail
+ * reads the same whether one was cleared or five.
+ */
+export async function untagRegularCustomersAction(customerIds: string[]) {
+  const { user, db } = await requireUserLite();
+  if (!can(user.role, "regular_customers", "manage", db.role_permissions)) {
+    redirect(`${PATH}/duplicates?error=${encodeURIComponent("You do not have permission to do that.")}`);
+  }
+
+  const ids = customerIds.filter(Boolean).slice(0, 50);
+  if (ids.length === 0) redirect(`${PATH}/duplicates`);
+
+  const { data: rows } = await supabaseAdmin
+    .from("customers")
+    .select("*")
+    .in("id", ids)
+    .eq("is_regular_customer", true);
+
+  const info = await getRequestInfo();
+  let cleared = 0;
+
+  for (const c of rows || []) {
+    await supabaseAdmin
+      .from("customers")
+      .update({ is_regular_customer: false, updated_at: new Date().toISOString() })
+      .eq("id", c.id);
+
+    for (const o of adoptOrders(db, await orderRowsForCustomer(String(c.id)))) {
+      o.is_regular_customer = false;
+      o.regular_customer_since = null;
+      markOrderDirty(db, o.id);
+    }
+
+    logActivity(db, user.id, "REGULAR_CUSTOMER_UNTAGGED", "customer", String(c.id), {
+      customer_name: c.full_name,
+      reason: "Cleared from every agent holding it, from the duplicate review page.",
+      cleared_together: ids.length,
+    }, { module: "regular_customers", ...info });
+    cleared++;
+  }
+
+  await writeDb(db);
+  redirect(`${PATH}/duplicates?cleared=${cleared}`);
+}
