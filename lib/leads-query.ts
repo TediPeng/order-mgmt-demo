@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { isFullAccess } from "@/lib/permissions";
 import { normalizePhone } from "@/lib/utils";
 import { statusesMatching } from "@/lib/validation";
+import { MAX_SEARCH_TERMS } from "@/lib/leads-query-terms";
 import type { DbShape, Order, Profile } from "@/lib/types";
 
 /**
@@ -79,6 +80,26 @@ function safeTerm(value: string): string {
   return value.replace(/[(),*]/g, " ").trim();
 }
 
+
+/**
+ * The search box, split into the separate things being looked for.
+ *
+ * Split on commas, semicolons and line breaks — never on spaces. A column
+ * copied out of Excel arrives one item per line and a hand-typed list arrives
+ * comma-separated, so both have to work. But "Jesslyn Del Castillo" is one
+ * customer, not three terms: splitting on spaces would turn a name into an OR
+ * matching every Del and every Castillo in the table, and the search would get
+ * less useful the more precisely you typed.
+ */
+export function searchTerms(value: string | undefined | null): string[] {
+  const parts = (value || "")
+    .split(/[,;\r\n]+/)
+    .map((t) => safeTerm(t))
+    .filter(Boolean);
+  // Deduplicated: pasting the same id twice must not double the conditions.
+  return Array.from(new Set(parts)).slice(0, MAX_SEARCH_TERMS);
+}
+
 function applyScope<T extends { in: (col: string, values: string[]) => T }>(query: T, scope: AgentScope): T {
   return scope ? query.in("agent_id", scope) : query;
 }
@@ -121,38 +142,43 @@ export async function queryLeads(input: {
   if (isAgentView) {
     // The agent's single box: their own leads, by any reference they might
     // have written down.
-    const term = safeTerm(filters.q || filters.phone || "");
-    if (term) {
-      const digits = normalizePhone(term);
-      const conditions = [
-        `order_number.ilike.*${term}*`,
-        `pancake_order_id.ilike.*${term}*`,
-        `customer_name.ilike.*${term}*`,
-        `tracking_number.ilike.*${term}*`,
-      ];
-      if (digits) conditions.push(`customer_phone.ilike.*${digits}*`);
-      // …and by what the lead IS: typing "delivered" finds the delivered ones.
-      for (const s of statusesMatching(term)) conditions.push(`status.eq.${s}`);
-      query = query.or(conditions.join(","));
+    const terms = searchTerms(filters.q || filters.phone || "");
+    if (terms.length) {
+      // One OR across every term and every column, so a pasted list of order
+      // ids comes back together instead of one lookup at a time. A Set because
+      // the status conditions repeat across terms and the URL has a length.
+      const conditions = new Set<string>();
+      for (const term of terms) {
+        conditions.add(`order_number.ilike.*${term}*`);
+        conditions.add(`pancake_order_id.ilike.*${term}*`);
+        conditions.add(`customer_name.ilike.*${term}*`);
+        conditions.add(`tracking_number.ilike.*${term}*`);
+        const digits = normalizePhone(term);
+        if (digits) conditions.add(`customer_phone.ilike.*${digits}*`);
+        // …and by what the lead IS: typing "delivered" finds the delivered ones.
+        for (const s of statusesMatching(term)) conditions.add(`status.eq.${s}`);
+      }
+      query = query.or(Array.from(conditions).join(","));
     }
   } else {
-    if (filters.q) {
-      const term = safeTerm(filters.q);
-      const conditions = [
-        `order_number.ilike.*${term}*`,
-        `pancake_order_id.ilike.*${term}*`,
-        `customer_name.ilike.*${term}*`,
-        `customer_phone.ilike.*${term}*`,
-      ];
-      // Management's box also matches an agent's username, which lives on
-      // another table — resolved to ids by the caller, since a join here would
-      // cost more than the handful of profiles it looks at.
-      // …and by status name, so "returned" narrows the list without
-      // reaching for a second control.
-      for (const s of statusesMatching(term)) conditions.push(`status.eq.${s}`);
-      const agentIds = input.usernameToIds.get(term.toLowerCase()) || [];
-      for (const id of agentIds) conditions.push(`agent_id.eq.${id}`);
-      query = query.or(conditions.join(","));
+    const terms = searchTerms(filters.q);
+    if (terms.length) {
+      const conditions = new Set<string>();
+      for (const term of terms) {
+        conditions.add(`order_number.ilike.*${term}*`);
+        conditions.add(`pancake_order_id.ilike.*${term}*`);
+        conditions.add(`customer_name.ilike.*${term}*`);
+        conditions.add(`customer_phone.ilike.*${term}*`);
+        // Management's box also matches an agent's username, which lives on
+        // another table — resolved to ids by the caller, since a join here
+        // would cost more than the handful of profiles it looks at.
+        // …and by status name, so "returned" narrows the list without
+        // reaching for a second control.
+        for (const s of statusesMatching(term)) conditions.add(`status.eq.${s}`);
+        const agentIds = input.usernameToIds.get(term.toLowerCase()) || [];
+        for (const id of agentIds) conditions.add(`agent_id.eq.${id}`);
+      }
+      query = query.or(Array.from(conditions).join(","));
     }
     if (filters.order_number) {
       const term = safeTerm(filters.order_number);

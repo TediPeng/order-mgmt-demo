@@ -14,6 +14,7 @@ import { Button, LinkButton } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
 import { LeadsTable } from "@/components/LeadsTable";
+import { LeadSearchBox } from "@/components/LeadSearchBox";
 import { AgentLeadsTable } from "@/components/AgentLeadsTable";
 import { LeadStatusCards, QUICK_FILTER_STATUSES } from "@/components/LeadStatusCards";
 
@@ -159,6 +160,7 @@ export default async function LeadsPage({
   }
 
   const canEdit = can(user.role, "orders", "edit", db.role_permissions);
+  const canDelete = can(user.role, "orders", "delete", db.role_permissions);
   const canManageIntegrations = can(user.role, "integrations", "manage", db.role_permissions);
   // Call Name, not username: ROMA_jamie is how the account signs in, JAMIE is
   // how the floor and the call-log files name the same person. displayCallName
@@ -366,17 +368,19 @@ export default async function LeadsPage({
 
           The date ranges have no replacement here. They are a reporting
           question, and Reports is where a date range belongs. */}
-      <form className="sticky top-0 z-30 mb-4 flex gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <form className="sticky top-0 z-30 mb-4 flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <input type="hidden" name="status" value={sp.status || ""} />
+        {/* The box takes a list as well as a term now — paste a column of
+            order ids out of a spreadsheet and every one of them comes back in
+            a single list. See LeadSearchBox for why an <input> alone cannot. */}
         <div className="flex-1">
-          <Input
-            name="q"
+          <LeadSearchBox
+            defaultValue={sp.q || sp.phone}
             placeholder={
               isAgent
                 ? "Search order ID, customer, phone, tracking number, or status"
                 : "Search order ID, customer, phone, agent username, or status"
             }
-            defaultValue={sp.q || sp.phone}
           />
         </div>
         {/* Previous order date. The range has been filtered on since the query
@@ -478,6 +482,7 @@ export default async function LeadsPage({
         activeProducts={activeProducts}
         linesByOrder={linesByOrder}
         canEdit={canEdit}
+        canDelete={canDelete}
         canManageIntegrations={canManageIntegrations}
         canSetFulfillmentStatus={isFullAccess(user.role)}
         duplicateWarningsByOrderId={duplicateWarningsByOrderId}

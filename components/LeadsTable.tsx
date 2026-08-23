@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { Alert } from "@/components/ui/Alert";
+import { deleteLeadsAction, type BulkDeleteSkip } from "@/lib/actions/lead-bulk";
 import { SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { OrderDetailsModal } from "@/components/OrderDetailsModal";
 import { TrackingCell } from "@/components/TrackingCell";
@@ -23,6 +27,7 @@ export function LeadsTable({
   activeProducts,
   linesByOrder,
   canEdit,
+  canDelete = false,
   canManageIntegrations = false,
   canSetFulfillmentStatus = false,
   duplicateWarningsByOrderId = {},
@@ -52,6 +57,10 @@ export function LeadsTable({
    * modal opens on the order as it stands rather than a blank row. */
   linesByOrder: Record<string, EditorLine[]>;
   canEdit: boolean;
+  /** Ticking rows and clearing them out is offered only where the role may
+   * actually delete — a checkbox that leads to "not permitted" is worse than
+   * no checkbox. */
+  canDelete?: boolean;
   canManageIntegrations?: boolean;
   canSetFulfillmentStatus?: boolean;
   duplicateWarningsByOrderId?: Record<string, DuplicateWarning[]>;
@@ -74,8 +83,30 @@ export function LeadsTable({
    */
   const [openOrder, setOpenOrder] = useState<Order | null>(null);
 
+  /**
+   * The ticked rows, by id, for the page on screen.
+   *
+   * Deliberately not carried across pages. Selection that survives paging
+   * means pressing Delete on rows that are not in front of you — and the one
+   * thing a bulk delete must never be is a surprise. Twenty-five at a time,
+   * all of them visible, is the whole safety property.
+   */
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [result, setResult] = useState<{ deleted: number; skipped: BulkDeleteSkip[]; error?: string } | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, startDelete] = useTransition();
+
   useEffect(() => {
     setOrders(initialOrders);
+    // Ids that are no longer on screen are dropped rather than kept: after a
+    // page change or a refresh, a tick nobody can see must not still count.
+    setSelected((prev) => {
+      if (prev.size === 0) return prev;
+      const live = new Set(initialOrders.map((o) => o.id));
+      const next = new Set(Array.from(prev).filter((id) => live.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+    setConfirming(false);
   }, [initialOrders]);
 
   useEffect(() => {
@@ -120,6 +151,49 @@ export function LeadsTable({
     router.refresh();
   }
 
+  /** Only rows that could actually be deleted are offered a checkbox. The
+   * server decides this again at the moment of deletion — this is here so the
+   * refusal is visible before the click, not after it. */
+  const blockedReason = (o: Order): string | null => {
+    if (o.pancake_order_id || o.forwarded_to_pancake_at) return "Sent to Pancake POS";
+    if (o.order_date) return "Reached Packaging (counts as a sale)";
+    if (o.status !== "new" && o.status !== "ringing") return `Status is ${o.status.replace(/_/g, " ")}`;
+    return null;
+  };
+
+  const selectableIds = useMemo(
+    () => orders.filter((o) => !blockedReason(o)).map((o) => o.id),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [orders]
+  );
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selected.has(id));
+
+  function toggleRow(id: string) {
+    setConfirming(false);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setConfirming(false);
+    setSelected((prev) => (selectableIds.every((id) => prev.has(id)) ? new Set() : new Set(selectableIds)));
+  }
+
+  function runDelete() {
+    const ids = Array.from(selected);
+    startDelete(async () => {
+      const outcome = await deleteLeadsAction(ids);
+      setResult(outcome);
+      setSelected(new Set());
+      setConfirming(false);
+      router.refresh();
+    });
+  }
+
   // Matches the agent table: one line per row, truncation over wrapping. A
   // supervisor reads down a column here, and a row that grows to three lines
   // because one landmark wrapped costs more than the truncation does.
@@ -127,6 +201,86 @@ export function LeadsTable({
 
   return (
     <>
+      {/* What happened, kept until it is read rather than flashed. A delete
+          that refused eight of twenty-five rows has something to say, and the
+          reasons are the whole point of saying it. */}
+      {result && (
+        <Alert
+          kind={result.error ? "error" : result.skipped.length > 0 ? "warning" : "success"}
+          className="mb-3"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              {result.error ? (
+                result.error
+              ) : (
+                <>
+                  <span className="font-medium">
+                    {result.deleted} lead{result.deleted === 1 ? "" : "s"} deleted.
+                  </span>
+                  {result.skipped.length > 0 && (
+                    <>
+                      {" "}
+                      {result.skipped.length} kept:
+                      <ul className="mt-1 space-y-0.5">
+                        {result.skipped.map((sk) => (
+                          <li key={sk.order_number} className="text-xs">
+                            <span className="font-medium">{sk.order_number}</span> — {sk.reason}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setResult(null)}
+              className="shrink-0 text-xs font-medium underline"
+            >
+              Dismiss
+            </button>
+          </div>
+        </Alert>
+      )}
+
+      {/* Appears only once something is ticked, so the ordinary list is not
+          carrying a row of controls nobody asked for. */}
+      {canDelete && selected.size > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2">
+          <span className="text-sm font-medium text-slate-700">
+            {selected.size} selected
+          </span>
+          {confirming ? (
+            <>
+              <span className="text-sm text-red-700">
+                Delete {selected.size} lead{selected.size === 1 ? "" : "s"} permanently? This cannot be undone.
+              </span>
+              <Button type="button" variant="danger" size="sm" onClick={runDelete} disabled={deleting}>
+                {deleting ? "Deleting…" : "Yes, delete"}
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => setConfirming(false)} disabled={deleting}>
+                Cancel
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button type="button" variant="danger" size="sm" onClick={() => setConfirming(true)}>
+                <Trash2 className="h-3.5 w-3.5" /> Delete selected
+              </Button>
+              <button
+                type="button"
+                onClick={() => setSelected(new Set())}
+                className="text-sm font-medium text-slate-500 hover:underline"
+              >
+                Clear
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Capped height, so the table scrolls inside its own box rather than
           making the page longer. That is what keeps the sideways scrollbar
           reachable: it sits at the bottom edge of what you can see instead of
@@ -142,7 +296,32 @@ export function LeadsTable({
             <tr>
               {/* Above the body's own sticky column (z-10), so the two do not
                   cross at the corner where both are pinned. */}
-              <th ref={idHeader} className="sticky left-0 z-30 whitespace-nowrap border-r border-slate-200 bg-slate-50 px-2.5 py-2">Order ID</th>
+              {/* The checkbox rides inside the Order ID column rather than
+                  claiming one of its own. A new leftmost column would have to
+                  become the frozen one, and PREV Status is pinned against the
+                  measured width of whatever sits at left-0 — see
+                  useFrozenOffset. Adding a column there is how the id and the
+                  status end up printed on top of each other. */}
+              <th ref={idHeader} className="sticky left-0 z-30 whitespace-nowrap border-r border-slate-200 bg-slate-50 px-2.5 py-2">
+                <span className="flex items-center gap-2">
+                  {canDelete && (
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleAll}
+                      disabled={selectableIds.length === 0}
+                      title={
+                        selectableIds.length === 0
+                          ? "No lead on this page can be deleted"
+                          : `Select the ${selectableIds.length} deletable lead${selectableIds.length === 1 ? "" : "s"} on this page`
+                      }
+                      aria-label="Select every deletable lead on this page"
+                      className="h-3.5 w-3.5 cursor-pointer accent-[var(--brand-primary)] disabled:cursor-not-allowed disabled:opacity-40"
+                    />
+                  )}
+                  Order ID
+                </span>
+              </th>
               {/* Same order as the agents' table and as TEST TEMPLATE ROMA, so
                   a supervisor comparing the two screens — or either against the
                   spreadsheet — is reading one layout. */}
@@ -176,6 +355,27 @@ export function LeadsTable({
               return (
                 <tr key={o.id} className={cn(style.row, style.rowHover)}>
                   <td className={cn("sticky left-0 z-20 whitespace-nowrap border-r border-slate-100 px-2.5 py-1.5", style.row)}>
+                    <span className="flex items-center gap-2">
+                    {canDelete &&
+                      (blockedReason(o) ? (
+                        // Shown disabled rather than left blank: an empty space
+                        // where every other row has a box reads as a rendering
+                        // fault. The tooltip says which rule is holding it.
+                        <input
+                          type="checkbox"
+                          disabled
+                          title={`${o.order_number} cannot be deleted — ${blockedReason(o)}`}
+                          className="h-3.5 w-3.5 cursor-not-allowed opacity-30"
+                        />
+                      ) : (
+                        <input
+                          type="checkbox"
+                          checked={selected.has(o.id)}
+                          onChange={() => toggleRow(o.id)}
+                          aria-label={`Select ${o.order_number}`}
+                          className="h-3.5 w-3.5 cursor-pointer accent-[var(--brand-primary)]"
+                        />
+                      ))}
                     <button
                       type="button"
                       onClick={() => setOpenOrder(o)}
@@ -200,6 +400,7 @@ export function LeadsTable({
                         <span className="ml-1 text-amber-500" aria-label="Not yet forwarded to Pancake POS">•</span>
                       )}
                     </button>
+                    </span>
                   </td>
                   {/* Text, not a badge: the column can hold a status an import
                       named that this system does not have, and a second badge
