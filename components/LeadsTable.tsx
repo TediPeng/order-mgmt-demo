@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
-import { deleteLeadsAction, type BulkDeleteSkip } from "@/lib/actions/lead-bulk";
+import { deleteLeadsAction, type BulkDeleteResult } from "@/lib/actions/lead-bulk";
 import { SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { OrderDetailsModal } from "@/components/OrderDetailsModal";
 import { TrackingCell } from "@/components/TrackingCell";
@@ -92,7 +92,7 @@ export function LeadsTable({
    * all of them visible, is the whole safety property.
    */
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [result, setResult] = useState<{ deleted: number; skipped: BulkDeleteSkip[]; error?: string } | null>(null);
+  const [result, setResult] = useState<BulkDeleteResult | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [deleting, startDelete] = useTransition();
 
@@ -218,6 +218,22 @@ export function LeadsTable({
                   <span className="font-medium">
                     {result.deleted} lead{result.deleted === 1 ? "" : "s"} deleted.
                   </span>
+                  {/* Said out loud, because nobody ticking a lead is thinking
+                      about its call history — and call time is what the
+                      performance figures are built from. */}
+                  {(result.itemsRemoved > 0 || result.sessionsRemoved > 0) && (
+                    <span className="block text-xs">
+                      {[
+                        result.itemsRemoved > 0 &&
+                          `${result.itemsRemoved} order line${result.itemsRemoved === 1 ? "" : "s"}`,
+                        result.sessionsRemoved > 0 &&
+                          `${result.sessionsRemoved} call record${result.sessionsRemoved === 1 ? "" : "s"}`,
+                      ]
+                        .filter(Boolean)
+                        .join(" and ")}{" "}
+                      went with {result.deleted === 1 ? "it" : "them"} — all kept in the activity log.
+                    </span>
+                  )}
                   {result.skipped.length > 0 && (
                     <>
                       {" "}
