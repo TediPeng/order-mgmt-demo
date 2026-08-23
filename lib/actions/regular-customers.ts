@@ -25,7 +25,7 @@ import { allowedAssigneeIds } from "@/lib/order-access";
 import { isDialablePhone, regularCustomerFormSchema } from "@/lib/validation";
 import { validateRegCxTagging, regCxAuditDetails } from "@/lib/reg-cx-validation";
 import { describeParseFailure } from "@/lib/zod-error";
-import { requireUserLite } from "./guards";
+import { requireUserLite, requirePermission } from "./guards";
 import { displayUserName } from "@/lib/types";
 import type { Customer, DuplicateStatus, Profile } from "@/lib/types";
 
@@ -866,4 +866,92 @@ export async function shareCustomerAction(formData: FormData) {
   await writeDb(db);
 
   redirect(`${PATH}/${customerId}?shared=1`);
+}
+
+export interface RegCxAuditRow {
+  customerId: string;
+  name: string;
+  phone: string;
+  agent: string;
+  result: string;
+  deliveredCount: number;
+  totalOrders: number;
+  ordersHeld: number;
+}
+
+/**
+ * Every regular customer's id, oldest first, for the audit sweep to walk.
+ *
+ * Ids only. Two and a half thousand full records would be a payload nobody
+ * reads, and the sweep asks for each one's evidence separately anyway.
+ */
+export async function regCxAuditTargetsAction(): Promise<string[]> {
+  const { user, db } = await requireUserLite();
+  if (!isFullAccess(user.role)) return [];
+  if (!can(user.role, "regular_customers", "view", db.role_permissions)) return [];
+  const { data } = await supabaseAdmin
+    .from("customers")
+    .select("id")
+    .eq("is_regular_customer", true)
+    .order("created_at", { ascending: true });
+  return (data || []).map((r) => String(r.id));
+}
+
+/**
+ * Checks a handful of existing regular customers against the REG CX rules.
+ *
+ * Read-only, deliberately and completely. It answers "who would survive the
+ * rule" without acting on the answer — 2,678 records hold 1,231 orders and
+ * nearly half a million pesos between them, and no rule that has never once
+ * been observed to pass should be allowed to delete on its own say-so.
+ *
+ * Batched by the caller because each customer is a Pancake round trip: a sweep
+ * of the whole list in one request would pass the function time limit long
+ * before it finished, which is the same reason the lead import is batched.
+ *
+ * Each verdict lands in the audit log as well as being returned, so the result
+ * survives the page being closed and can be read back later.
+ */
+export async function regCxAuditBatchAction(customerIds: string[]): Promise<RegCxAuditRow[]> {
+  const { user, db } = await requireUserLite();
+  if (!isFullAccess(user.role)) return [];
+  requirePermission(user, "regular_customers", "view", db, PATH);
+
+  const { data } = await supabaseAdmin
+    .from("customers")
+    .select("id, full_name, phone_raw, owner_agent_id")
+    .in("id", customerIds.slice(0, 25));
+
+  const rows: RegCxAuditRow[] = [];
+  const info = await getRequestInfo();
+
+  for (const c of data || []) {
+    const ownerId = String(c.owner_agent_id ?? "");
+    const owner = db.profiles.find((p) => p.id === ownerId) || user;
+    const decision = await validateRegCxTagging(owner, String(c.phone_raw ?? ""));
+
+    const { count } = await supabaseAdmin
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .eq("customer_id", c.id);
+
+    logActivity(db, user.id, "REGULAR_CUSTOMER_AUDITED", "customer", String(c.id),
+      { ...regCxAuditDetails(decision, { id: String(c.id), name: String(c.full_name ?? ""), phone: String(c.phone_raw ?? "") }, ownerId),
+        orders_held: count ?? 0, sweep: "reg cx rule audit" },
+      { module: "regular_customers", ...info });
+
+    rows.push({
+      customerId: String(c.id),
+      name: String(c.full_name ?? ""),
+      phone: String(c.phone_raw ?? ""),
+      agent: owner ? displayUserName(owner) : "—",
+      result: decision.result,
+      deliveredCount: decision.deliveredCount,
+      totalOrders: decision.totalOrders,
+      ordersHeld: count ?? 0,
+    });
+  }
+
+  await writeDb(db);
+  return rows;
 }
