@@ -123,26 +123,6 @@ export function dayRangeUtc(from: string, to: string = from, timeZone: string = 
   return { start: startOfDayUtc(from, timeZone), endExclusive: startOfDayUtc(next, timeZone) };
 }
 
-/**
- * A number an agent can recognise but cannot dial.
- *
- * The board only knows about a call because the agent pressed Start, so a
- * number read straight off the leads list and dialled by hand is invisible to
- * it — the agent reads as Standby for the length of the conversation. The one
- * phone log we can check against showed an agent making 177 calls on a day the
- * app recorded none.
- *
- * Nothing in a browser can stop somebody dialling a number they can see, so the
- * number is what is withheld until a call is open. The last four digits stay so
- * a row is still identifiable at a glance — which is what the column is for
- * when nobody is calling.
- */
-export function maskPhone(phone: string): string {
-  const digits = (phone || "").replace(/\D/g, "");
-  if (digits.length < 4) return "•••••";
-  return `••• ••• ${digits.slice(-4)}`;
-}
-
 /** Strips everything but digits and treats a leading 0 the same as +63/63 (PH trunk prefix), so 0917... and +63917... compare equal. */
 export function normalizePhone(phone: string): string {
   const digits = phone.replace(/\D/g, "");

@@ -9,7 +9,7 @@ import { Alert } from "@/components/ui/Alert";
 import { OrderItemsEditor, type EditorLine } from "@/components/OrderItemsEditor";
 import { summarizeItems, totalsFor } from "@/lib/order-totals";
 import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
-import { formatCurrency, formatDate, formatDateTime, maskPhone } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import { LEAD_STATUS_LABELS, LEAD_STATUSES, selectableStatuses } from "@/lib/validation";
 import { isOrderLocked, SYNCED_LOCK_MESSAGE } from "@/lib/lead-workflow";
 import { useCallSession } from "@/components/CallSessionProvider";
@@ -107,7 +107,6 @@ export function OrderDetailsModal({
   activeProducts,
   initialLines,
   canEdit,
-  maskPhoneUntilCall = false,
   canManageIntegrations = false,
   canSeeFulfillment = false,
   canSetFulfillmentStatus = false,
@@ -137,9 +136,6 @@ export function OrderDetailsModal({
    * order rather than a blank row. */
   initialLines: EditorLine[];
   canEdit: boolean;
-  /** Agent screens only: hide the number until a call is open on this order.
-   * Managers correct records rather than make calls, so they are exempt. */
-  maskPhoneUntilCall?: boolean;
   canManageIntegrations?: boolean;
   /** Fulfillment/Pancake surface is hidden from agents entirely. */
   canSeeFulfillment?: boolean;
@@ -270,8 +266,6 @@ export function OrderDetailsModal({
   // without pressing it is a call the board will never see.
   // `locked` is the same exception the leads table makes: Pancake has the
   // order, CALL is not offered, so a masked number here could never be revealed.
-  const phoneHidden = maskPhoneUntilCall && callSession?.order_id !== order.id && !syncedLocked;
-
   const editing = canEdit && !locked;
 
   const isDirty = editing && JSON.stringify(form) !== JSON.stringify(initial);
@@ -605,13 +599,7 @@ export function OrderDetailsModal({
               <div>
                 <p className="text-xs uppercase text-slate-400">Phone Number</p>
                 <p className="flex flex-wrap items-center gap-2 text-slate-800">
-                  {!order.customer_phone ? "—" : phoneHidden ? (
-                    <span className="tabular-nums text-slate-400" title="Start the call to show the number">
-                      {maskPhone(order.customer_phone)}
-                    </span>
-                  ) : (
-                    <a href={`tel:${order.customer_phone}`} className="hover:underline">{order.customer_phone}</a>
-                  )}
+                  {order.customer_phone || "—"}
                   {/* Beside the number, because it is a fact about the number
                       rather than about this order — and the moment it is worth
                       knowing is before the call, not after. */}
@@ -685,14 +673,7 @@ export function OrderDetailsModal({
                     </div>
                     <div>
                       <Label htmlFor="m_customer_phone">Phone number</Label>
-                      {phoneHidden ? (
-                        <>
-                          <Input id="m_customer_phone" value={maskPhone(form.customer_phone)} readOnly disabled />
-                          <p className="mt-1 text-xs text-amber-700">Start the call to see or change this number.</p>
-                        </>
-                      ) : (
-                        <Input id="m_customer_phone" value={form.customer_phone} onChange={(e) => update("customer_phone", e.target.value)} />
-                      )}
+                      <Input id="m_customer_phone" value={form.customer_phone} onChange={(e) => update("customer_phone", e.target.value)} />
                     </div>
                   </div>
                   <div>

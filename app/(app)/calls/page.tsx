@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { scopeAgentsForUser } from "@/lib/performance";
 import { displayUserName } from "@/lib/types";
-import { todayInTz, formatDate, formatCurrency, maskPhone } from "@/lib/utils";
+import { todayInTz, formatDate, formatCurrency } from "@/lib/utils";
 import { LEAD_STATUS_LABELS } from "@/lib/validation";
 import { listCallsForDay, type CallKind } from "@/lib/call-sessions";
 import { Alert } from "@/components/ui/Alert";
@@ -71,13 +71,6 @@ export default async function CallsPage({
   const kind: CallKind | "all" = sp.from === "lead" || sp.from === "regular_customer" ? sp.from : "all";
   const orderedOnly = sp.ordered === "1";
   const filtered = kind !== "all" || orderedOnly;
-
-  // The last surface handing an agent a number without a call attached to it.
-  // This is the call LOG, so every row here is a number they have already been
-  // given once, properly, through Start — but read back off this page it dials
-  // just as well, and the board sees nothing. Supervisors keep it: they audit
-  // the day rather than work it.
-  const hidePhone = user.role === "agent";
 
   const { rows, total } = await listCallsForDay(agentIds, date, page, PAGE_SIZE, { kind, orderedOnly });
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -245,22 +238,16 @@ export default async function CallsPage({
                       {r.kind === "regular_customer" ? "Regular Customer" : "Lead"}
                     </Badge>
                   </td>
-                  {/* For a supervisor the number dials on a phone and copies on
-                      a desktop, so it is not buried in a tooltip. For the agent
-                      whose day this is, it is the last four digits: enough to
-                      recognise the row they are reading back, not enough to ring
-                      it again without opening a call the board can see. */}
+                  {/* The number itself dials on a phone and copies on a desktop —
+                      it is the thing this page exists for, so it is not buried
+                      in a tooltip. */}
                   <td className="px-2.5 py-1.5 font-medium text-slate-800">
-                    {!r.customer_phone ? (
-                      "—"
-                    ) : hidePhone ? (
-                      <span className="tabular-nums font-normal text-slate-400" title="Open the lead and press CALL to ring this customer again">
-                        {maskPhone(r.customer_phone)}
-                      </span>
-                    ) : (
+                    {r.customer_phone ? (
                       <a href={`tel:${r.customer_phone}`} className="hover:underline">
                         {r.customer_phone}
                       </a>
+                    ) : (
+                      "—"
                     )}
                   </td>
                   <td className="px-2.5 py-1.5">

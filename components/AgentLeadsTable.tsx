@@ -6,12 +6,10 @@ import { LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { OrderDetailsModal } from "@/components/OrderDetailsModal";
 import { TrackingCell } from "@/components/TrackingCell";
 import type { EditorLine } from "@/components/OrderItemsEditor";
-import { formatCurrency, formatDate, maskPhone, cn } from "@/lib/utils";
+import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { useGridKeys } from "@/components/useGridKeys";
 import { useFrozenOffset } from "@/components/useFrozenOffset";
 import { LeadCallCell, LeadStatusCell } from "@/components/LeadStatusCell";
-import { isOrderLocked } from "@/lib/lead-workflow";
-import { useCallSession } from "@/components/CallSessionProvider";
 import type { DuplicateWarning } from "@/components/DuplicateBlockDialog";
 import type { CallSession, Order, OrderStatus } from "@/lib/types";
 import { shortOrderId, isPendingOrderId } from "@/lib/types";
@@ -74,10 +72,6 @@ export function AgentLeadsTable({
   initialOpenOrderId?: string;
 }) {
   const router = useRouter();
-  // The call in progress, if any. The phone column reads off this: an agent
-  // who has not pressed Start has not opened a call, and a number they cannot
-  // read is a number they cannot dial outside the app.
-  const { session } = useCallSession();
   const [rows, setRows] = useState(orders);
   /**
    * The open lead is HELD, not looked up in the current page.
@@ -224,27 +218,11 @@ export function AgentLeadsTable({
                   <td style={{ left: prevLeft }} className={cn("sticky z-20 whitespace-nowrap border-r border-slate-100 px-2.5 py-1.5 text-slate-600", style.row)}>{o.previous_order_status ? o.previous_order_status.toUpperCase() : "—"}</td>
                   <td className={cell}>{o.order_date ? formatDate(o.order_date) : "—"}</td>
                   <td className={cell}>{o.customer_name}</td>
-                  {/* Readable while this lead is the one being called — the
-                      number is what lets an agent work outside the app, so it
-                      is what waits for Start.
-
-                      A synced order is the exception, and it has to be: CALL is
-                      not offered once Pancake has the order, so masking it left
-                      275 leads with a hidden number and no way to reveal it —
-                      exactly the orders where somebody needs to ring about a
-                      delivery. Nothing is being protected there anyway; the
-                      lead is out of the calling pipeline. */}
                   <td className={cell}>
-                    {!o.customer_phone ? (
-                      "—"
-                    ) : session?.order_id === o.id || isOrderLocked(o) ? (
-                      <a href={`tel:${o.customer_phone}`} className="font-medium text-slate-800 hover:underline">
-                        {o.customer_phone}
-                      </a>
+                    {o.customer_phone ? (
+                      <a href={`tel:${o.customer_phone}`} className="hover:underline">{o.customer_phone}</a>
                     ) : (
-                      <span className="tabular-nums text-slate-400" title="Press CALL on this row to show the number">
-                        {maskPhone(o.customer_phone)}
-                      </span>
+                      "—"
                     )}
                   </td>
                   <td className={cell}>{o.purok || "—"}</td>
@@ -318,7 +296,6 @@ export function AgentLeadsTable({
       {openOrder && (
         <OrderDetailsModal
           order={openOrder}
-          maskPhoneUntilCall
           agentName={careStaffById[openOrder.agent_id]?.name || "—"}
           productName={productNameByOrderId[openOrder.id] || openOrder.product_name}
           latestStatusUpdate={null}
