@@ -36,7 +36,11 @@ export function CustomerReturnRate({ phone, className }: { phone: string; classN
       .then((r) => r.json())
       .then((j) => {
         if (cancelled) return;
-        if (!j?.ok || !j.history) return setFailed("Pancake POS did not answer.");
+        if (!j?.ok) return setFailed("Pancake POS did not answer.");
+        // `history: null` is the route saying it did not ask — the number holds
+        // no digits, or no Pancake account is configured. That is not a failed
+        // lookup and must not be dressed as one; there is simply nothing here.
+        if (!j.history) return;
         if (j.history.error) return setFailed(String(j.history.error));
         setStats({ delivered: j.history.delivered, returned: j.history.returned });
         setTotalOrders(Number(j.history.totalOrders) || 0);
@@ -68,13 +72,27 @@ export function CustomerReturnRate({ phone, className }: { phone: string; classN
       </span>
     );
   }
-  if (stats && stats.delivered + stats.returned === 0 && totalOrders > 0) {
-    return (
+  if (stats && stats.delivered + stats.returned === 0) {
+    // Two different silences, and the difference is the whole answer. A number
+    // Pancake holds nothing for is most leads — this is the first order anyone
+    // has sent them through this system — and saying so costs one grey phrase.
+    // Saying nothing cost an afternoon of looking for a fault that was not
+    // there: a lead can carry PREV DELIVERED from the file it was uploaded in
+    // and still be a stranger to Pancake, because those are two different
+    // records of the same customer.
+    return totalOrders > 0 ? (
       <span
         className="text-[11px] text-slate-400"
         title={`Pancake holds ${totalOrders} order${totalOrders === 1 ? "" : "s"} for this number, none of them finished yet.`}
       >
         No finished parcels yet
+      </span>
+    ) : (
+      <span
+        className="text-[11px] text-slate-400"
+        title="Pancake POS has no order for this number. Any previous order shown above came from the uploaded lead, not from Pancake."
+      >
+        No Pancake history
       </span>
     );
   }
