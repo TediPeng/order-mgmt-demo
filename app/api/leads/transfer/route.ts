@@ -7,6 +7,7 @@ import { getRequestInfo } from "@/lib/request-info";
 import { notify } from "@/lib/notifications";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { displayUserName } from "@/lib/types";
+import { normalizePhone } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -44,15 +45,25 @@ export async function POST(req: NextRequest) {
   const statuses = Array.isArray(body.statuses) ? (body.statuses as string[]).map(String) : [];
   const limit = Number(body.limit) > 0 ? Math.floor(Number(body.limit)) : null;
   const apply = !!body.apply;
+  // By-number mode: the source is whoever holds it, so no From is required.
+  const phoneKey = normalizePhone(String(body.phone || ""));
 
   const byId = new Map(db.profiles.map((p) => [p.id, p]));
   const fromAgent = byId.get(from);
   const toAgent = byId.get(to);
-  if (!fromAgent || !toAgent) {
-    return NextResponse.json({ ok: false, error: "Pick both a source and a destination agent." }, { status: 400 });
+  if (!toAgent) {
+    return NextResponse.json({ ok: false, error: "Pick the agent to transfer to." }, { status: 400 });
   }
-  if (from === to) {
-    return NextResponse.json({ ok: false, error: "Those are the same agent." }, { status: 400 });
+  // A queue transfer needs a source; a number does not — whoever holds it is
+  // the source, and making the asker look that up first is the step this mode
+  // removes.
+  if (!phoneKey) {
+    if (!fromAgent) {
+      return NextResponse.json({ ok: false, error: "Pick the agent to transfer from." }, { status: 400 });
+    }
+    if (from === to) {
+      return NextResponse.json({ ok: false, error: "Those are the same agent." }, { status: 400 });
+    }
   }
   // Handing leads to somebody who cannot open them is a silent way to lose
   // them: they would leave one queue and appear in nobody's.
@@ -61,12 +72,13 @@ export async function POST(req: NextRequest) {
   }
 
   const { data, error } = await supabaseAdmin.rpc("transfer_leads", {
-    p_from: from,
+    p_from: phoneKey ? null : from,
     p_to: to,
     p_statuses: statuses.length > 0 ? statuses : null,
     p_actor: user.id,
     p_limit: limit,
     p_apply: apply,
+    p_phone_key: phoneKey || null,
   });
   if (error) return NextResponse.json({ ok: false, error: `Transfer failed: ${error.message}` }, { status: 500 });
 
@@ -79,8 +91,9 @@ export async function POST(req: NextRequest) {
   // here in full, so this is reversible by transferring back.
   const info = await getRequestInfo();
   logActivity(db, user.id, "LEADS_TRANSFERRED", "order", null, {
-    from_agent_id: from,
-    from_agent: displayUserName(fromAgent),
+    from_agent_id: phoneKey ? null : from,
+    from_agent: fromAgent ? displayUserName(fromAgent) : "whoever held the number",
+    phone_key: phoneKey || null,
     to_agent_id: to,
     to_agent: displayUserName(toAgent),
     statuses,
@@ -90,10 +103,16 @@ export async function POST(req: NextRequest) {
   }, { module: "orders", ...info });
 
   if (result.moved > 0) {
+    const fromLabel = fromAgent ? displayUserName(fromAgent) : "another agent";
     notify(db, [to], "lead_transfer", "Leads transferred to you",
-      `${result.moved} lead(s) moved from ${displayUserName(fromAgent)}.`, "/leads");
-    notify(db, [from], "lead_transfer", "Leads moved to another agent",
-      `${result.moved} of your lead(s) were transferred to ${displayUserName(toAgent)}.`, "/leads");
+      `${result.moved} lead(s) moved from ${fromLabel}.`, "/leads");
+    // Only when there is one source to tell. A by-number move can take rows off
+    // several agents; they are named in the audit entry rather than each being
+    // sent a notice that says nothing useful.
+    if (fromAgent) {
+      notify(db, [from], "lead_transfer", "Leads moved to another agent",
+        `${result.moved} of your lead(s) were transferred to ${displayUserName(toAgent)}.`, "/leads");
+    }
   }
   await writeDb(db);
 
