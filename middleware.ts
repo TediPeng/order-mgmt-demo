@@ -5,7 +5,11 @@ import { NextRequest, NextResponse } from "next/server";
 // browser session cookie.
 // /reset-password is reached from an emailed link, so by definition without a
 // session -- the token in the URL is what stands in for one.
-const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/api/webhooks/pancake", "/api/cron"];
+// /api/sso is the hand-off from the company portal: it is how a session BEGINS,
+// so requiring one to reach it would be a door that only opens from inside. It
+// carries its own auth -- an HMAC the portal signs, good for sixty seconds --
+// and refuses anything else.
+const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/api/webhooks/pancake", "/api/cron", "/api/sso"];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
