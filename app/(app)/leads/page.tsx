@@ -1,4 +1,4 @@
-﻿import { Copy as CopyIcon, Download } from "lucide-react";
+﻿import { Copy as CopyIcon, Download, ArrowLeftRight } from "lucide-react";
 import { readDbLite } from "@/lib/db";
 import { latestStatusChangeByOrder } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
@@ -347,6 +347,13 @@ export default async function LeadsPage({
               regular customer's — which this list leaves out entirely. Being on
               the leads page is not the same as being able to find the lead. */}
           <BackToCallButton />
+          {/* Moving a queue between callers. Full access only, the same rule the
+              Agent field on a single lead already follows. */}
+          {isFullAccess(user.role) && canEdit && (
+            <LinkButton href="/leads/transfer" variant="outline" size="sm">
+              <ArrowLeftRight className="h-4 w-4" /> Transfer Leads
+            </LinkButton>
+          )}
           {/* The primary action here is now ordering for someone the agent
               already keeps: pick them by phone number, then the order form
               opens on their saved details. A role that cannot see Regular
