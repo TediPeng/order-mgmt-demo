@@ -3,11 +3,14 @@ import { cn } from "@/lib/utils";
 
 /** Accent per metric, drawn from the existing status palette so a KPI card and
  * its status badge never disagree about what "returned" looks like. */
-export type StatTone = "brand" | "green" | "amber" | "maroon" | "slate" | "blue";
+export type StatTone = "brand" | "green" | "amber" | "maroon" | "slate" | "blue" | "teal";
 
 const TONE: Record<StatTone, { bar: string; chip: string }> = {
   brand: { bar: "bg-[var(--brand-primary)]", chip: "bg-[var(--brand-primary-10)] text-[var(--brand-primary)]" },
   green: { bar: "bg-green-500", chip: "bg-green-100 text-green-700" },
+  // Between calls: next to On Call without being mistaken for it, and clearly
+  // not the blue that Standby wears.
+  teal: { bar: "bg-teal-500", chip: "bg-teal-100 text-teal-700" },
   amber: { bar: "bg-amber-500", chip: "bg-amber-100 text-amber-800" },
   maroon: { bar: "bg-red-900", chip: "bg-red-100 text-red-900" },
   slate: { bar: "bg-slate-400", chip: "bg-slate-100 text-slate-600" },
@@ -103,6 +106,7 @@ export function StatGrid({ children, className }: { children: React.ReactNode; c
 const WIDGET_TONE: Record<StatTone, string> = {
   brand: "bg-[var(--brand-primary)]",
   green: "bg-green-700",
+  teal: "bg-teal-700",
   amber: "bg-amber-700",
   maroon: "bg-red-900",
   slate: "bg-slate-600",

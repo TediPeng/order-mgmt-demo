@@ -3,19 +3,40 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Phone, Coffee, Utensils, Hourglass, LogOut, Minus, Plane, CalendarOff, Ban, UserRound, Star } from "lucide-react";
+import {
+  Phone,
+  PhoneOutgoing,
+  Coffee,
+  Utensils,
+  Hourglass,
+  LogOut,
+  Minus,
+  Plane,
+  CalendarOff,
+  Ban,
+  UserRound,
+  Star,
+} from "lucide-react";
 import { StatWidget, type StatTone } from "@/components/StatCard";
 import { formatTime } from "@/lib/utils";
 import type { CallTargetInfo } from "@/lib/call-sessions";
 
-/** How often the board pulls fresh server state. Faster than the shell's own
+/** How often the board pulls fresh server state.
+ *
+ * Ten seconds, not twenty: the states this board reports are measured in
+ * seconds — a call averages under two minutes and the gap between two of them
+ * is often shorter than one refresh, so at 20s the board was regularly showing
+ * a state the agent had already left. Faster than the shell's own
  * 60s refresh because this is a live board — but still gated on tab visibility,
  * since a monitor left open on a spare screen would otherwise re-run the whole
  * server tree all night for nobody. */
-const REFRESH_MS = 20000;
+const REFRESH_MS = 10000;
 
 export type MonitorState =
   | "on_call"
+  // The pause between hanging up and dialling again. Standby with a name, so
+  // that Standby can go on meaning nobody is working the queue.
+  | "between_calls"
   | "bio_break"
   | "break"
   | "standby"
@@ -34,6 +55,7 @@ export type MonitorState =
  * or to nothing at all, never to an empty board with no explanation. */
 export const MONITOR_STATES: MonitorState[] = [
   "on_call",
+  "between_calls",
   "standby",
   "bio_break",
   "break",
@@ -74,6 +96,13 @@ const STATE_META: Record<
   { label: string; icon: typeof Phone; cls: string; dot: string; tone: StatTone }
 > = {
   on_call: { label: "On call", icon: Phone, cls: "bg-green-50 text-green-700", dot: "bg-green-500", tone: "green" },
+  between_calls: {
+    label: "Between calls",
+    icon: PhoneOutgoing,
+    cls: "bg-teal-50 text-teal-700",
+    dot: "bg-teal-500",
+    tone: "teal",
+  },
   bio_break: { label: "Bio break", icon: Coffee, cls: "bg-amber-50 text-amber-700", dot: "bg-amber-500", tone: "amber" },
   break: { label: "On break", icon: Utensils, cls: "bg-orange-50 text-orange-700", dot: "bg-orange-500", tone: "brand" },
   standby: { label: "Standby", icon: Hourglass, cls: "bg-slate-100 text-slate-600", dot: "bg-slate-400", tone: "blue" },

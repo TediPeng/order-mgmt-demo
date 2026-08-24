@@ -11,6 +11,12 @@ import { AgentMonitorBoard, type MonitorRow, type MonitorState } from "@/compone
 
 export const dynamic = "force-dynamic";
 
+/** How long after hanging up an agent still counts as working the queue
+ * rather than idle. Their calls average under two minutes, so three covers a
+ * normal pause to log the outcome and dial the next number without hiding
+ * somebody who has genuinely stopped. */
+const BETWEEN_CALLS_SECONDS = 180;
+
 /**
  * Live view of who is on a call, who is idle, and who is on a break.
  *
@@ -117,6 +123,22 @@ export default async function AgentMonitorPage() {
       sinceIso = [attendance.time_in, attendance.break_end, calls.lastEndedAt, bios.lastEndedAt]
         .filter((t): t is string => Boolean(t))
         .reduce((latest, t) => (t > latest ? t : latest));
+
+      // A gap of seconds between two calls is not idleness, and calling it
+      // Standby made the busiest people on the floor look like the least busy:
+      // an agent placing fifteen calls in half an hour is caught by the board
+      // in the pause between hanging up and dialling again, which is most of
+      // the time they are visible. Reported as its own state so that Standby
+      // can go on meaning what it says.
+      //
+      // Only a completed CALL opens the window — a gap after a break, or after
+      // timing in, is ordinary standby however recent, which is why this asks
+      // whether the gap STARTED with a call rather than merely that one
+      // happened today.
+      if (calls.lastEndedAt && sinceIso === calls.lastEndedAt) {
+        const gapSeconds = (Date.now() - new Date(calls.lastEndedAt).getTime()) / 1000;
+        if (gapSeconds < BETWEEN_CALLS_SECONDS) state = "between_calls";
+      }
     }
 
     // Standby is what is left of the shift after talking and breaks. Computed
@@ -138,7 +160,7 @@ export default async function AgentMonitorPage() {
       //              calls, bio breaks and breaks, so the stretch in progress
       //              is still sitting inside `elapsed` and would otherwise be
       //              misreported as standby.
-      const liveStates: MonitorState[] = ["on_call", "bio_break", "break", "standby"];
+      const liveStates: MonitorState[] = ["on_call", "bio_break", "break", "standby", "between_calls"];
       if (sinceIso && liveStates.includes(state)) {
         standbyBaseSeconds = Math.max(0, standbyBaseSeconds - (Date.now() - new Date(sinceIso).getTime()) / 1000);
       }
@@ -167,7 +189,8 @@ export default async function AgentMonitorPage() {
         <p className="text-sm text-slate-500">
           {isTeamLead ? "Your agents" : "All agents"} for {today}.{" "}
           <span className="font-medium">Calling</span> says who is on the other end — a lead, or one of the agent&apos;s
-          own regular customers. Standby is shift time that is not a call and not a break —{" "}
+          own regular customers. <span className="font-medium">Between calls</span> is the first three minutes after hanging
+          up — dialling again, not idle. Standby is the rest of the shift time that is not a call and not a break —{" "}
           <span className="font-medium">For</span> is how long the current stretch has run,{" "}
           <span className="font-medium">Standby today</span> is the shift&apos;s total so far. Totals across a date
           range are in the Activity Report.
