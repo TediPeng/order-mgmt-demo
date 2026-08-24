@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 // so requiring one to reach it would be a door that only opens from inside. It
 // carries its own auth -- an HMAC the portal signs, good for sixty seconds --
 // and refuses anything else.
-const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/api/webhooks/pancake", "/api/cron", "/api/sso"];
+const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/api/webhooks/pancake", "/api/cron", "/api/sso", "/api/portal"];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
