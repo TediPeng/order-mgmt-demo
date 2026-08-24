@@ -160,7 +160,25 @@ function hms(totalSeconds: number): string {
     : `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
-export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; generatedAt: string }) {
+/**
+ * Where the attendance on this board came from.
+ *
+ * "portal-unavailable" is the one that has to be said out loud. Without
+ * attendance every agent falls through to "Not timed in", which reads as an
+ * empty floor rather than a missing answer — and an empty floor is something a
+ * supervisor would act on.
+ */
+export type AttendanceSource = "roma" | "portal" | "portal-unavailable";
+
+export function AgentMonitorBoard({
+  rows,
+  generatedAt,
+  attendanceSource = "roma",
+}: {
+  rows: MonitorRow[];
+  generatedAt: string;
+  attendanceSource?: AttendanceSource;
+}) {
   const router = useRouter();
   const [now, setNow] = useState(() => Date.now());
 
@@ -304,6 +322,23 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
 
   return (
     <div className="space-y-4">
+      {/* The portal is where people time in now. If it did not answer, every
+          row below falls through to "Not timed in" — which is not what the
+          floor looks like, it is what a missing answer looks like. */}
+      {attendanceSource === "portal-unavailable" && (
+        <div
+          role="status"
+          className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+        >
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span>
+            Could not reach the portal, so there is no attendance on this board. Everyone below shows
+            as not timed in whether they are or not. Calls and bio breaks are still ROMA&apos;s own and
+            are correct.
+          </span>
+        </div>
+      )}
+
       {/* A board that has stopped updating has to say so. Every figure below is
           still drawn, because a supervisor mid-glance needs the shape of the
           floor more than it needs to be blanked -- but the timers have stopped

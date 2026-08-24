@@ -7,7 +7,8 @@ import { activeSuspensionOn } from "@/lib/schedule-access";
 import { displayUserName } from "@/lib/types";
 import { getActiveSessions, callTotalsForDay, describeCallTargets } from "@/lib/call-sessions";
 import { getActiveBioBreaks, bioBreakTotalsForDay } from "@/lib/bio-breaks";
-import { AgentMonitorBoard, type MonitorRow, type MonitorState } from "@/components/AgentMonitorBoard";
+import { AgentMonitorBoard, type AttendanceSource, type MonitorRow, type MonitorState } from "@/components/AgentMonitorBoard";
+import { fetchPortalAttendance, portalOwnsAttendance } from "@/lib/portal-attendance";
 
 export const dynamic = "force-dynamic";
 
@@ -47,12 +48,27 @@ export default async function AgentMonitorPage() {
     .sort((a, b) => displayUserName(a).localeCompare(displayUserName(b)));
 
   const agentIds = agents.map((a) => a.id);
-  const [activeCalls, activeBio, callTotals, bioTotals] = await Promise.all([
+  const [activeCalls, activeBio, callTotals, bioTotals, portalAttendance] = await Promise.all([
     getActiveSessions(agentIds),
     getActiveBioBreaks(agentIds),
     callTotalsForDay(agentIds, today),
     bioBreakTotalsForDay(agentIds, today),
+    // The clock lives in the company portal now. Fetched alongside the rest
+    // rather than before it: the board should not wait on another application
+    // to start counting calls, and if the portal is slow this is the request
+    // that gives up first.
+    portalOwnsAttendance() ? fetchPortalAttendance(today) : Promise.resolve(null),
   ]);
+
+  // Whether this board is showing what the portal says, ROMA's own older table,
+  // or the portal's answer having failed. The third case has to be visible:
+  // without attendance every agent reads as "Not timed in", which looks like an
+  // empty floor rather than a missing answer, and a supervisor would act on it.
+  const attendanceSource: AttendanceSource = !portalOwnsAttendance()
+    ? "roma"
+    : portalAttendance
+      ? "portal"
+      : "portal-unavailable";
 
   // What each live call is a call OF — a lead or one of the agent's own regular
   // customers, and who. Keyed by session id, over the calls actually in
@@ -65,7 +81,29 @@ export default async function AgentMonitorPage() {
   const generatedAt = new Date().toISOString();
 
   const rows: MonitorRow[] = agents.map((agent) => {
-    const attendance = db.attendance.find((a) => a.user_id === agent.id && a.work_date === today);
+    // Same shape either way, so everything below this line is unchanged by
+    // where the day came from. The portal keys its answer by ROMA profile id,
+    // which is this agent's id -- that is the whole point of the link.
+    //
+    // Breaks come across too. The portal grew a real break clock in its
+    // migration 097 -- break_start and break_end, not just the scheduled
+    // deduction it had before -- so the Break state below still works once the
+    // portal owns attendance, and over-break is measured against the allowance
+    // on the side that pays for it.
+    const portalDay = portalAttendance?.get(agent.id) ?? null;
+    const attendance =
+      attendanceSource === "portal"
+        ? portalDay
+          ? {
+              time_in: portalDay.timeIn,
+              time_out: portalDay.timeOut,
+              status: portalDay.status,
+              break_start: portalDay.breakStart,
+              break_end: portalDay.breakEnd,
+              break_minutes: portalDay.breakMinutes ?? 0,
+            }
+          : undefined
+        : db.attendance.find((a) => a.user_id === agent.id && a.work_date === today);
     const call = activeCalls.get(agent.id) || null;
     const bio = activeBio.get(agent.id) || null;
     const calls = callTotals.get(agent.id) || { count: 0, seconds: 0, lastEndedAt: null };
@@ -196,7 +234,7 @@ export default async function AgentMonitorPage() {
           range are in the Activity Report.
         </p>
       </div>
-      <AgentMonitorBoard rows={rows} generatedAt={generatedAt} />
+      <AgentMonitorBoard rows={rows} generatedAt={generatedAt} attendanceSource={attendanceSource} />
     </div>
   );
 }

@@ -18,6 +18,10 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 | `MAIL_FROM` | **for email** | From header, e.g. `noreply@4sdigitalmarketing-crm.com`. Only optional while `SMTP_USER` is itself an address, which it is not on Resend — the send is refused outright rather than building `4S ROMA <resend>`. |
 | `MAIL_MOCK_MODE` | optional | `success` / `fail` short-circuits SMTP locally, the same switch `PANCAKE_MOCK_MODE` gives the Pancake client. Unset for real delivery. |
 | `NEXT_PUBLIC_APP_URL` | for email | Public base URL used to build links in emails. Falls back to `VERCEL_URL`, then `http://localhost:3000`. Set it in production so recipients get the custom domain rather than the per-deployment hostname. |
+| `ROMA_SSO_SECRET` | for the portal hand-off | Verifies the company portal's `/api/sso` token. Must be the **same value** set in the portal, and must **not** be `SESSION_SECRET` — that one signs the session cookie, so anybody holding it can mint a session for any account, whereas this only lets the portal ask for one named profile for sixty seconds. `openssl rand -hex 32`. |
+| `PORTAL_APP_URL` | for portal attendance | Where the company portal lives, e.g. `https://company-portal-kappa.vercel.app`. |
+| `PORTAL_API_SECRET` | for portal attendance | Bearer token ROMA presents to the portal's `GET /api/roma/attendance`. Same value on both sides, and a **different** secret from `ROMA_SSO_SECRET`: that one points portal→ROMA, this one ROMA→portal. |
+| `PORTAL_ATTENDANCE` | optional | `on` makes the agent monitor read attendance from the portal instead of ROMA's own `attendance` table. Anything else, including unset, leaves ROMA reading its own — so an environment nobody thought about keeps the behaviour that has always worked. |
 
 ## Transactional email
 
