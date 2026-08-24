@@ -91,11 +91,22 @@ export default async function LeadsPage({
   // beneath it is worse than either answer.
   const includeRegular = sp.include_regular === "1";
 
-  const [countsByStatus, prevStatusOptions, duplicateCount, regularOrderCount, leadPage] = await Promise.all([
+  const [countsByStatus, prevStatusOptions, duplicateCount, regularOrderCount, leadResult] = await Promise.all([
     leadStatusCounts(scope, includeRegular),
     previousStatusCounts(scope, includeRegular),
     duplicatePhoneCount(scope),
     regularCustomerOrderCount(scope),
+    // Resolved either way, never rejected.
+    //
+    // A search is the one thing on this page a person can make arbitrarily
+    // expensive, and until 2026-08-24 an expensive one took the whole page
+    // with it: a twenty-term paste ran 9.2s against 103,000 leads, the
+    // database cancelled it at 8, queryLeads threw, and the agent got a white
+    // screen reading "a server-side exception has occurred". Trigram indexes
+    // brought that query to 234ms, but the shape of the failure was the real
+    // fault — a search too heavy to finish is a thing to say, not a thing to
+    // crash on. Only this call is wrapped: the counts beside it take no search
+    // term, so they cannot fail this way.
     queryLeads({
       scope,
       includeRegular,
@@ -124,8 +135,21 @@ export default async function LeadsPage({
       page,
       pageSize: PAGE_SIZE,
       usernameToIds,
-    }),
+    }).then(
+      (page) => ({ ok: true as const, page }),
+      (e: unknown) => ({ ok: false as const, message: e instanceof Error ? e.message : String(e) })
+    ),
   ]);
+
+  const leadPage = leadResult.ok ? leadResult.page : { rows: [], total: 0 };
+  // Postgres cancels at the statement timeout and says so; anything else is
+  // shown as it came, because a message nobody can act on is worse than a
+  // technical one somebody can quote.
+  const searchFailed = leadResult.ok
+    ? null
+    : /timeout|canceling statement/i.test(leadResult.message)
+      ? "That search was too heavy for the database to finish. Use fewer items, or longer ones — a one or two character search has to read every lead there is."
+      : leadResult.message;
 
   // Status-card counts come from the viewer's whole scoped set, before the
   // status filter is applied, so selecting a card doesn't zero the others.
@@ -339,6 +363,11 @@ export default async function LeadsPage({
       {sp.error && (
         <Alert kind="error" className="mb-4">
           {sp.error}
+        </Alert>
+      )}
+      {searchFailed && (
+        <Alert kind="error" className="mb-4">
+          {searchFailed}
         </Alert>
       )}
       {sp.imported && (
