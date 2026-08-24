@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -30,7 +30,17 @@ import type { CallTargetInfo } from "@/lib/call-sessions";
  * 60s refresh because this is a live board — but still gated on tab visibility,
  * since a monitor left open on a spare screen would otherwise re-run the whole
  * server tree all night for nobody. */
-const REFRESH_MS = 10000;
+const REFRESH_MS = 30000;
+
+/** How often the board asks whether anything has changed.
+ *
+ * Two seconds, because the thing being watched is somebody pressing Calling
+ * and the point is that it lands on the board while they are still saying
+ * hello. This is not a re-render: it is one small hash from
+ * /api/attendance/monitor-pulse, and only a hash that MOVED costs a render.
+ * That is what lets the interval be this short — the full refresh above is
+ * now just a safety net for anything the pulse does not fingerprint. */
+const PULSE_MS = 2000;
 
 export type MonitorState =
   | "on_call"
@@ -170,6 +180,53 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
       router.refresh();
     }, REFRESH_MS);
     return () => clearInterval(id);
+  }, [router]);
+
+  /**
+   * Push, near enough.
+   *
+   * A supervisor should not have to reload to see an agent pick up, and should
+   * not have to wait out a polling interval either. The pulse is a hash of the
+   * open calls, open bio breaks and today's attendance stamps — the inputs the
+   * server turns into states — so it moves exactly when the board would look
+   * different. Only then is a render spent.
+   *
+   * The first answer seeds the baseline rather than triggering a refresh: the
+   * page has just rendered from the same data, so treating it as a change would
+   * mean every board re-rendered itself two seconds after loading.
+   */
+  const lastPulse = useRef<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    async function check() {
+      if (document.hidden) return;
+      try {
+        const res = await fetch("/api/attendance/monitor-pulse", { cache: "no-store" });
+        if (!res.ok || cancelled) return;
+        const json = await res.json();
+        const v = String(json.v || "");
+        if (!v) return;
+        if (lastPulse.current === null) {
+          lastPulse.current = v;
+          return;
+        }
+        if (lastPulse.current !== v) {
+          lastPulse.current = v;
+          router.refresh();
+        }
+      } catch {
+        // A dropped poll is not worth surfacing: the next one is two seconds
+        // away and the safety refresh is still running behind it.
+      }
+    }
+    const id = setInterval(check, PULSE_MS);
+    // Coming back to the tab should not wait out an interval either.
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", check);
+    };
   }, [router]);
 
   const elapsedSince = (iso: string | null) =>
@@ -382,7 +439,7 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
       </div>
 
       <p className="text-xs text-slate-400">
-        Timers run live in the browser; figures refresh from the server every {REFRESH_MS / 1000}s, and pause while this
+        Timers run live in the browser; the board updates the moment an agent starts or ends a call, and pauses while this
         {/* The floor's own time, not the viewer's. toLocaleTimeString() renders
             in whatever zone the machine is set to, so a laptop left on another
             timezone showed a stamp that disagreed with every attendance record
