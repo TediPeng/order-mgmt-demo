@@ -16,6 +16,7 @@ import {
   Ban,
   UserRound,
   Star,
+  TriangleAlert,
 } from "lucide-react";
 import { StatWidget, type StatTone } from "@/components/StatCard";
 import { formatTime } from "@/lib/utils";
@@ -41,6 +42,22 @@ const REFRESH_MS = 30000;
  * That is what lets the interval be this short — the full refresh above is
  * now just a safety net for anything the pulse does not fingerprint. */
 const PULSE_MS = 2000;
+
+/** How old the server's answer may get before the board stops counting on it.
+ *
+ * Both refreshes above stand down while the tab is in the background; the
+ * one-second clock does not, because it is only `Date.now()` and knows nothing
+ * about tabs. So a board left behind another window went on measuring against a
+ * `sinceIso` that had stopped being true — an agent who came off standby at
+ * 16:05 and worked the queue until 17:17 was still on screen as "Standby, for
+ * 1:19:30". That is not a stale figure, which a supervisor would discount. It
+ * is a wrong one, stated to the second, next to a call count frozen an hour
+ * earlier.
+ *
+ * Sixty seconds is well past the two-second pulse and the ten-second refresh,
+ * so a board that is being watched never trips it; only one that has stopped
+ * being updated does. */
+const STALE_AFTER_MS = 60000;
 
 export type MonitorState =
   | "on_call"
@@ -229,8 +246,25 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
     };
   }, [router]);
 
-  const elapsedSince = (iso: string | null) =>
-    iso ? Math.max(0, (now - skewMs - new Date(iso).getTime()) / 1000) : 0;
+  /**
+   * How stale the answer on screen is, in server time.
+   *
+   * `skewMs` already carries this browser's clock back to the server's, so the
+   * difference from `generatedAt` is simply how long ago that render happened.
+   */
+  const generatedAtMs = new Date(generatedAt).getTime();
+  const isStale = now - skewMs - generatedAtMs > STALE_AFTER_MS;
+
+  /**
+   * The current stretch, measured to now — or frozen at the last moment the
+   * server could stand behind it. See STALE_AFTER_MS: counting on past that
+   * point invents a number rather than reporting one.
+   */
+  const elapsedSince = (iso: string | null) => {
+    if (!iso) return 0;
+    const measuredAt = isStale ? generatedAtMs : now - skewMs;
+    return Math.max(0, (measuredAt - new Date(iso).getTime()) / 1000);
+  };
 
   const counts = rows.reduce<Record<string, number>>((acc, r) => {
     acc[r.state] = (acc[r.state] || 0) + 1;
@@ -270,6 +304,25 @@ export function AgentMonitorBoard({ rows, generatedAt }: { rows: MonitorRow[]; g
 
   return (
     <div className="space-y-4">
+      {/* A board that has stopped updating has to say so. Every figure below is
+          still drawn, because a supervisor mid-glance needs the shape of the
+          floor more than it needs to be blanked -- but the timers have stopped
+          and this says which moment they stopped at. */}
+      {isStale && (
+        <div
+          role="status"
+          className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+        >
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span>
+            This board has stopped updating. Everything below is as it stood at{" "}
+            <span className="font-medium">{formatTime(generatedAt)}</span> and the timers have been held
+            there — somebody shown standing by may have been on calls since. Bring this tab to the front, or
+            reload.
+          </span>
+        </div>
+      )}
+
       {/* Same counts these were always showing, as the dashboards' widget
           tiles rather than chips, so the reporting surface reads as one thing.
           Derived from `rows` here in the client rather than passed down from
