@@ -7,7 +7,7 @@ import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { verifyPassword } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { requireUser, requireAdministrator } from "./guards";
+import { requireUserLite, requireAdministrator } from "./guards";
 import { countLinkedRecords, totalLinked } from "@/lib/account-deletion";
 import type { AccountDeletion, DeletionHandling } from "@/lib/types";
 
@@ -28,7 +28,7 @@ function fail(userId: string, message: string): never {
  * outright. Either way the deletion itself is recorded in `account_deletions`.
  */
 export async function permanentlyDeleteAccountAction(userId: string, formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requireAdministrator(user, PATH);
 
   const target = db.profiles.find((p) => p.id === userId);

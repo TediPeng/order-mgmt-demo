@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { writeDb, uuid, nowIso } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
-import { requireUser, requireUserLite, requirePermission } from "./guards";
+import { requireUserLite, requirePermission } from "./guards";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { hashPassword } from "@/lib/auth";
 import { randomTempPassword } from "@/lib/passwords";
@@ -23,7 +23,7 @@ export async function dismissTempPasswordAction(): Promise<void> {
 }
 
 export async function createUserAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "users", "create", db, "/users");
 
   // A disabled control is not submitted at all, so FormData.get() answers null
@@ -262,7 +262,7 @@ export async function updateUserProfileAction(userId: string, formData: FormData
 
 export async function updateUserRoleAction(userId: string, role: string) {
   "use server";
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "users", "edit", db, "/users");
 
   const target = db.profiles.find((p) => p.id === userId);
@@ -285,7 +285,7 @@ export async function updateUserRoleAction(userId: string, role: string) {
 
 export async function assignTeamLeadAction(userId: string, teamLeadId: string) {
   "use server";
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "users", "assign", db, "/users");
 
   const target = db.profiles.find((p) => p.id === userId);
@@ -309,7 +309,7 @@ export async function assignTeamLeadAction(userId: string, teamLeadId: string) {
 
 export async function toggleActiveAction(userId: string) {
   "use server";
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "users", "delete", db, "/users");
 
   if (userId === user.id) {
@@ -331,7 +331,7 @@ export async function toggleActiveAction(userId: string) {
 
 export async function adminResetPasswordAction(userId: string) {
   "use server";
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   requirePermission(user, "users", "edit", db, "/users");
 
   const target = db.profiles.find((p) => p.id === userId);

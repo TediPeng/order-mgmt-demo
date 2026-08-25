@@ -5,7 +5,7 @@ import { writeDb } from "@/lib/db";
 import { uploadFile, deleteFile } from "@/lib/storage";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
-import { requireUser } from "./guards";
+import { requireUserLite } from "./guards";
 
 const PATH = "/settings/password";
 const TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
@@ -17,7 +17,7 @@ const MAX_BYTES = 5 * 1024 * 1024;
  * cannot be pointed at another account. The old file is removed after the new
  * one is stored, so a failed upload never leaves the user with no picture. */
 export async function uploadAvatarAction(formData: FormData) {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
 
   const file = formData.get("avatar") as File | null;
   if (!file || file.size === 0) {
@@ -60,7 +60,7 @@ export async function uploadAvatarAction(formData: FormData) {
 }
 
 export async function removeAvatarAction() {
-  const { user, db } = await requireUser();
+  const { user, db } = await requireUserLite();
   const profile = db.profiles.find((p) => p.id === user.id);
   if (!profile || !profile.avatar_url) redirect(PATH);
 
