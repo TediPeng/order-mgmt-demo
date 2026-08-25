@@ -20,9 +20,7 @@ function shift(date: string, days: number): string {
  * reads every figure per day; it simply had the day hard-coded.
  *
  * The date rides in the URL rather than in state so it survives the board's own
- * refresh, can be sent to somebody, and steps through with the back button. The
- * state filter is carried along, so paging from one day to the next does not
- * silently drop it.
+ * refresh, can be sent to somebody, and steps through with the back button.
  */
 export function MonitorDatePicker({ date, today }: { date: string; today: string }) {
   const router = useRouter();
@@ -33,6 +31,17 @@ export function MonitorDatePicker({ date, today }: { date: string; today: string
     const params = new URLSearchParams(searchParams.toString());
     if (next === today) params.delete("date");
     else params.set("date", next);
+    /**
+     * The state filter does not travel with the date.
+     *
+     * Carrying it seemed tidier and was wrong: the states worth filtering on
+     * today — On call, Standby, Between calls — barely exist on a finished
+     * day, where everyone has timed out. Paging back to yesterday with
+     * Standby still set produced an empty table under a full set of tiles,
+     * which reads as "yesterday has no data" rather than "the filter
+     * excludes all of it".
+     */
+    params.delete("state");
     router.push(`/attendance/monitor?${params.toString()}`, { scroll: false });
   }
 

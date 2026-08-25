@@ -531,7 +531,11 @@ export function AgentMonitorBoard({
             {visible.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-4 py-10 text-center text-slate-400">
-                  {filter ? `Nobody is ${STATE_META[filter].label.toLowerCase()} right now.` : "No agents to monitor."}
+                  {filter
+                    ? live
+                      ? `Nobody is ${STATE_META[filter].label.toLowerCase()} right now.`
+                      : `Nobody was ${STATE_META[filter].label.toLowerCase()} on this day.`
+                    : "No agents to monitor."}
                 </td>
               </tr>
             )}
