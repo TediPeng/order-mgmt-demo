@@ -9,6 +9,7 @@ import { getActiveSessions, callTotalsForDay, describeCallTargets } from "@/lib/
 import { getActiveBioBreaks, bioBreakTotalsForDay } from "@/lib/bio-breaks";
 import { AgentMonitorBoard, type AttendanceSource, type MonitorRow, type MonitorState } from "@/components/AgentMonitorBoard";
 import { fetchPortalAttendance, portalOwnsAttendance } from "@/lib/portal-attendance";
+import { MonitorDatePicker } from "@/components/MonitorDatePicker";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,12 @@ const BETWEEN_CALLS_SECONDS = 180;
  * permission rather than a new module key, which would mean altering the
  * module_key Postgres enum for no real gain.
  */
-export default async function AgentMonitorPage() {
+export default async function AgentMonitorPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ date?: string; state?: string }>;
+}) {
+  const sp = await searchParams;
   const user = (await getCurrentUser())!;
   const db = await readDbLite();
 
@@ -37,6 +43,18 @@ export default async function AgentMonitorPage() {
   if (!isFullAccess(user.role) && !isTeamLead) redirect("/attendance");
 
   const today = todayInTz();
+  /**
+   * The day being shown. Today unless asked otherwise.
+   *
+   * A future date is snapped back rather than refused: it can only come from a
+   * hand-typed URL or a mis-click on the picker, and an empty board for a day
+   * that has not happened reads as a fault.
+   */
+  const requested = (sp.date || "").slice(0, 10);
+  const asked =
+    requested.length === 10 && !Number.isNaN(Date.parse(`${requested}T00:00:00Z`)) ? requested : today;
+  const viewDate = asked > today ? today : asked;
+  const isToday = viewDate === today;
 
   const agents = db.profiles
     // A test account is left out of the board, unless it is the one looking —
@@ -51,13 +69,13 @@ export default async function AgentMonitorPage() {
   const [activeCalls, activeBio, callTotals, bioTotals, portalAttendance] = await Promise.all([
     getActiveSessions(agentIds),
     getActiveBioBreaks(agentIds),
-    callTotalsForDay(agentIds, today),
-    bioBreakTotalsForDay(agentIds, today),
+    callTotalsForDay(agentIds, viewDate),
+    bioBreakTotalsForDay(agentIds, viewDate),
     // The clock lives in the company portal now. Fetched alongside the rest
     // rather than before it: the board should not wait on another application
     // to start counting calls, and if the portal is slow this is the request
     // that gives up first.
-    portalOwnsAttendance() ? fetchPortalAttendance(today) : Promise.resolve(null),
+    portalOwnsAttendance() ? fetchPortalAttendance(viewDate) : Promise.resolve(null),
   ]);
 
   // Whether this board is showing what the portal says, ROMA's own older table,
@@ -103,9 +121,11 @@ export default async function AgentMonitorPage() {
               break_minutes: portalDay.breakMinutes ?? 0,
             }
           : undefined
-        : db.attendance.find((a) => a.user_id === agent.id && a.work_date === today);
-    const call = activeCalls.get(agent.id) || null;
-    const bio = activeBio.get(agent.id) || null;
+        : db.attendance.find((a) => a.user_id === agent.id && a.work_date === viewDate);
+    // An open session is open NOW. On a past day it belongs to today's board,
+    // not to this one, so it is never read into a historical row.
+    const call = isToday ? activeCalls.get(agent.id) || null : null;
+    const bio = isToday ? activeBio.get(agent.id) || null : null;
     const calls = callTotals.get(agent.id) || { count: 0, seconds: 0, lastEndedAt: null };
     const bios = bioTotals.get(agent.id) || { count: 0, seconds: 0, lastEndedAt: null };
 
@@ -123,9 +143,9 @@ export default async function AgentMonitorPage() {
       // The attendance row is asked first because leave approval, suspension and
       // the absence sweep all write their answer into it. The schedule is the
       // fallback for a rest day nothing has stamped a row for yet.
-      const suspension = activeSuspensionOn(db, agent.id, today, today);
+      const suspension = activeSuspensionOn(db, agent.id, viewDate, viewDate);
       const restDayRostered = db.schedules.some(
-        (s) => s.agent_id === agent.id && s.schedule_date === today && s.is_rest_day
+        (s) => s.agent_id === agent.id && s.schedule_date === viewDate && s.is_rest_day
       );
 
       if (suspension || attendance?.status === "suspended") state = "suspended";
@@ -179,12 +199,27 @@ export default async function AgentMonitorPage() {
       }
     }
 
+    // A finished day has no running stretch, so nothing counts up from it. The
+    // states still describe how the day ended — timed out, on leave, absent —
+    // but "For" is a live figure and there is no live to measure.
+    if (!isToday) sinceIso = null;
+
     // Standby is what is left of the shift after talking and breaks. Computed
     // from the total elapsed shift rather than summed from gaps, so any time
     // unaccounted for lands here rather than silently disappearing.
     let standbyBaseSeconds = 0;
     if (attendance?.time_in) {
-      const shiftEnd = attendance.time_out ? new Date(attendance.time_out).getTime() : Date.now();
+      // Now, for today. For a past day whose shift was never closed, the last
+      // thing the agent actually did — running the clock to the present would
+      // charge them every hour since as standby.
+      const lastActivity = [attendance.break_end, calls.lastEndedAt, bios.lastEndedAt, attendance.time_in]
+        .filter((t): t is string => Boolean(t))
+        .reduce((latest, t) => (t > latest ? t : latest));
+      const shiftEnd = attendance.time_out
+        ? new Date(attendance.time_out).getTime()
+        : isToday
+          ? Date.now()
+          : new Date(lastActivity).getTime();
       const elapsed = Math.max(0, (shiftEnd - new Date(attendance.time_in).getTime()) / 1000);
       const mainBreak = (attendance.break_minutes ?? 0) * 60;
       standbyBaseSeconds = Math.max(0, elapsed - calls.seconds - bios.seconds - mainBreak);
@@ -223,9 +258,16 @@ export default async function AgentMonitorPage() {
   return (
     <div>
       <div className="mb-4">
-        <h1 className="text-page-title text-slate-900">Agent Monitoring</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-page-title text-slate-900">Agent Monitoring</h1>
+          {/* The same board, any day. Yesterday is the question people actually
+              ask of it — "what did the floor do" — and it was answerable only
+              by having been watching at the time. */}
+          <MonitorDatePicker date={viewDate} today={today} />
+        </div>
         <p className="text-sm text-slate-500">
-          {isTeamLead ? "Your agents" : "All agents"} for {today}.{" "}
+          {isTeamLead ? "Your agents" : "All agents"} for {viewDate}
+          {isToday ? "" : " — a finished day, so nothing is counting up"}.{" "}
           <span className="font-medium">Calling</span> says who is on the other end — a lead, or one of the agent&apos;s
           own regular customers. <span className="font-medium">Between calls</span> is the first three minutes after hanging
           up — dialling again, not idle. Standby is the rest of the shift time that is not a call and not a break —{" "}
@@ -234,7 +276,7 @@ export default async function AgentMonitorPage() {
           range are in the Activity Report.
         </p>
       </div>
-      <AgentMonitorBoard rows={rows} generatedAt={generatedAt} attendanceSource={attendanceSource} />
+      <AgentMonitorBoard rows={rows} generatedAt={generatedAt} attendanceSource={attendanceSource} live={isToday} />
     </div>
   );
 }

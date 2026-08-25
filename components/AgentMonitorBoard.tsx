@@ -174,10 +174,20 @@ export function AgentMonitorBoard({
   rows,
   generatedAt,
   attendanceSource = "roma",
+  live = true,
 }: {
   rows: MonitorRow[];
   generatedAt: string;
   attendanceSource?: AttendanceSource;
+  /**
+   * Whether this is today.
+   *
+   * A finished day has nothing to poll and nothing to count up, and doing
+   * either would be worse than useless: the pulse fingerprints TODAY's floor,
+   * so on a historical board it would fire on every call an agent makes now and
+   * re-render a page about last Tuesday.
+   */
+  live?: boolean;
 }) {
   const router = useRouter();
   const [now, setNow] = useState(() => Date.now());
@@ -205,17 +215,19 @@ export function AgentMonitorBoard({
 
   // One clock for the whole board rather than a timer per row.
   useEffect(() => {
+    if (!live) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [live]);
 
   useEffect(() => {
+    if (!live) return;
     const id = setInterval(() => {
       if (document.hidden) return;
       router.refresh();
     }, REFRESH_MS);
     return () => clearInterval(id);
-  }, [router]);
+  }, [router, live]);
 
   /**
    * Push, near enough.
@@ -232,6 +244,7 @@ export function AgentMonitorBoard({
    */
   const lastPulse = useRef<string | null>(null);
   useEffect(() => {
+    if (!live) return;
     let cancelled = false;
     async function check() {
       if (document.hidden) return;
@@ -262,7 +275,7 @@ export function AgentMonitorBoard({
       clearInterval(id);
       document.removeEventListener("visibilitychange", check);
     };
-  }, [router]);
+  }, [router, live]);
 
   /**
    * How stale the answer on screen is, in server time.
