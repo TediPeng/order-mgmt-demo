@@ -18,6 +18,9 @@ import { listItems } from "@/lib/order-items";
  *               own reason: an agent had to go into Pancake, look at an order
  *               that had already been called off, and press retry to confirm
  *               what the status already said.
+ *   deleted   — the order was removed in Pancake, so there is even less in
+ *               flight than a cancellation: not merely called off, gone. Same
+ *               reasoning, same answer.
  *
  * Returned is deliberately NOT here. A parcel that came back cost the floor
  * shipping twice and may mean a customer who refuses deliveries; that is a
@@ -28,7 +31,7 @@ import { listItems } from "@/lib/order-items";
  * another code to `cancelled` gets this behaviour with it, and no code here
  * needs to know that Pancake spells it "canceled".
  */
-const SETTLED_PREVIOUS_STATUSES = new Set(["delivered", "cancelled"]);
+const SETTLED_PREVIOUS_STATUSES = new Set(["delivered", "cancelled", "deleted"]);
 import { createOrder } from "./createOrder";
 import { CREATE_STATUS_PACKAGING_LABEL, LOOKUP_REFRESH_ON_MISS_AFTER_MS } from "./config";
 import { validateForPancake } from "./validate";
@@ -260,7 +263,7 @@ export async function forwardOrderToPancake(
   //
   // Three answers, three outcomes:
   //   settled        — the last one is finished with: it arrived and was kept,
-  //                    or it was cancelled and never went. Send.
+  //                    or it was cancelled or deleted and never went. Send.
   //   no orders yet  — new to Pancake. Nothing to hold against them. Send.
   //   anything else  — hold it, and say which status and which order, so the
   //                    agent can look it up rather than guess.
