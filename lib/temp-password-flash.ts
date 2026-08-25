@@ -31,12 +31,19 @@ export interface TempPasswordFlash {
 }
 
 /**
- * Two minutes: long enough to survive the redirect and a slow render, short
- * enough that a browser left open on somebody's desk is not still holding it.
- * The banner deletes it on sight, so this is the backstop for the case where
- * the page never renders — the Administrator navigated away mid-redirect.
+ * Ten minutes.
+ *
+ * It was two, on the reasoning that the banner deleted the cookie on sight so
+ * this only had to cover a slow render. That clear-on-sight is what made the
+ * password vanish before it could be copied, so the banner waits to be
+ * dismissed now — and the common path still clears this immediately, because
+ * pressing Done is the first thing anybody does.
+ *
+ * This is the backstop for the Administrator who walks away instead: long
+ * enough to come back to, short enough that a browser left open on somebody's
+ * desk is not still holding a live credential an hour later.
  */
-const MAX_AGE_SECONDS = 120;
+const MAX_AGE_SECONDS = 600;
 
 /**
  * Base64, because the value carries a generated password and those contain `%`.
