@@ -49,3 +49,8 @@ data/psgc/
 # Python bytecode from the .claude/skills scripts
 __pycache__/
 *.pyc
+
+# One-off codemod scratch files. They are written, run and deleted in the same
+# breath; two have slipped into commits already.
+tmp-*.cjs
+tmp-*.mjs
