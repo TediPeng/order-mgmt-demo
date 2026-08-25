@@ -1,5 +1,8 @@
 "use client";
 
+import type { DialScheme } from "@/lib/dial";
+import { DialLink } from "@/components/DialLink";
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LEAD_STATUS_STYLES } from "@/components/ui/Badge";
@@ -40,6 +43,7 @@ export function AgentLeadsTable({
   linesByOrder,
   canEdit,
   callSessionsByOrderId = {},
+  dialScheme = "tel",
   agentNameById = {},
   latestStatusUpdateByOrderId = {},
   initialOpenOrderNumber,
@@ -65,6 +69,9 @@ export function AgentLeadsTable({
   linesByOrder: Record<string, EditorLine[]>;
   canEdit: boolean;
   callSessionsByOrderId?: Record<string, CallSession[]>;
+  /** Which URL scheme a clicked number opens, so it reaches the softphone on
+   * the agent's PC. Set in System Settings; see lib/dial.ts. */
+  dialScheme?: DialScheme;
   agentNameById?: Record<string, string>;
   /** The last status change per order, for the "from X" line under the badge. */
   latestStatusUpdateByOrderId?: Record<string, { status: OrderStatus; from: string | null; at: string } | undefined>;
@@ -220,7 +227,7 @@ export function AgentLeadsTable({
                   <td className={cell}>{o.customer_name}</td>
                   <td className={cell}>
                     {o.customer_phone ? (
-                      <a href={`tel:${o.customer_phone}`} className="hover:underline">{o.customer_phone}</a>
+                      <DialLink phone={o.customer_phone} scheme={dialScheme} />
                     ) : (
                       "—"
                     )}

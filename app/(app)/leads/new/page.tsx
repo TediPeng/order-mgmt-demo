@@ -109,6 +109,7 @@ export default async function NewLeadPage({
           customerId={regularCustomer.id}
           customerName={regularCustomer.full_name}
           phone={regularCustomer.phone}
+          dialScheme={db.operations.dial_scheme}
         />
       )}
 

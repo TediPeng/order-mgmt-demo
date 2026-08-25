@@ -1,5 +1,8 @@
 "use client";
 
+import type { DialScheme } from "@/lib/dial";
+import { DialLink } from "@/components/DialLink";
+
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
@@ -34,6 +37,7 @@ export function LeadsTable({
   canTagRegular = false,
   requiresCallSession = false,
   callSessionsByOrderId = {},
+  dialScheme = "tel",
   agentNameById = {},
   canSeeFulfillment = false,
   fullPageHrefBase,
@@ -67,6 +71,9 @@ export function LeadsTable({
   canTagRegular?: boolean;
   requiresCallSession?: boolean;
   callSessionsByOrderId?: Record<string, CallSession[]>;
+  /** Which URL scheme a clicked number opens, so it reaches the softphone on
+   * the agent's PC. Set in System Settings; see lib/dial.ts. */
+  dialScheme?: DialScheme;
   agentNameById?: Record<string, string>;
   canSeeFulfillment?: boolean;
   fullPageHrefBase: string | null;
@@ -425,7 +432,9 @@ export function LeadsTable({
                   <td className={cell}>{o.order_date ? formatDate(o.order_date) : "—"}</td>
                   <td className={cell}>{agentCallNameById[o.agent_id] || "—"}</td>
                   <td className={cell}>{o.customer_name}</td>
-                  <td className={cell}>{o.customer_phone || "—"}</td>
+                  <td className={cell}>
+                    <DialLink phone={o.customer_phone} scheme={dialScheme} />
+                  </td>
                   <td className={cell}>{o.purok || "—"}</td>
                   <td className={cell}>{o.barangay || "—"}</td>
                   <td className={cell}>{o.city || "—"}</td>

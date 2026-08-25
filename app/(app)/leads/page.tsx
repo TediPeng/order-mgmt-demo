@@ -505,7 +505,8 @@ export default async function LeadsPage({
           linesByOrder={linesByOrder}
           canEdit={canEdit}
           callSessionsByOrderId={callSessionsByOrderId}
-          agentNameById={agentCallNameById}
+          dialScheme={db.operations.dial_scheme}
+        agentNameById={agentCallNameById}
           latestStatusUpdateByOrderId={latestStatusUpdateByOrderId}
           initialOpenOrderNumber={sp.open}
           initialOpenOrderId={sp.open_id}
@@ -526,6 +527,7 @@ export default async function LeadsPage({
         canTagRegular={canTagRegular}
         requiresCallSession={!isFullAccess(user.role)}
         callSessionsByOrderId={callSessionsByOrderId}
+        dialScheme={db.operations.dial_scheme}
         agentNameById={agentCallNameById}
         canSeeFulfillment={!isAgent}
         fullPageHrefBase={isFullAccess(user.role) ? "/leads" : null}

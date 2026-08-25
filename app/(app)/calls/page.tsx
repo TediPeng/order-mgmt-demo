@@ -12,6 +12,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Badge, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Field";
+import { DialLink } from "@/components/DialLink";
 import type { OrderStatus } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -242,13 +243,7 @@ export default async function CallsPage({
                       it is the thing this page exists for, so it is not buried
                       in a tooltip. */}
                   <td className="px-2.5 py-1.5 font-medium text-slate-800">
-                    {r.customer_phone ? (
-                      <a href={`tel:${r.customer_phone}`} className="hover:underline">
-                        {r.customer_phone}
-                      </a>
-                    ) : (
-                      "—"
-                    )}
+                    <DialLink phone={r.customer_phone} scheme={db.operations.dial_scheme} />
                   </td>
                   <td className="px-2.5 py-1.5">
                     {/* A call raised from a Regular Customer's record has no

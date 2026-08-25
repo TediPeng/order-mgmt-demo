@@ -667,6 +667,8 @@ export interface PancakeSyncLog {
   payload_summary: Record<string, unknown> | null; // REDACTED: never tokens/keys/secrets
 }
 
+import type { DialScheme } from "./dial";
+
 export interface OperationsSettings {
   /** Off by default: a file dictating status could push leads straight into
    * the sale pipeline, stamping order dates and firing Pancake forwards. */
@@ -674,6 +676,10 @@ export interface OperationsSettings {
   /** Minimum duration for a calling session to count towards Calls Made.
    * 0 counts every completed session. */
   min_call_seconds: number;
+  /** Which URL scheme a clicked phone number uses, so it opens the softphone
+   * on the agent's PC. "off" renders numbers as plain text. See lib/dial.ts —
+   * this is a fact about that PC, not about this app, so it is a setting. */
+  dial_scheme: DialScheme;
 }
 
 export interface DbShape {

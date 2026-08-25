@@ -1,3 +1,4 @@
+import { DIAL_SCHEMES, DIAL_SCHEME_LABELS } from "@/lib/dial";
 import { redirect } from "next/navigation";
 import { readDbLite } from "@/lib/db";
 import { syncedOrderCount } from "@/lib/orders-lookup";
@@ -5,7 +6,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { ClearDataButton } from "@/components/ClearDataButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Input, Label } from "@/components/ui/Field";
+import { Input, Label, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { updateThresholdsAction, updateWorkScheduleAction, updateOperationsAction } from "@/lib/actions/settings";
@@ -76,6 +77,24 @@ export default async function SystemSettingsPage({
               <p className="mt-1 text-xs text-slate-400">
                 0 counts every completed calling session towards Calls Made. Raise it once real session data shows what
                 an accidental click looks like.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="dial_scheme">Click-to-call</Label>
+              <Select id="dial_scheme" name="dial_scheme" defaultValue={db.operations.dial_scheme} disabled={!canManage}>
+                {DIAL_SCHEMES.map((scheme) => (
+                  <option key={scheme} value={scheme}>
+                    {DIAL_SCHEME_LABELS[scheme]}
+                  </option>
+                ))}
+              </Select>
+              <p className="mt-1 text-xs text-slate-400">
+                Makes every phone number in the app a link that opens the softphone on the agent&apos;s PC — Zoiper, in
+                this case. Which scheme actually reaches it depends on what is installed on that machine and what has
+                claimed the handler, so try one, click a number, and change it here if the wrong thing opens. Zoiper
+                registers all three; <span className="font-medium">callto:</span> is its own and is usually the one that
+                survives Skype and Phone Link. This does not log the call — the agent still presses Calling and saves
+                the outcome.
               </p>
             </div>
             {canManage && (

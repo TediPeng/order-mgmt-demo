@@ -5,6 +5,7 @@ import { writeDb } from "@/lib/db";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { requireUserLite, requirePermission } from "./guards";
+import { isDialScheme } from "@/lib/dial";
 
 const HHMM_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -103,9 +104,13 @@ export async function updateOperationsAction(formData: FormData) {
   }
 
   const before = { ...db.operations };
+  const posted = String(formData.get("dial_scheme") || "");
   db.operations = {
     allow_status_import: formData.get("allow_status_import") === "on",
     min_call_seconds: Math.round(minCallSeconds),
+    // Anything unrecognised keeps what was there rather than silently turning
+    // click-to-call off for the whole floor.
+    dial_scheme: isDialScheme(posted) ? posted : before.dial_scheme,
   };
 
   const info = await getRequestInfo();

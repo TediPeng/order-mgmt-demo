@@ -14,6 +14,7 @@ import {
 } from "@/lib/customers";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { Alert } from "@/components/ui/Alert";
+import { DialLink } from "@/components/DialLink";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { Input } from "@/components/ui/Field";
@@ -207,7 +208,9 @@ export default async function RegularCustomersPage({
             {rows.map(({ customer, orders, latest, previous }) => (
               <tr key={customer.id} className="odd:bg-slate-50/40 hover:bg-slate-50">
                 <td className="px-4 py-3 font-medium text-slate-800">{customer.full_name}</td>
-                <td className="px-4 py-3 text-slate-600">{customer.phone_raw}</td>
+                <td className="px-4 py-3 text-slate-600">
+                  <DialLink phone={customer.phone_raw} scheme={db.operations.dial_scheme} />
+                </td>
                 <td className="px-4 py-3 text-slate-600">
                   {[customer.purok, customer.barangay, customer.city, customer.province].filter(Boolean).join(", ") || "—"}
                 </td>

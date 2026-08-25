@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { PhoneCall } from "lucide-react";
 import { CallingPanel } from "@/components/CallingPanel";
+import { DialLink } from "@/components/DialLink";
+import type { DialScheme } from "@/lib/dial";
 
 /**
  * The calling control on the New Order form raised from a Regular Customer.
@@ -22,10 +24,13 @@ export function RegularCustomerCallPanel({
   customerId,
   customerName,
   phone,
+  dialScheme,
 }: {
   customerId: string;
   customerName: string;
   phone: string;
+  /** Which URL scheme the number opens with. See lib/dial.ts. */
+  dialScheme: DialScheme;
 }) {
   const router = useRouter();
 
@@ -39,9 +44,7 @@ export function RegularCustomerCallPanel({
         {/* The number dials on a phone and copies on a desktop. It is the
             reason this row exists, so it is not left in the form below. */}
         {phone ? (
-          <a href={`tel:${phone}`} className="text-sm text-[var(--brand-primary)] hover:underline">
-            {phone}
-          </a>
+          <DialLink phone={phone} scheme={dialScheme} className="text-sm" />
         ) : (
           <span className="text-sm text-slate-400">No number saved</span>
         )}
