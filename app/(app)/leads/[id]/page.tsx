@@ -3,7 +3,7 @@ import { readDbLite, loadOrderInto } from "@/lib/db";
 import { auditForEntity } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
-import { orderInScope } from "@/lib/order-access";
+import { orderInScope, canAssignLeads } from "@/lib/order-access";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Alert } from "@/components/ui/Alert";
 import { ConfirmButton } from "@/components/ui/ConfirmButton";
@@ -52,7 +52,7 @@ export default async function LeadDetailPage({
   const locked = isOrderLocked(order);
   const canEdit = can(user.role, "orders", "edit", db.role_permissions) && !locked;
   const canDelete = can(user.role, "orders", "delete", db.role_permissions);
-  const canReassign = isFullAccess(user.role) && !locked;
+  const canReassign = canAssignLeads(user, db) && !locked;
   const canUnlock = isFullAccess(user.role);
   const creator = db.profiles.find((p) => p.id === order.created_by);
   const updater = order.updated_by ? db.profiles.find((p) => p.id === order.updated_by) : null;

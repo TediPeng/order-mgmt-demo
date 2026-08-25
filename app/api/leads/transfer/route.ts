@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { readDbLite, writeDb } from "@/lib/db";
-import { can, isFullAccess } from "@/lib/permissions";
+import { canAssignLeads } from "@/lib/order-access";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { notify } from "@/lib/notifications";
@@ -29,8 +29,8 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   const db = await readDbLite();
-  if (!isFullAccess(user.role) || !can(user.role, "orders", "edit", db.role_permissions)) {
-    return NextResponse.json({ ok: false, error: "Only Administrators and Management can transfer leads." }, { status: 403 });
+  if (!canAssignLeads(user, db)) {
+    return NextResponse.json({ ok: false, error: "You do not have permission to transfer leads." }, { status: 403 });
   }
 
   let body: Record<string, unknown>;

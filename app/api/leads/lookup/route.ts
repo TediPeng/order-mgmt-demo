@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { readDbLite } from "@/lib/db";
-import { can, isFullAccess } from "@/lib/permissions";
+import { canAssignLeads } from "@/lib/order-access";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { normalizePhone } from "@/lib/utils";
 
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   const db = await readDbLite();
-  if (!isFullAccess(user.role) || !can(user.role, "orders", "edit", db.role_permissions)) {
+  if (!canAssignLeads(user, db)) {
     return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
   }
 

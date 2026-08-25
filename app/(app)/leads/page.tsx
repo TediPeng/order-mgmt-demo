@@ -9,6 +9,7 @@ import { BreakControls } from "@/components/BreakControls";
 import { BackToCallButton } from "@/components/BackToCallButton";
 import { getActiveBioBreak } from "@/lib/bio-breaks";
 import { findDuplicates, latestOrderDateByCustomer } from "@/lib/customers";
+import { canAssignLeads } from "@/lib/order-access";
 import { leadScopeFor, leadStatusCounts, previousStatusCounts, duplicatePhoneCount, regularCustomerOrderCount, queryLeads, orderForScope } from "@/lib/leads-query";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
@@ -349,7 +350,7 @@ export default async function LeadsPage({
           <BackToCallButton />
           {/* Moving a queue between callers. Full access only, the same rule the
               Agent field on a single lead already follows. */}
-          {isFullAccess(user.role) && canEdit && (
+          {canAssignLeads(user, db) && (
             <LinkButton href="/leads/transfer" variant="outline" size="sm">
               <ArrowLeftRight className="h-4 w-4" /> Transfer Leads
             </LinkButton>

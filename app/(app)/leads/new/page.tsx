@@ -4,7 +4,7 @@ import { LinkButton } from "@/components/ui/Button";
 import { LeadForm } from "@/components/LeadForm";
 import { RegularCustomerCallPanel } from "@/components/RegularCustomerCallPanel";
 import { createLeadAction } from "@/lib/actions/leads";
-import { allowedAssigneeIds } from "@/lib/order-access";
+import { allowedAssigneeIds, canAssignLeads } from "@/lib/order-access";
 import { getCurrentUser } from "@/lib/auth";
 import { readDbLite } from "@/lib/db";
 import { can, isFullAccess } from "@/lib/permissions";
@@ -31,7 +31,7 @@ export default async function NewLeadPage({
   const agents = db.profiles
     .filter((p) => p.is_active && !p.is_deleted && allowedIds.has(p.id))
     .map((p) => ({ id: p.id, full_name: displayUserName(p), username: p.username }));
-  const canReassign = isFullAccess(user.role);
+  const canReassign = canAssignLeads(user, db);
   // selling_price pre-fills a line's price, variants drive its variant select,
   // and pancake_variation_id decides whether it shows as a Quick add line.
   const activeProducts = db.products

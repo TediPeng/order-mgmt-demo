@@ -40,7 +40,15 @@ export const ACTION_LABELS: Record<ActionKey, string> = {
 // Only the actions that are meaningful per module are shown in the matrix UI.
 export const MODULE_ACTIONS: Record<ModuleKey, ActionKey[]> = {
   dashboard: ["view"],
-  orders: ["view", "create", "edit", "delete", "upload", "export"],
+  // "assign" is who a lead BELONGS to, and is separate from "edit" on purpose.
+  // Editing a lead changes the sale; assigning changes whose queue it is in and
+  // whose numbers it lands on, which is a supervisor's decision rather than a
+  // correction. It gates the Transfer Leads screen and the Agent field on a
+  // single lead — the same act at two scales, so the same grant.
+  //
+  // Off by default for every role but full access: SYSTEM_ROLE_DEFAULTS does not
+  // list it, so a Team Lead has to be given it deliberately.
+  orders: ["view", "create", "edit", "delete", "upload", "export", "assign"],
   // "upload" is its own grant, not part of "create".
   //
   // The spreadsheet import used to ride on products.create, which made the two

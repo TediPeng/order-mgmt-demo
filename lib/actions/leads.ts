@@ -6,7 +6,7 @@ import { previousOrderForPhone, customerOrderCount, ordersForPhones } from "@/li
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
-import { orderInScope, allowedAssigneeIds } from "@/lib/order-access";
+import { orderInScope, allowedAssigneeIds, canAssignLeads } from "@/lib/order-access";
 import { getActiveSessionForOrder, endSession, getActiveSession, attachOrderToSession } from "@/lib/call-sessions";
 import { can, isFullAccess } from "@/lib/permissions";
 import { protectedReason } from "@/lib/duplicate-leads";
@@ -541,7 +541,7 @@ export async function applyLeadUpdate(
   if (foreignCustomer) return { ok: false, code: "duplicate", error: foreignCustomer };
 
   const requestedAgentId = String(raw.agent_id || order.agent_id);
-  raw.agent_id = isFullAccess(user.role) ? requestedAgentId : order.agent_id;
+  raw.agent_id = canAssignLeads(user, db) ? requestedAgentId : order.agent_id;
 
   // Previous-order fields are informational-only for non-full-access roles.
   if (!isFullAccess(user.role)) {
@@ -705,7 +705,7 @@ export async function applyLeadUpdate(
   const before = { ...order };
   const today = todayInTz();
   const newOrderDate = computeOrderDate(order, data.status, today);
-  const isReassignment = isFullAccess(user.role) && data.agent_id !== before.agent_id;
+  const isReassignment = canAssignLeads(user, db) && data.agent_id !== before.agent_id;
   const product = data.product_id ? db.products.find((p) => p.id === data.product_id) : undefined;
 
 

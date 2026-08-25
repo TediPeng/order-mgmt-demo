@@ -1,5 +1,5 @@
 import type { DbShape, Order, Profile } from "./types";
-import { isFullAccess } from "./permissions";
+import { can, isFullAccess } from "./permissions";
 
 /**
  * Whether this viewer may act on this order. `agent_id` decides it, and nothing
@@ -39,6 +39,22 @@ export function scopeOrders(user: Profile, orders: Order[], db: DbShape): Order[
 }
 
 /** Which agents a user may attribute a NEW order to. */
+/**
+ * May this person change whose lead it is?
+ *
+ * Both the Transfer Leads screen and the Agent field on a single lead ask this,
+ * because they are the same act at two scales — and gating the bulk one more
+ * loosely than the single one would be the wrong way round.
+ *
+ * can() answers true for full access whatever the matrix says, so this widens
+ * the old isFullAccess check rather than changing it: nobody who could reassign
+ * before has lost anything, and a Team Lead can now be granted it in Roles &
+ * Permissions.
+ */
+export function canAssignLeads(user: Profile, db: DbShape): boolean {
+  return can(user.role, "orders", "assign", db.role_permissions);
+}
+
 export function allowedAssigneeIds(user: Profile, db: DbShape): string[] {
   if (isFullAccess(user.role)) return db.profiles.filter((p) => p.is_active).map((p) => p.id);
   if (user.role === "team_lead") {

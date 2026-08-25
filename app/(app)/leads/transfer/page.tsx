@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { can, isFullAccess } from "@/lib/permissions";
+import { can } from "@/lib/permissions";
+import { canAssignLeads } from "@/lib/order-access";
 import { displayCallName, displayUserName } from "@/lib/types";
 import { PRE_SALE_STATUSES } from "@/lib/validation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
@@ -25,8 +26,13 @@ export default async function TransferLeadsPage() {
   const db = await readDbLite();
 
   if (!can(user.role, "orders", "view", db.role_permissions)) redirect("/dashboard");
-  if (!isFullAccess(user.role) || !can(user.role, "orders", "edit", db.role_permissions)) {
-    return <Alert kind="error">Only Administrators and Management can transfer leads.</Alert>;
+  if (!canAssignLeads(user, db)) {
+    return (
+      <Alert kind="error">
+        You do not have permission to transfer leads. It is the <strong>Assign</strong> grant on Leads, in Roles &amp;
+        Permissions.
+      </Alert>
+    );
   }
 
   // Callers, not everyone with a login: a lead sitting on an Administrator's
