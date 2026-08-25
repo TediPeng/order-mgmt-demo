@@ -2,6 +2,33 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import type { Order, PancakeSyncSource } from "@/lib/types";
 import { buildForwardPayload, type ForwardItem } from "./types";
 import { listItems } from "@/lib/order-items";
+
+/**
+ * Previous-order statuses that leave nothing in flight, so the next parcel may
+ * go without a person looking first.
+ *
+ * The hold exists to stop ONE customer receiving TWO live parcels with the
+ * floor paying for both. That risk needs a parcel that is out, or one that is
+ * coming back — so the test is not "did the last one succeed" but "is the last
+ * one finished with".
+ *
+ *   delivered — it arrived and was kept. Nothing outstanding.
+ *   cancelled — it never shipped. There is no parcel, so there cannot be a
+ *               second one. Holding these was the rule being stricter than its
+ *               own reason: an agent had to go into Pancake, look at an order
+ *               that had already been called off, and press retry to confirm
+ *               what the status already said.
+ *
+ * Returned is deliberately NOT here. A parcel that came back cost the floor
+ * shipping twice and may mean a customer who refuses deliveries; that is a
+ * judgement, and a person should make it.
+ *
+ * Matched against the MAPPED status, not Pancake's label, so this follows the
+ * editable pancake_status_map like everything else — an Administrator who maps
+ * another code to `cancelled` gets this behaviour with it, and no code here
+ * needs to know that Pancake spells it "canceled".
+ */
+const SETTLED_PREVIOUS_STATUSES = new Set(["delivered", "cancelled"]);
 import { createOrder } from "./createOrder";
 import { CREATE_STATUS_PACKAGING_LABEL, LOOKUP_REFRESH_ON_MISS_AFTER_MS } from "./config";
 import { validateForPancake } from "./validate";
@@ -232,7 +259,8 @@ export async function forwardOrderToPancake(
   // what this rule is about.
   //
   // Three answers, three outcomes:
-  //   delivered      — the last one arrived and was kept. Send.
+  //   settled        — the last one is finished with: it arrived and was kept,
+  //                    or it was cancelled and never went. Send.
   //   no orders yet  — new to Pancake. Nothing to hold against them. Send.
   //   anything else  — hold it, and say which status and which order, so the
   //                    agent can look it up rather than guess.
@@ -246,7 +274,7 @@ export async function forwardOrderToPancake(
       await failSync(order, reason, opts, { accountId: account.id });
       return { ok: false, skipped: false, message: reason };
     }
-    if (latest.found && latest.status !== "delivered") {
+    if (latest.found && !SETTLED_PREVIOUS_STATUSES.has(latest.status || "")) {
       const label = latest.statusName || latest.status || "an unknown status";
       // Short on purpose. The Sync Failed page groups by this string and shows
       // it as the group's heading, so the sentence has to read as a title; the
