@@ -50,6 +50,20 @@ const NEW_PATH = "/regular-customers/new";
  * type any number, learn whose customer it is — which is precisely what
  * regularCustomerOwnersElsewhereAction above is written to avoid.
  */
+/**
+ * NOT the same rule as lib/regular-customer-guard.ts, however alike they read.
+ *
+ * That one asks whether an agent may work an ORDER, exempts Team Leads and
+ * Administrators entirely, and lets a shared customer through. This one asks
+ * whether a SECOND regular-customer record is about to be created for one
+ * person: it blocks everybody — a Team Lead gets a longer sentence telling them
+ * to share or reassign, not a way past — it knows nothing about sharing, and it
+ * compares against the record's intended owner rather than whoever is typing,
+ * which is what makes it work when a Team Lead adds on an agent's behalf.
+ *
+ * Folding the two together would quietly hand one of those rules the other's
+ * exemptions. They are kept apart on purpose.
+ */
 async function foreignRegularOwnerReason(
   actor: Profile,
   profiles: Profile[],

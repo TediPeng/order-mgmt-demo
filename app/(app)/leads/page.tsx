@@ -10,6 +10,7 @@ import { BackToCallButton } from "@/components/BackToCallButton";
 import { getActiveBioBreak } from "@/lib/bio-breaks";
 import { findDuplicates, latestOrderDateByCustomer, sharedCustomerIdsForAgent } from "@/lib/customers";
 import { canAssignLeads } from "@/lib/order-access";
+import { guardExemptRole, isBlockingMatch } from "@/lib/regular-customer-guard";
 import { leadScopeFor, leadStatusCounts, previousStatusCounts, duplicatePhoneCount, regularCustomerOrderCount, queryLeads, orderForScope } from "@/lib/leads-query";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
@@ -286,21 +287,19 @@ export default async function LeadsPage({
      * Which of these matches would actually stop a save, as opposed to being
      * worth knowing about.
      *
-     * The two are not the same thing and used to be treated as though they
-     * were: Save Changes refused whenever there was ANY match, on the stated
-     * grounds that the server would refuse it anyway. The server's rule is
-     * narrower — it refuses only for a record that is still someone else's
-     * REGULAR customer, and never for a Team Lead or an Administrator — so the
-     * dialog was stopping saves the server would have accepted.
+     * The two are not the same thing, and this page used to say they were:
+     * Save Changes refused whenever there was ANY match, on the stated grounds
+     * that the server would refuse it too. It would not, and an agent on a call
+     * was held behind a record that had been untagged minutes earlier.
      *
-     * That is how an agent got trapped mid-call: the record had been untagged
-     * minutes earlier, the number was free, and Save Changes still refused with
-     * the other agent's name on it. Mirroring the server's rule exactly is what
-     * keeps the dialog honest; the match itself still shows in the panel below
-     * the order, which is where "worth knowing about" belongs.
+     * The verdict is not decided here any more. It comes from the same function
+     * the two server actions ask, so the dialog and the save it stands in front
+     * of cannot drift apart again. What is still decided here is only what to
+     * MATCH on, which the warnings panel needs anyway.
      */
-    const exemptRole = isFullAccess(user.role) || user.role === "team_lead";
-    const sharedToMe = new Set(exemptRole ? [] : await sharedCustomerIdsForAgent(matchedIds, user.id));
+    const sharedToMe = new Set(
+      guardExemptRole(user.role) ? [] : await sharedCustomerIdsForAgent(matchedIds, user.id)
+    );
 
     for (const [orderId, findings] of findingsByOrderId) {
       duplicateWarningsByOrderId[orderId] = findings.map((d) => ({
@@ -310,11 +309,7 @@ export default async function LeadsPage({
         lastOrderAt: lastOrderByCustomerId.get(d.matched.id) ?? null,
         fields: d.fields,
         confidence: d.confidence,
-        blocking:
-          !exemptRole &&
-          d.matched.is_regular_customer &&
-          d.matched.owner_agent_id !== user.id &&
-          !sharedToMe.has(d.matched.id),
+        blocking: isBlockingMatch(d.matched, user, sharedToMe),
       }));
     }
   }

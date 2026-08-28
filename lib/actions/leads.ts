@@ -36,14 +36,14 @@ import {
   getCustomer,
   recordCustomerOrder,
   regularCustomerPhonesAmong,
-  sharedCustomerIdsForAgent,
 } from "@/lib/customers";
 import { forwardOrderToPancake } from "@/lib/pancake/forward";
 import { computeOrderTotal, validateForPancake } from "@/lib/pancake/validate";
 import { verifyOrderAddress } from "@/lib/pancake/verifyAddress";
 import { insertSyncLog } from "@/lib/pancake/store";
 import type { DbShape, Order, Profile } from "@/lib/types";
-import { ORDER_PANCAKE_DEFAULTS, displayCallName } from "@/lib/types";
+import { ORDER_PANCAKE_DEFAULTS } from "@/lib/types";
+import { blockingMatches, foreignRegularCustomerMessage, guardExemptRole } from "@/lib/regular-customer-guard";
 
 /**
  * The unit price the Packaging gate asks about, from a set of posted lines.
@@ -132,7 +132,7 @@ async function foreignCustomerBlockReason(
   db: DbShape,
   candidate: { full_name: string; phone: string; purok: string; barangay: string; city: string; province: string }
 ): Promise<string | null> {
-  if (isFullAccess(user.role) || user.role === "team_lead") return null;
+  if (guardExemptRole(user.role)) return null;
   const phone = canonicalPhone(candidate.phone);
   if (!phone) return null;
 
@@ -144,42 +144,17 @@ async function foreignCustomerBlockReason(
     city: candidate.city,
     province: candidate.province,
   });
-  /**
-   * Only the ones that are still regular customers.
-   *
-   * findDuplicates() answers "who else looks like this person", over every
-   * customer record there is — which is right for the review queue, and wrong
-   * here. Untagging does not delete the record: it sets is_regular_customer to
-   * false and leaves the row, with its owner, exactly where it was. So this
-   * check went on refusing on rows that had been untagged, and said so in words
-   * that were no longer true — "already a regular customer of Jade", about
-   * somebody Jade had already given up.
-   *
-   * There was no way out of it from the app. The agent does the one thing that
-   * should release the number, watches it succeed, and the form refuses in the
-   * same breath. Every other check of this kind already filters on the flag;
-   * this was the one that did not.
-   */
-  const stillRegular = findings.filter((f) => f.matched.is_regular_customer);
-  if (stillRegular.length === 0) return null;
-
-  // A customer shared with this agent is not foreign to them: the owner handed
-  // it over deliberately, and refusing the order here would make the share look
-  // broken rather than granted.
-  const sharedToMe = new Set(
-    await sharedCustomerIdsForAgent(
-      stillRegular.map((f) => f.matched.id),
-      user.id
-    )
+  // findDuplicates() answers "who else looks like this person", across every
+  // customer record there is — the right question for the review queue. Which
+  // of those actually refuse an order is a narrower one, and it is asked in the
+  // one place that is allowed to answer it.
+  const foreign = await blockingMatches(
+    findings.map((f) => f.matched),
+    user
   );
-  const foreign = stillRegular.filter((f) => f.matched.owner_agent_id !== user.id && !sharedToMe.has(f.matched.id));
   if (foreign.length === 0) return null;
 
-  const owner = db.profiles.find((p) => p.id === foreign[0].matched.owner_agent_id);
-  return (
-    `This customer is already a regular customer of ${owner ? displayCallName(owner) : "another agent"}. ` +
-    `Please contact your Team Lead for this concern.`
-  );
+  return foreignRegularCustomerMessage(db.profiles.find((p) => p.id === foreign[0].owner_agent_id));
 }
 
 export async function createLeadAction(formData: FormData) {
