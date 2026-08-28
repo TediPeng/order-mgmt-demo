@@ -2,7 +2,13 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { isFullAccess } from "@/lib/permissions";
 import { normalizePhone } from "@/lib/utils";
 import { statusesMatching } from "@/lib/validation";
-import { MAX_SEARCH_TERMS } from "@/lib/leads-query-terms";
+import {
+  MAX_PHONE_TERMS,
+  MAX_SEARCH_TERMS,
+  phoneListKeys,
+  safeTerm,
+  splitTerms,
+} from "@/lib/leads-query-terms";
 import type { DbShape, Order, Profile } from "@/lib/types";
 
 /**
@@ -72,32 +78,42 @@ export interface LeadFilters {
   prev_to?: string;
 }
 
-/** PostgREST's or() takes a comma-separated list, so a term containing a comma
- * or a parenthesis would be read as more conditions. Those characters never
- * carry meaning in a name or a reference, so they are dropped rather than
- * escaped. */
-function safeTerm(value: string): string {
-  return value.replace(/[(),*]/g, " ").trim();
-}
-
-
 /**
  * The search box, split into the separate things being looked for.
  *
- * Split on commas, semicolons and line breaks — never on spaces. A column
- * copied out of Excel arrives one item per line and a hand-typed list arrives
- * comma-separated, so both have to work. But "Jesslyn Del Castillo" is one
- * customer, not three terms: splitting on spaces would turn a name into an OR
- * matching every Del and every Castillo in the table, and the search would get
- * less useful the more precisely you typed.
+ * The splitting itself lives in leads-query-terms.ts, shared with the box so
+ * that the count it shows and the count that is used are the same number.
  */
 export function searchTerms(value: string | undefined | null): string[] {
-  const parts = (value || "")
-    .split(/[,;\r\n]+/)
-    .map((t) => safeTerm(t))
-    .filter(Boolean);
-  // Deduplicated: pasting the same id twice must not double the conditions.
-  return Array.from(new Set(parts)).slice(0, MAX_SEARCH_TERMS);
+  return splitTerms(value).slice(0, MAX_SEARCH_TERMS);
+}
+
+/**
+ * A pasted column of phone numbers, resolved to the leads carrying them.
+ *
+ * Long lists cannot go through the ordinary path, and the reason is the URL
+ * rather than the data: every term becomes five ilike conditions in one
+ * PostgREST or(), so fifty numbers is already a 9KB query string and four
+ * hundred is refused outright with a 414.
+ *
+ * So the numbers are sent in a request body instead. The database matches them
+ * on lead_phone_key against orders_phone_key_idx — one index scan, measured at
+ * 9ms for three hundred — and answers with ids. Those ids then go into the
+ * ordinary list query, which is the point of doing it in two steps: status,
+ * dates, product, agent, the scope, the ordering and the pager all keep working
+ * untouched, instead of being reimplemented here and silently losing whichever
+ * one was forgotten.
+ *
+ * Null means "not this path" — use the ordinary one.
+ */
+async function leadIdsForPhoneList(keys: string[]): Promise<{ ids: string[]; truncated: boolean }> {
+  const { data, error } = await supabaseAdmin.rpc("lead_ids_by_phone_keys", {
+    p_keys: keys,
+    p_max: MAX_PHONE_TERMS,
+  });
+  if (error) throw new Error(`Phone list lookup failed: ${error.message}`);
+  const answer = (data || {}) as { ids?: string[]; truncated?: boolean };
+  return { ids: answer.ids || [], truncated: Boolean(answer.truncated) };
 }
 
 function applyScope<T extends { in: (col: string, values: string[]) => T }>(query: T, scope: AgentScope): T {
@@ -139,7 +155,28 @@ export async function queryLeads(input: {
   if (filters.status) query = query.eq("status", filters.status);
   if (filters.prev_status) query = query.ilike("previous_order_status", filters.prev_status);
 
-  if (isAgentView) {
+  /**
+   * A long list of phone numbers takes the other route.
+   *
+   * Only when it is long: below the ordinary ceiling nothing changes, because
+   * the two routes do not match identically. The ordinary one looks for the
+   * digits in the order number, the tracking number and the customer name as
+   * well, and somebody searching a single number may well mean one of those.
+   * Above fifty it is a pasted column of contact numbers and nothing else, and
+   * the exact phone-key match is both what is wanted and the only thing that
+   * fits in a request.
+   */
+  const rawSearch = isAgentView ? filters.q || filters.phone || "" : filters.q || "";
+  const allTerms = splitTerms(rawSearch);
+  const phoneKeys = allTerms.length > MAX_SEARCH_TERMS ? phoneListKeys(allTerms) : null;
+
+  if (phoneKeys) {
+    const { ids } = await leadIdsForPhoneList(phoneKeys.slice(0, MAX_PHONE_TERMS));
+    // No matches must return nothing, not everything. An empty in() list is a
+    // condition that cannot be satisfied, which is right, but PostgREST is
+    // asked for an impossible id instead so the intent survives the round trip.
+    query = query.in("id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
+  } else if (isAgentView) {
     // The agent's single box: their own leads, by any reference they might
     // have written down.
     const terms = searchTerms(filters.q || filters.phone || "");

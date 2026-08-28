@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { List, X } from "lucide-react";
 import { Input, Textarea } from "@/components/ui/Field";
-import { MAX_SEARCH_TERMS } from "@/lib/leads-query-terms";
+import { MAX_PHONE_TERMS, MAX_SEARCH_TERMS, limitFor, splitTerms } from "@/lib/leads-query-terms";
 
 /**
  * The Leads search box, which also takes a list.
@@ -38,12 +38,16 @@ export function LeadSearchBox({
   const [list, setList] = useState(/[,;\r\n]/.test(initial));
   const areaRef = useRef<HTMLTextAreaElement>(null);
 
-  const terms = value
-    .split(/[,;\r\n]+/)
-    .map((t) => t.trim())
-    .filter(Boolean);
-  const unique = new Set(terms).size;
-  const capped = unique > MAX_SEARCH_TERMS;
+  // Split by the same function the query uses, so the count shown here and the
+  // count actually searched cannot drift apart.
+  const terms = splitTerms(value);
+  const unique = terms.length;
+  /** A column of complete phone numbers is matched on the phone key in the
+   * database rather than as text in the query string, so it gets the higher
+   * ceiling. Anything else — a name, an order id, a half-typed number in among
+   * them — takes the ordinary route and its lower one. */
+  const limit = limitFor(terms);
+  const capped = unique > limit;
 
   function handlePaste(e: React.ClipboardEvent) {
     const text = e.clipboardData.getData("text");
@@ -108,10 +112,13 @@ export function LeadSearchBox({
           search would be noise in front of a control used all day. */}
       {unique > 1 && (
         <p className="mt-1 text-xs text-slate-500">
-          Searching {Math.min(unique, MAX_SEARCH_TERMS)} items — a lead matching any of them is shown.
+          Searching {Math.min(unique, limit)} items — a lead matching any of them is shown.
           {capped && (
             <span className="ml-1 font-medium text-amber-700">
-              Only the first {MAX_SEARCH_TERMS} are used; {unique - MAX_SEARCH_TERMS} were left out.
+              Only the first {limit} are used; {unique - limit} were left out.
+              {limit === MAX_SEARCH_TERMS && (
+                <> A list of complete phone numbers on their own can search {MAX_PHONE_TERMS}.</>
+              )}
             </span>
           )}
         </p>
