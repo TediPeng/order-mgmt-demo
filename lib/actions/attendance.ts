@@ -10,6 +10,7 @@ import { requireUserLite, requirePermission } from "./guards";
 import { attendanceOverrideSchema } from "@/lib/validation";
 import { computeMinutesBetween, computeMinutesLate, computeOvertimeHours, scheduledInstant } from "@/lib/attendance-logic";
 import { activeSuspensionOn } from "@/lib/schedule-access";
+import { portalClockUrl } from "@/lib/portal-attendance";
 import { todayInTz } from "@/lib/utils";
 
 function safeRedirectTarget(raw: FormDataEntryValue | null): string {
@@ -21,6 +22,23 @@ export async function timeInAction(formData: FormData) {
   const { user, db } = await requireUserLite();
   const today = todayInTz();
   const target = safeRedirectTarget(formData.get("redirect_to"));
+
+  // A hidden button is not a closed door.
+  //
+  // Skew protection pins an open tab to the deployment it loaded, so a tab
+  // opened before this shipped still carries the old form and can still post
+  // here -- which is exactly how stale tabs went on creating duplicate leads
+  // for an hour after the dedupe went live. The refusal therefore lives on the
+  // server, where the age of the tab cannot matter.
+  //
+  // And the cost of missing one is not a cosmetic inconsistency: a time-in
+  // written only in ROMA satisfies ROMA's gate, so the agent works the whole
+  // day and is absent from the record that pays them.
+  if (portalClockUrl()) {
+    redirect(
+      `${target}?error=${encodeURIComponent("Time in and out are kept in the company portal now. Please clock in there.")}`
+    );
+  }
 
   // Section 0.2: checked first -- a suspension always pre-creates a
   // status='suspended' attendance row for the day (time_in still null), which
@@ -94,6 +112,14 @@ export async function timeOutAction(formData: FormData) {
   const { user, db } = await requireUserLite();
   const today = todayInTz();
   const target = safeRedirectTarget(formData.get("redirect_to"));
+
+  // Same reasoning as timeInAction: a stale tab must not be able to close a day
+  // on this side while the portal still has it open.
+  if (portalClockUrl()) {
+    redirect(
+      `${target}?error=${encodeURIComponent("Time in and out are kept in the company portal now. Please clock out there.")}`
+    );
+  }
 
   const record = db.attendance.find((a) => a.user_id === user.id && a.work_date === today);
   if (!record) {

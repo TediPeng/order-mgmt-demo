@@ -57,6 +57,30 @@ export function portalOwnsAttendance(): boolean {
   return process.env.PORTAL_ATTENDANCE === "on";
 }
 
+/**
+ * Where somebody clocks on, once the portal owns the clock.
+ *
+ * Null means "not here yet" and every caller falls back to ROMA's own page.
+ * That covers the switch being off, and it deliberately also covers the switch
+ * being on with no address configured: sending an agent to `undefined/...` is
+ * worse than leaving them on a page that still works.
+ *
+ * Deriving this from the same switch that already decides where attendance is
+ * READ from is the point. One thing to turn on, and the clock cannot end up
+ * hidden in ROMA while ROMA is still the only place it exists.
+ */
+export function portalClockUrl(): string | null {
+  if (!portalOwnsAttendance()) return null;
+
+  const base = process.env.PORTAL_APP_URL;
+  if (!base) {
+    console.error("[portal-attendance] PORTAL_ATTENDANCE is on but PORTAL_APP_URL is not set; keeping ROMA's own clock.");
+    return null;
+  }
+
+  return `${base.replace(/\/+$/, "")}/attendance/my-attendance`;
+}
+
 /** How long to wait on the portal before giving up and drawing the board without it. */
 const TIMEOUT_MS = 4000;
 

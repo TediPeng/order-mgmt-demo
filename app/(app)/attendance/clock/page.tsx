@@ -1,5 +1,7 @@
+import { redirect } from "next/navigation";
 import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { portalClockUrl } from "@/lib/portal-attendance";
 import { can } from "@/lib/permissions";
 import { formatDate, formatTime, todayInTz } from "@/lib/utils";
 import { AnalogClock } from "@/components/AnalogClock";
@@ -19,6 +21,20 @@ export default async function TimeClockPage({
 }: {
   searchParams: Promise<{ error?: string; timedin?: string; timedout?: string; overridden?: string; breakstarted?: string; breakended?: string }>;
 }) {
+  // The clock moved to the company portal, so this page no longer decides
+  // anything -- it hands over instead of being deleted.
+  //
+  // A redirect rather than an empty page, and it is what makes hiding the nav
+  // item safe. Links to here outlive the menu: the topbar widget, the "Go to
+  // Time In" button on a blocked order, a bookmark, an old tab. Every one of
+  // them lands on the portal instead of on a clock whose button would write a
+  // row the payroll does not read.
+  //
+  // Nothing else on this page is lost. Scheduled and bio breaks are ROMA's own
+  // and are taken from the Leads screen, where the agent already is.
+  const clockLivesInThePortal = portalClockUrl();
+  if (clockLivesInThePortal) redirect(clockLivesInThePortal);
+
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
   const db = await readDbLite();

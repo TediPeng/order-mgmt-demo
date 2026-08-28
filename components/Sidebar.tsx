@@ -65,6 +65,7 @@ export function Sidebar({
   canMonitor = false,
   canSeeRemainingLeads = false,
   canImportRegularCustomers = false,
+  workforceInPortal = false,
   collapsed = false,
   onNavigate,
 }: {
@@ -83,6 +84,14 @@ export function Sidebar({
    * only. The page enforces the same rule; this decides whether the link
    * shows. */
   canImportRegularCustomers?: boolean;
+  /**
+   * True once the company portal is where the floor keeps its own time and
+   * roster, which drops Time In / Out and Schedule from this menu.
+   *
+   * Passed in rather than worked out here: deciding it reads server
+   * environment, and this is a client component.
+   */
+  workforceInPortal?: boolean;
   collapsed?: boolean;
   /** Lets the mobile drawer close itself when a destination is chosen. */
   onNavigate?: () => void;
@@ -129,12 +138,27 @@ export function Sidebar({
       title: "Workforce",
       items: [
         { href: "/attendance", label: "Attendance", icon: Clock, show: true },
-        { href: "/attendance/clock", label: "Time In / Out", icon: Timer, show: true },
+        // Gone once the clock is the portal's. Attendance above stays: it is
+        // the read of the mirrored rows that ROMA's own timesheet, activity
+        // report and exports are built from, and hiding it would take away the
+        // record without taking away anything that writes it.
+        { href: "/attendance/clock", label: "Time In / Out", icon: Timer, show: !workforceInPortal },
         { href: "/attendance/monitor", label: "Agent Monitoring", icon: Activity, show: canMonitor },
         // Same audience and same gate as the monitor — the live board and its
         // historical counterpart belong next to each other.
         { href: "/attendance/activity", label: "Activity Report", icon: BarChart3, show: canMonitor },
-        { href: "/schedule", label: "Schedule", icon: CalendarDays, show: access.schedules },
+        // Off the menu with the clock, because the floor reads its roster in the
+        // portal now.
+        //
+        // Only off the MENU. /schedule still works, and that is deliberate
+        // rather than an oversight: nothing carries a roster between the two
+        // applications, and lateness on every mirrored time-in is still
+        // measured against the duty hours held here -- see the portal
+        // attendance route, which falls back to the global work schedule when
+        // an agent has no row for the day. A roster nobody can reach is a
+        // roster that stops being maintained, and the first sign of it would be
+        // wrong lateness in ROMA's own timesheet, which nothing announces.
+        { href: "/schedule", label: "Schedule", icon: CalendarDays, show: access.schedules && !workforceInPortal },
         { href: "/leave", label: "Leave Requests", icon: CalendarClock, show: access.leave },
         { href: "/schedule/suspensions", label: "Disciplinary", icon: ShieldAlert, show: access.disciplinary },
       ],
