@@ -13,6 +13,16 @@ export interface DuplicateWarning {
   lastOrderAt?: string | null;
   fields: string[];
   confidence: string;
+  /**
+   * Whether the server would actually refuse a save over this match.
+   *
+   * A match is worth showing more often than it is worth refusing: only a
+   * record that is STILL somebody else's regular customer stops a save, and
+   * nothing stops one for a Team Lead or an Administrator. Decided on the
+   * server, where the flag and the sharing table can be read, so this dialog
+   * and the action it is standing in front of cannot disagree.
+   */
+  blocking?: boolean;
 }
 
 /**

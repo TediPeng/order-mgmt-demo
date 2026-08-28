@@ -368,11 +368,21 @@ export function OrderDetailsModal({
     }
   }
 
-  /** What Save Changes presses. Stops at the duplicate dialog when there is one
-   * to show — the server refuses the same save for the same reason, so letting
-   * it through would only produce a red error a moment later. */
+  /**
+   * What Save Changes presses. Stops at the duplicate dialog only for a match
+   * the server would itself refuse.
+   *
+   * It used to stop for ANY match, on the grounds that the server refuses the
+   * same save anyway. It does not: the server refuses only over a record that
+   * is still somebody else's REGULAR customer. So an untagged record — the
+   * number released, the save perfectly legal — was still refused here, with
+   * the former owner's name on the dialog and no way past it. `blocking` is
+   * that same rule, decided on the server.
+   */
+  const blockingWarnings = duplicateWarnings.filter((d) => d.blocking !== false);
+
   function attemptSave() {
-    if (duplicateWarnings.length > 0) {
+    if (blockingWarnings.length > 0) {
       setDuplicateBlock(true);
       return;
     }
@@ -436,8 +446,11 @@ export function OrderDetailsModal({
 
       {duplicateBlock && (
         <div onClick={(e) => e.stopPropagation()}>
+          {/* Only the matches being refused. One that is merely worth knowing
+              about belongs in the panel below the order, not in a dialog
+              standing between the agent and their save. */}
           <DuplicateBlockDialog
-            warnings={duplicateWarnings}
+            warnings={blockingWarnings}
             canOverride={canOverrideDuplicate}
             onBack={() => setDuplicateBlock(false)}
             onOverride={() => {
