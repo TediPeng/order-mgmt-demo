@@ -144,16 +144,35 @@ async function foreignCustomerBlockReason(
     city: candidate.city,
     province: candidate.province,
   });
+  /**
+   * Only the ones that are still regular customers.
+   *
+   * findDuplicates() answers "who else looks like this person", over every
+   * customer record there is — which is right for the review queue, and wrong
+   * here. Untagging does not delete the record: it sets is_regular_customer to
+   * false and leaves the row, with its owner, exactly where it was. So this
+   * check went on refusing on rows that had been untagged, and said so in words
+   * that were no longer true — "already a regular customer of Jade", about
+   * somebody Jade had already given up.
+   *
+   * There was no way out of it from the app. The agent does the one thing that
+   * should release the number, watches it succeed, and the form refuses in the
+   * same breath. Every other check of this kind already filters on the flag;
+   * this was the one that did not.
+   */
+  const stillRegular = findings.filter((f) => f.matched.is_regular_customer);
+  if (stillRegular.length === 0) return null;
+
   // A customer shared with this agent is not foreign to them: the owner handed
   // it over deliberately, and refusing the order here would make the share look
   // broken rather than granted.
   const sharedToMe = new Set(
     await sharedCustomerIdsForAgent(
-      findings.map((f) => f.matched.id),
+      stillRegular.map((f) => f.matched.id),
       user.id
     )
   );
-  const foreign = findings.filter((f) => f.matched.owner_agent_id !== user.id && !sharedToMe.has(f.matched.id));
+  const foreign = stillRegular.filter((f) => f.matched.owner_agent_id !== user.id && !sharedToMe.has(f.matched.id));
   if (foreign.length === 0) return null;
 
   const owner = db.profiles.find((p) => p.id === foreign[0].matched.owner_agent_id);
