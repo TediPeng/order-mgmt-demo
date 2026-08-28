@@ -22,6 +22,7 @@ import { formatDate, formatDateTime } from "@/lib/utils";
 import { StatGrid, StatWidget } from "@/components/StatCard";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { AttendanceWidget } from "@/components/AttendanceWidget";
+import { portalOwnsAttendance } from "@/lib/portal-attendance";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/Button";
@@ -471,7 +472,13 @@ export default async function DashboardPage({
         </div>
 
         <div className="space-y-6">
-          <AttendanceWidget user={user} showClock />
+          {/* Gone from the dashboard once the portal keeps the time. The card
+              was a clock, and a clock that cannot be set is decoration -- worse
+              than decoration on the first screen of the day, where it is the
+              thing an agent reaches for and it would send them somewhere else
+              every morning. The Attendance page still carries it, for reading
+              back the day the portal recorded. */}
+          {!portalOwnsAttendance() && <AttendanceWidget user={user} showClock />}
 
           {rankingWidget && (
             <Card>
