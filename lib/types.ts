@@ -680,6 +680,20 @@ export interface OperationsSettings {
    * on the agent's PC. "off" renders numbers as plain text. See lib/dial.ts —
    * this is a fact about that PC, not about this app, so it is a setting. */
   dial_scheme: DialScheme;
+  /**
+   * When true, an agent cannot sign in here with a password and must arrive
+   * through the company portal.
+   *
+   * Agents only, and that is the point rather than an omission. An
+   * Administrator keeps the password form because it is the way back in when
+   * the portal or the SSO hand-off is the thing that broke — and two of the
+   * three administrator accounts have no employee record in the portal at all,
+   * so SSO could not let them in even if it were working.
+   *
+   * A setting and not an environment variable for the same reason: turning it
+   * off has to be one click by whoever is awake, not a redeploy.
+   */
+  agent_login_via_portal_only: boolean;
 }
 
 export interface DbShape {

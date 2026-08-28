@@ -97,6 +97,25 @@ export default async function SystemSettingsPage({
                 the outcome.
               </p>
             </div>
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                name="agent_login_via_portal_only"
+                defaultChecked={db.operations.agent_login_via_portal_only}
+                disabled={!canManage}
+                className="mt-1"
+              />
+              <span className="text-sm">
+                Agents sign in through the company portal
+                <span className="mt-0.5 block text-xs text-slate-400">
+                  Refuses the password form for agents and points them at the portal instead. Administrators and Team
+                  Leads keep theirs, deliberately — that is the way back in when the portal or the hand-off is the thing
+                  that broke. An agent whose ROMA account is not linked in the portal cannot get in at all while this is
+                  on, so link a new agent before their first shift. It is a setting rather than a deploy so it can be
+                  turned off in one click, mid-shift, by whoever is awake.
+                </span>
+              </span>
+            </label>
             {canManage && (
               <div className="flex justify-end">
                 <Button type="submit">Save operations settings</Button>

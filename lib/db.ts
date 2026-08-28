@@ -393,7 +393,7 @@ function seedDb(): DbShape {
     performance_thresholds: { top_performer_min_ratio: 1.2, needs_improvement_max_ratio: 0.8, rts_warning_threshold_pct: 15 },
     pending_deletes: [],
     dirty_orders: [],
-    operations: { allow_status_import: false, min_call_seconds: 0, dial_scheme: "tel" },
+    operations: { allow_status_import: false, min_call_seconds: 0, dial_scheme: "tel", agent_login_via_portal_only: false },
     work_schedule: DEFAULT_WORK_SCHEDULE,
   };
 }
@@ -612,6 +612,7 @@ async function readDbUncached(withOrders: boolean): Promise<DbShape> {
       allow_status_import: Boolean(settings.allow_status_import),
       min_call_seconds: num(settings.min_call_seconds ?? 0),
       dial_scheme: isDialScheme(settings.dial_scheme) ? settings.dial_scheme : "tel",
+      agent_login_via_portal_only: Boolean(settings.agent_login_via_portal_only),
     },
     work_schedule: {
       work_start: time5(settings.work_start),
@@ -787,6 +788,7 @@ export async function writeDb(db: DbShape): Promise<void> {
       allow_status_import: db.operations.allow_status_import,
       min_call_seconds: db.operations.min_call_seconds,
       dial_scheme: db.operations.dial_scheme,
+      agent_login_via_portal_only: db.operations.agent_login_via_portal_only,
     })
     .eq("id", 1);
   if (settingsError) throw new Error(`Supabase app_settings update failed: ${settingsError.message}`);

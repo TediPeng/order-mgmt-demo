@@ -53,6 +53,32 @@ export async function loginAction(formData: FormData) {
     redirect(`/login?error=${encodeURIComponent("This account has been deactivated. Contact your administrator.")}`);
   }
 
+  /**
+   * The floor signs in through the company portal, not here.
+   *
+   * Refused in the action rather than by hiding the form, because hiding a form
+   * closes nothing: the POST still exists and can still be called. This is the
+   * check that actually holds.
+   *
+   * Agents only. An Administrator keeps the password form deliberately — it is
+   * the way back in when the portal or the hand-off is the thing that broke,
+   * and two of the three administrator accounts have no employee record in the
+   * portal at all, so SSO could not admit them even when it is working. A Team
+   * Lead is left alone for the same reason: they are who an agent is sent to.
+   *
+   * The password is checked BEFORE this, on purpose. Refusing an unknown
+   * username here would answer "is this a real agent account" to anyone who
+   * asked, and the message below names the portal, which is a thing worth
+   * knowing only if the account is yours.
+   */
+  if (user.role === "agent" && db.operations.agent_login_via_portal_only) {
+    logActivity(db, user.id, "LOGIN_FAILED", "auth", null, { reason: "portal_only" }, { module: "settings", ...info });
+    await writeDb(db);
+    redirect(
+      `/login?error=${encodeURIComponent("Please log in using your 4S Portal account.")}`
+    );
+  }
+
   // Surfaced in the Users list (Section 8), so it is stamped on every successful
   // sign-in rather than derived from the audit log.
   user.last_login_at = new Date().toISOString();

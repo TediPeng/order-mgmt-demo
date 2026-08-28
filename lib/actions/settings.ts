@@ -111,6 +111,7 @@ export async function updateOperationsAction(formData: FormData) {
     // Anything unrecognised keeps what was there rather than silently turning
     // click-to-call off for the whole floor.
     dial_scheme: isDialScheme(posted) ? posted : before.dial_scheme,
+    agent_login_via_portal_only: formData.get("agent_login_via_portal_only") === "on",
   };
 
   const info = await getRequestInfo();
