@@ -16,6 +16,7 @@ import {
   linkExistingPancakeOrderAction,
   clearDuplicateHoldAction,
   resolveWithoutSyncAction,
+  sendHeldOrderAnywayAction,
 } from "@/lib/actions/pancake";
 import { SyncResolveMenu } from "@/components/SyncResolveMenu";
 import type { Order } from "@/lib/types";
@@ -94,7 +95,7 @@ function causeOf(error: string | null): Cause {
       key: `held:${held[1]}`,
       title: `Their last Pancake order (${held[1]}) is ${held[2]}`,
       detail:
-        "This is a repeat buyer, and their previous parcel has not landed — it came back, or it is still moving. Sending another now risks a second parcel for one customer, with the floor paying for both. Settle that order in Pancake, then retry. A retry before that will simply hold again.",
+        "This is a repeat buyer, and Pancake says their previous parcel has not landed — it came back, or it is still moving. Sending another now risks a second parcel for one customer, with the floor paying for both. Settle that order in Pancake, then retry; a retry before that asks Pancake the same question and holds again. If the hold is wrong — the parcel really did arrive and Pancake has not caught up, or the customer asked for two on purpose — use Send anyway on the row, which takes a reason and keeps it in the activity log.",
       needsPerson: true,
     };
   }
@@ -280,6 +281,15 @@ export default async function SyncFailedPage({
                         "use server";
                         await resolveWithoutSyncAction(orderId, formData);
                       };
+                      // Only where the repeat-buyer hold is what refused it.
+                      // Offering "send anyway" against a missing address or an
+                      // unmapped product would be a button that cannot work.
+                      const sendAnywayOne = cause.key.startsWith("held:")
+                        ? async (formData: FormData) => {
+                            "use server";
+                            await sendHeldOrderAnywayAction(orderId, formData);
+                          }
+                        : undefined;
                       return (
                         <tr key={o.id} className="whitespace-nowrap">
                           <td className="px-3 py-2">
@@ -322,6 +332,7 @@ export default async function SyncFailedPage({
                                     linkAction={linkOne}
                                     clearAction={clearOne}
                                     resolveAction={resolveOne}
+                                    sendAnywayAction={sendAnywayOne}
                                   />
                                 </>
                               )}

@@ -30,11 +30,15 @@ export function SyncResolveMenu({
   linkAction,
   clearAction,
   resolveAction,
+  sendAnywayAction,
 }: {
   orderNumber: string;
   linkAction: (formData: FormData) => void;
   clearAction: () => void;
   resolveAction: (formData: FormData) => void;
+  /** Absent unless this row is held by the repeat-buyer rule, so the option
+   * only appears where it means anything. */
+  sendAnywayAction?: (formData: FormData) => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -108,6 +112,32 @@ export function SyncResolveMenu({
                   Clear the hold
                 </Button>
               </form>
+
+              {/* Above "not going to Pancake", because it is the opposite
+                  answer to the same question and it is the one more often
+                  right: a held order is usually a real order somebody wants
+                  sent, not one to be written off. */}
+              {sendAnywayAction && (
+                <form action={sendAnywayAction} className="space-y-1.5 rounded-lg border border-amber-200 bg-amber-50/40 p-3">
+                  <Label htmlFor={`send-${orderNumber}`}>It is a real second order — send it</Label>
+                  <Input
+                    id={`send-${orderNumber}`}
+                    name="reason"
+                    required
+                    minLength={5}
+                    placeholder="Reason — e.g. delivered already, Pancake not updated; or two parcels on purpose"
+                    autoComplete="off"
+                  />
+                  <p className="text-xs text-slate-400">
+                    For a hold that is wrong: the last parcel really did arrive and Pancake has not caught up, or the
+                    customer asked for two parcels. Retry cannot get past it — it asks Pancake the same question and
+                    gets the same answer. This sends once, against the hold, and the reason is kept in the activity log.
+                  </p>
+                  <Button type="submit" size="sm" variant="secondary" className="w-full justify-center">
+                    Send anyway
+                  </Button>
+                </form>
+              )}
 
               <form action={resolveAction} className="space-y-1.5 rounded-lg border border-red-200 bg-red-50/40 p-3">
                 <Label htmlFor={`why-${orderNumber}`}>It is not going to Pancake</Label>

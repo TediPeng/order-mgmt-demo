@@ -278,6 +278,61 @@ export async function retryFailedSyncsAction(orderIds: string[]) {
   );
 }
 
+/**
+ * Sends an order the repeat-buyer hold is refusing, against that hold.
+ *
+ * The hold is right about the common case and wrong about two the floor meets
+ * weekly. A parcel that has genuinely been delivered but whose Pancake status
+ * has not caught up still reads as in flight. And a customer who wants two
+ * parcels on purpose — one for herself, one for her sister, ordered in the same
+ * breath — is not a double-submit, however identical the two orders look from
+ * here.
+ *
+ * No rule settles those, because the fact that decides them is in neither
+ * system: it is what the customer said on the phone. Retry cannot help either —
+ * it asks Pancake the same question and gets the same answer, which is why
+ * these orders sat in the queue being retried every ten minutes for days.
+ *
+ * So it is a person overruling it for one send, and the shape is deliberately
+ * the one already used for resolving without syncing: same permission, a
+ * written reason of at least five characters, the same audit trail. An order
+ * that went out against the hold is precisely the one somebody will ask about
+ * if two parcels do turn up.
+ */
+export async function sendHeldOrderAnywayAction(orderId: string, formData: FormData) {
+  const { user, db } = await requireUserLite();
+  requirePermission(user, "integrations", "manage", db, FAILED_PATH);
+
+  const reason = String(formData.get("reason") || "").trim();
+  if (reason.length < 5) {
+    redirect(`${FAILED_PATH}?error=${encodeURIComponent("Give a reason of at least 5 characters.")}`);
+  }
+
+  const order = await loadOrderInto(db, orderId);
+  if (!order) redirect(`${FAILED_PATH}?error=${encodeURIComponent("Order not found.")}`);
+
+  logActivity(db, user.id, "PANCAKE_HOLD_OVERRIDDEN", "order", orderId, {
+    order_number: order!.order_number,
+    reason,
+  }, { module: "integrations", ...(await getRequestInfo()) });
+  await writeDb(db);
+
+  const result = await forwardOrderToPancake(orderId, {
+    source: "manual_sync",
+    triggeredBy: user.id,
+    allowRetry: true,
+    overrideRepeatHold: true,
+  });
+
+  // The override only lifts the hold. Everything else that can refuse an order
+  // still can — a missing address id, an unmapped product — so the answer is
+  // reported rather than assumed.
+  if (!result.ok) {
+    redirect(`${FAILED_PATH}?error=${encodeURIComponent(result.message)}`);
+  }
+  redirect(`${FAILED_PATH}?sent=${encodeURIComponent(order!.order_number)}`);
+}
+
 export async function manualRetrySync(user: Profile, orderId: string): Promise<{ ok: boolean; message: string }> {
   const result = await forwardOrderToPancake(orderId, { source: "manual_sync", triggeredBy: user.id, allowRetry: true });
   return { ok: result.ok, message: result.message };

@@ -180,7 +180,27 @@ async function failSync(
  * `system_order_id` travelling as the external reference on every create. */
 export async function forwardOrderToPancake(
   orderId: string,
-  opts: { source: PancakeSyncSource; triggeredBy?: string | null; allowRetry?: boolean }
+  opts: {
+    source: PancakeSyncSource;
+    triggeredBy?: string | null;
+    allowRetry?: boolean;
+    /**
+     * Send even though the customer's last Pancake parcel is not settled.
+     *
+     * The repeat-buyer hold below is right about the common case and wrong
+     * about two real ones the floor hits weekly. A parcel that has actually
+     * been delivered but whose Pancake status has not caught up still reads as
+     * in flight. And a customer who deliberately wants two parcels — one for
+     * herself, one for her sister, ordered together — is not a double-submit,
+     * however identical the two orders look from here.
+     *
+     * Neither can be settled by a better rule, because the fact that decides
+     * them is not in either system: it is what the customer said. So this is a
+     * person overruling the check for one send, with a written reason, rather
+     * than the check being loosened for everybody.
+     */
+    overrideRepeatHold?: boolean;
+  }
 ): Promise<ForwardResult> {
   // --- Loop prevention ------------------------------------------------------
   // A status that Pancake itself gave us must never travel back to Pancake.
@@ -270,7 +290,24 @@ export async function forwardOrderToPancake(
   //
   // Pancake being unreachable is NOT a refusal. The order waits for the retry
   // queue instead of being judged on an answer nobody got.
-  if (order.is_regular_customer) {
+  // Overridden by a person who has seen the order and written why. Logged
+  // rather than silent: an order that went out against the hold is exactly the
+  // one somebody will ask about later if two parcels do arrive.
+  if (order.is_regular_customer && opts.overrideRepeatHold) {
+    await insertSyncLog({
+      order_id: order.id,
+      pancake_account_id: account.id,
+      action: "forward",
+      result: null,
+      request_at: new Date().toISOString(),
+      source: opts.source,
+      triggered_by: opts.triggeredBy ?? null,
+      error_message: "Repeat-buyer hold overridden for this send.",
+      payload_summary: { note: "Sent despite the customer's last parcel not being settled" },
+    });
+  }
+
+  if (order.is_regular_customer && !opts.overrideRepeatHold) {
     const latest = await latestPancakeOrder(account, order.customer_phone || "");
     if (latest.error) {
       const reason = `Could not check this customer's last Pancake order: ${latest.error}`;
