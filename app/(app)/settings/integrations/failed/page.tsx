@@ -9,7 +9,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button, LinkButton } from "@/components/ui/Button";
-import { listOrdersWithFailedSync } from "@/lib/pancake/store";
+import { listOrdersWithFailedSync, likelyDoubleSubmits } from "@/lib/pancake/store";
 import { RETRY_BATCH } from "@/lib/pancake/config";
 import {
   retryFailedSyncsAction,
@@ -150,6 +150,57 @@ export default async function SyncFailedPage({
   }
   const ordered = Array.from(groups.values()).sort((a, b) => b.orders.length - a.orders.length);
 
+  /**
+   * For a held order, whether sending it anyway is the likely answer.
+   *
+   * The five held orders on this queue needed five different decisions and the
+   * row said nothing about which — the reader had to open each one, find the
+   * customer, and work out whether the parcel had really arrived. So the two
+   * facts that actually decide it are put on the row.
+   *
+   * A twin already in Pancake outranks everything else: that is the double
+   * press of a button, and sending it is how one customer gets two parcels. It
+   * is stated first even when the previous parcel is only "shipped", which
+   * otherwise reads as the safest case of all — one of the two on this queue
+   * was exactly that, and would have been sent.
+   */
+  const heldIds = ordered
+    .filter((g) => g.cause.key.startsWith("held:"))
+    .flatMap((g) => g.orders.map((o) => o.id));
+  const duplicates = await likelyDoubleSubmits(heldIds);
+
+  function sendAdvice(order: Order): { label: string; tone: string; caution?: string } | null {
+    if (!duplicates.has(order.id)) {
+      const previous = (order.pancake_sync_error || "").match(/is ([a-z ]+), not delivered/i)?.[1] || "";
+      if (/return/i.test(previous)) {
+        return {
+          label: "Their last parcel came back",
+          tone: "bg-amber-100 text-amber-800",
+          caution: "The previous parcel was returned, not delayed. Find out why before sending another.",
+        };
+      }
+      if (/ship|transit|deliver/i.test(previous)) {
+        return {
+          label: "May have arrived already",
+          tone: "bg-green-100 text-green-800",
+          caution: "The last parcel is out for delivery, so Pancake may simply not have caught up. Confirm it arrived.",
+        };
+      }
+      return {
+        label: "Only if two were asked for",
+        tone: "bg-slate-100 text-slate-600",
+        caution:
+          "The last parcel has not shipped yet, so it cannot have arrived. Send only if the customer asked for two.",
+      };
+    }
+    return {
+      label: "Looks like a double order",
+      tone: "bg-red-100 text-red-700",
+      caution:
+        "An identical order by the same agent, for this customer and amount, is already in Pancake from minutes earlier. Sending this is how one customer gets two parcels. Cancel it instead, unless the customer asked for two.",
+    };
+  }
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -281,6 +332,7 @@ export default async function SyncFailedPage({
                         "use server";
                         await resolveWithoutSyncAction(orderId, formData);
                       };
+                      const advice = cause.key.startsWith("held:") ? sendAdvice(o) : null;
                       // Only where the repeat-buyer hold is what refused it.
                       // Offering "send anyway" against a missing address or an
                       // unmapped product would be a button that cannot work.
@@ -302,7 +354,17 @@ export default async function SyncFailedPage({
                               {o.order_number}
                             </Link>
                           </td>
-                          <td className="px-3 py-2 text-slate-600">{o.customer_name}</td>
+                          <td className="px-3 py-2 text-slate-600">
+                            {o.customer_name}
+                            {/* Beside the customer rather than in its own
+                                column: it is a statement about this customer's
+                                history, and an empty column on every
+                                non-held group would cost more width than it
+                                earns. */}
+                            {advice && (
+                              <Badge className={`ml-2 ${advice.tone}`}>{advice.label}</Badge>
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-slate-600">{agentNameById.get(o.agent_id) || "—"}</td>
                           <td className="px-3 py-2 text-slate-600">{formatCurrency(o.total_amount)}</td>
                           <td className="px-3 py-2 text-slate-500">{o.pancake_retry_count}</td>
@@ -333,6 +395,7 @@ export default async function SyncFailedPage({
                                     clearAction={clearOne}
                                     resolveAction={resolveOne}
                                     sendAnywayAction={sendAnywayOne}
+                                    sendCaution={advice?.caution}
                                   />
                                 </>
                               )}

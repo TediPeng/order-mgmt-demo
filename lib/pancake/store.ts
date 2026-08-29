@@ -445,3 +445,29 @@ export async function logActivityDirect(
   });
   if (error) throw new Error(`activity_log insert failed: ${error.message}`);
 }
+
+/**
+ * Of these orders, the ones that look like the same order taken twice.
+ *
+ * A double-submit and a genuine second parcel look identical from the order
+ * alone — same customer, same amount, minutes apart — and only the customer
+ * knows which it was. What separates them in the data is a twin that ALREADY
+ * reached Pancake: one of the pair through, the other held.
+ *
+ * A flag, never a refusal. The customer who wants two parcels for her sister
+ * produces exactly this shape too, so the person reading the row still decides;
+ * this only saves them working it out from scratch, which on the Sync Failed
+ * queue meant nobody did.
+ */
+export async function likelyDoubleSubmits(orderIds: string[]): Promise<Set<string>> {
+  if (orderIds.length === 0) return new Set();
+  const { data, error } = await supabaseAdmin.rpc("likely_double_submits", { p_order_ids: orderIds });
+  if (error) {
+    // The queue is more useful without the flag than not at all: a page that
+    // will not load because a hint could not be computed is a worse answer
+    // than a page with one fewer badge.
+    console.error("[pancake] likely_double_submits failed: %s", error.message);
+    return new Set();
+  }
+  return new Set((data as string[] | null) || []);
+}

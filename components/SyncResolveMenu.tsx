@@ -31,6 +31,7 @@ export function SyncResolveMenu({
   clearAction,
   resolveAction,
   sendAnywayAction,
+  sendCaution,
 }: {
   orderNumber: string;
   linkAction: (formData: FormData) => void;
@@ -39,6 +40,10 @@ export function SyncResolveMenu({
   /** Absent unless this row is held by the repeat-buyer rule, so the option
    * only appears where it means anything. */
   sendAnywayAction?: (formData: FormData) => void;
+  /** What is actually known about THIS customer's last parcel, in place of the
+   * generic explanation. The generic one describes every held order equally,
+   * which is no use at the moment somebody is deciding about one of them. */
+  sendCaution?: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -128,6 +133,7 @@ export function SyncResolveMenu({
                     placeholder="Reason — e.g. delivered already, Pancake not updated; or two parcels on purpose"
                     autoComplete="off"
                   />
+                  {sendCaution && <p className="text-xs font-medium text-slate-700">{sendCaution}</p>}
                   <p className="text-xs text-slate-400">
                     For a hold that is wrong: the last parcel really did arrive and Pancake has not caught up, or the
                     customer asked for two parcels. Retry cannot get past it — it asks Pancake the same question and
