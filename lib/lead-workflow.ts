@@ -110,16 +110,37 @@ export function restrictedStatusBlockReason(newStatus: OrderStatus, userIsFullAc
   ).join(", ")}.`;
 }
 
-/** Once an order has been forwarded to Pancake POS, its status is driven by
+/**
+ * Once an order has been forwarded to Pancake POS, its status is driven by
  * sync — manual changes are Administrator-only. Pre-forward leads are
- * unaffected. */
+ * unaffected.
+ *
+ * An active Administrator unlock counts as that Administrator's decision.
+ *
+ * Without this the two rules contradicted each other on screen: the unlock
+ * banner said an Administrator had opened the order for editing, and the save
+ * was refused directly beneath it with "Only an Administrator can change it
+ * manually". Both sentences were true and the pair was useless — an unlock is
+ * granted so that somebody else can make the change, and the change people
+ * grant it for is the status. Order 24984 was unlocked with the reason "re
+ * order", to put a cancelled order back in the pipeline, and then refused.
+ *
+ * It does not widen what that person may set. restrictedStatusBlockReason still
+ * holds them to AGENT_EDITABLE_STATUSES, so Delivered and Returned stay out of
+ * reach; the unlock is Administrator-only, needs a written reason, is logged as
+ * ORDER_MANUALLY_UNLOCKED, and applyLeadUpdate clears it on the save it paid
+ * for. Packaging is on that list and forwards, but forwardOrderToPancake
+ * refuses an order that already has a pancake_order_id, so a re-order cannot
+ * become a second order in Pancake.
+ */
 export function fulfillmentOverrideBlockReason(
-  order: Pick<Order, "pancake_order_id" | "forwarded_to_pancake_at" | "status">,
+  order: Pick<Order, "pancake_order_id" | "forwarded_to_pancake_at" | "status" | "manual_unlock_active">,
   newStatus: OrderStatus,
   userIsFullAccess: boolean
 ): string | null {
   const forwarded = Boolean(order.pancake_order_id || order.forwarded_to_pancake_at);
   if (!forwarded || newStatus === order.status || userIsFullAccess) return null;
+  if (order.manual_unlock_active) return null;
   return "This order was forwarded to Pancake POS; its status is managed by sync. Only an Administrator can change it manually.";
 }
 
