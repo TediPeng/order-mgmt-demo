@@ -474,6 +474,14 @@ export default async function LeadsPage({
           question, and Reports is where a date range belongs. */}
       <form className="sticky top-0 z-30 mb-4 flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <input type="hidden" name="status" value={sp.status || ""} />
+        {/* Carried, or a GET form silently drops them.
+            A form submits its own fields and nothing else, so every search
+            reset the page size to 25 and dropped the Regular Customers
+            toggle — set 500, type a name, and you were back to a
+            twenty-five-row page with no way to see why. Not `page`: a new
+            search is a new list, and page 40 of it means nothing. */}
+        <input type="hidden" name="per_page" value={String(pageSize)} />
+        {includeRegular && <input type="hidden" name="include_regular" value="1" />}
         {/* The box takes a list as well as a term now — paste a column of
             order ids out of a spreadsheet and every one of them comes back in
             a single list. See LeadSearchBox for why an <input> alone cannot. */}
