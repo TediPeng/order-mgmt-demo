@@ -108,6 +108,7 @@ export function OrderDetailsModal({
   initialLines,
   canEdit,
   canManageIntegrations = false,
+  detachAction,
   canSeeFulfillment = false,
   canSetFulfillmentStatus = false,
   duplicateWarnings = [],
@@ -137,6 +138,9 @@ export function OrderDetailsModal({
   initialLines: EditorLine[];
   canEdit: boolean;
   canManageIntegrations?: boolean;
+  /** Cuts the link to a dead Pancake order so this one can be sent again.
+   * Passed from the page as a server action, like the Sync Failed queue's. */
+  detachAction?: (formData: FormData) => void;
   /** Fulfillment/Pancake surface is hidden from agents entirely. */
   canSeeFulfillment?: boolean;
   /** Full-access users may set Pancake-owned fulfillment statuses by hand. */
@@ -953,6 +957,35 @@ export function OrderDetailsModal({
                     </Button>
                   )}
                 </div>
+              )}
+
+              {/* Only where there is a link to cut. An order that never reached
+                  Pancake has nothing to detach from, and offering it there
+                  would read as another way to send. */}
+              {canManageIntegrations && detachAction && order.pancake_order_id && (
+                <form action={detachAction} className="space-y-1.5 border-t border-slate-100 pt-2">
+                  <input type="hidden" name="order_id" value={order.id} />
+                  <Label htmlFor={`detach-${order.id}`}>
+                    The Pancake order is gone — send this again as a new one
+                  </Label>
+                  <Input
+                    id={`detach-${order.id}`}
+                    name="reason"
+                    required
+                    minLength={5}
+                    placeholder={`Reason — e.g. ${order.pancake_order_id} was cancelled in Pancake`}
+                    autoComplete="off"
+                  />
+                  <p className="text-xs text-slate-400">
+                    Cuts the link to Pancake order {order.pancake_order_id} and puts this back to Not Synced, so
+                    entering Packaging sends it as a NEW order. It does not send by itself. Only for an order Pancake
+                    has cancelled or deleted — if that order is still live, this is how one customer gets two parcels.
+                    The old id is kept in the sync log.
+                  </p>
+                  <Button type="submit" variant="secondary" size="sm">
+                    Unlink from {order.pancake_order_id}
+                  </Button>
+                </form>
               )}
             </div>
           )}

@@ -32,6 +32,7 @@ export function LeadsTable({
   canEdit,
   canDelete = false,
   canManageIntegrations = false,
+  detachAction,
   canSetFulfillmentStatus = false,
   duplicateWarningsByOrderId = {},
   canTagRegular = false,
@@ -66,6 +67,8 @@ export function LeadsTable({
    * no checkbox. */
   canDelete?: boolean;
   canManageIntegrations?: boolean;
+  /** Passed straight through to the popup. See OrderDetailsModal. */
+  detachAction?: (formData: FormData) => void;
   canSetFulfillmentStatus?: boolean;
   duplicateWarningsByOrderId?: Record<string, DuplicateWarning[]>;
   canTagRegular?: boolean;
@@ -519,6 +522,7 @@ export function LeadsTable({
           initialLines={linesByOrder[openOrder.id] ?? []}
           canEdit={canEdit}
           canManageIntegrations={canManageIntegrations}
+          detachAction={detachAction}
           canSetFulfillmentStatus={canSetFulfillmentStatus}
           duplicateWarnings={duplicateWarningsByOrderId[openOrder.id] || []}
           // Team Lead and above decide duplicates, so they may save past one.

@@ -10,6 +10,7 @@ import { BackToCallButton } from "@/components/BackToCallButton";
 import { getActiveBioBreak } from "@/lib/bio-breaks";
 import { findDuplicates, latestOrderDateByCustomer, sharedCustomerIdsForAgent } from "@/lib/customers";
 import { canAssignLeads } from "@/lib/order-access";
+import { detachFromPancakeOrderAction } from "@/lib/actions/pancake";
 import { guardExemptRole, isBlockingMatch } from "@/lib/regular-customer-guard";
 import { leadScopeFor, leadStatusCounts, previousStatusCounts, duplicatePhoneCount, regularCustomerOrderCount, queryLeads, orderForScope } from "@/lib/leads-query";
 import { Button, LinkButton } from "@/components/ui/Button";
@@ -551,6 +552,7 @@ export default async function LeadsPage({
         canEdit={canEdit}
         canDelete={canDelete}
         canManageIntegrations={canManageIntegrations}
+        detachAction={detachFromPancakeOrderAction}
         canSetFulfillmentStatus={isFullAccess(user.role)}
         duplicateWarningsByOrderId={duplicateWarningsByOrderId}
         canTagRegular={canTagRegular}

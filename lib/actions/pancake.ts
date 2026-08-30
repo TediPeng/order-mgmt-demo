@@ -333,6 +333,80 @@ export async function sendHeldOrderAnywayAction(orderId: string, formData: FormD
   redirect(`${FAILED_PATH}?sent=${encodeURIComponent(order!.order_number)}`);
 }
 
+/**
+ * Detaches an order from a Pancake order that is dead, so it can be sent again.
+ *
+ * Forwarding refuses anything that already carries a pancake_order_id, and it
+ * is right to: a second send is a second parcel. But the link can outlive the
+ * order it points at. Pancake cancels one — 24984 was cancelled two hours after
+ * it was created — and ROMA is then holding a reference to something nobody can
+ * fulfil, with no way to raise the order again except by retyping it as a new
+ * lead and losing its history.
+ *
+ * So the link is cleared rather than the guard loosened. The old id goes into
+ * the sync log and the activity log, because "which Pancake order did this use
+ * to be" is the first question anybody will ask afterwards.
+ *
+ * It does NOT send. The order goes back to not_synced and is forwarded the
+ * ordinary way, by entering Packaging — the same path, the same validation, the
+ * same repeat-buyer check. Sending from here would skip all of it.
+ *
+ * The retry counter is reset with the link, and that part is not cosmetic:
+ * above zero, the pre-send check hunts for a recent Pancake order matching this
+ * phone and total and adopts it rather than creating one. It would find the
+ * cancelled order and re-attach the very link this just removed.
+ */
+export async function detachFromPancakeOrderAction(formData: FormData) {
+  const { user, db } = await requireUserLite();
+  requirePermission(user, "integrations", "manage", db, FAILED_PATH);
+
+  // The order comes from the form rather than a bound argument: the popup is a
+  // client component rendering whichever order is open, so one action passed
+  // down beats a closure per row.
+  const orderId = String(formData.get("order_id") || "");
+  const reason = String(formData.get("reason") || "").trim();
+  if (reason.length < 5) {
+    redirect(`/leads?open_id=${orderId}&error=${encodeURIComponent("Give a reason of at least 5 characters.")}`);
+  }
+
+  const order = await loadOrderInto(db, orderId);
+  if (!order) redirect(`/leads?error=${encodeURIComponent("Order not found.")}`);
+
+  const previousId = order!.pancake_order_id;
+  if (!previousId) {
+    redirect(`/leads?open_id=${orderId}&error=${encodeURIComponent("This order is not linked to a Pancake order.")}`);
+  }
+
+  await updateOrderSyncFields(orderId, {
+    pancake_order_id: null,
+    pancake_status: null,
+    pancake_sync_status: "not_synced",
+    pancake_sync_error: null,
+    pancake_retry_count: 0,
+    forwarded_to_pancake_at: null,
+  });
+
+  await insertSyncLog({
+    order_id: orderId,
+    pancake_order_id: previousId,
+    action: "unlinked",
+    result: "success",
+    request_at: new Date().toISOString(),
+    source: "internal_user",
+    error_message: `Unlinked from Pancake order ${previousId} by ${user.full_name}: ${reason}`,
+    payload_summary: { note: "Order detached so it can be sent to Pancake as a new order", previous_pancake_order_id: previousId },
+  });
+
+  logActivity(db, user.id, "PANCAKE_ORDER_UNLINKED", "order", orderId, {
+    order_number: order!.order_number,
+    previous_pancake_order_id: previousId,
+    reason,
+  }, { module: "integrations", ...(await getRequestInfo()) });
+  await writeDb(db);
+
+  redirect(`/leads?open_id=${orderId}&unlinked=${encodeURIComponent(previousId!)}`);
+}
+
 export async function manualRetrySync(user: Profile, orderId: string): Promise<{ ok: boolean; message: string }> {
   const result = await forwardOrderToPancake(orderId, { source: "manual_sync", triggeredBy: user.id, allowRetry: true });
   return { ok: result.ok, message: result.message };

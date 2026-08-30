@@ -624,10 +624,14 @@ export type PancakeSyncAction =
   | "manual_sync"
   | "retry"
   | "duplicate_ignored"
-  // The three a person takes when a retry cannot end the failure itself.
+  // The four a person takes when a retry cannot end the failure itself.
   | "manual_link"
   | "hold_cleared"
-  | "resolved_manually";
+  | "resolved_manually"
+  // The reverse of manual_link: the Pancake order this pointed at is dead —
+  // cancelled there, or deleted — so the link is cut and the order can be sent
+  // again as a new one. The old id is kept on the log entry.
+  | "unlinked";
 export type PancakeSyncSource =
   | "webhook"
   | "api_polling"
