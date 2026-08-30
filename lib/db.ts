@@ -7,6 +7,7 @@ import { ORDER_PANCAKE_DEFAULTS } from "./types";
 import { buildDefaultRows } from "./permissions";
 import { randomTempPassword } from "./passwords";
 import { supabaseAdmin } from "./supabaseAdmin";
+import { getSessionUserId } from "./auth";
 
 const SCHEMA_VERSION = 7;
 
@@ -427,6 +428,42 @@ type Row = Record<string, unknown>;
  * duplicates some rows and drops others. */
 const PAGE_SIZE = 1000;
 
+/**
+ * The same paged read, narrowed to one column's value.
+ *
+ * Only notifications need it, and they need it badly. The table is 31,000 rows
+ * and 28MB, every one of them addressed to exactly one person, and every
+ * request was reading all of them — thirty-two round trips to draw a bell that
+ * shows one user's. Worse, writeDb() upserts whatever the array holds, so every
+ * save of anything at all — an order edit, a status change, a time-in — wrote
+ * all 31,000 back in sixty-three chunks.
+ *
+ * Nothing loses anything by the narrowing: every reader of db.notifications
+ * already filters to `recipient_id === user.id` before using it, and notify()
+ * appends rather than reconciling, so a scoped array upserts the new rows and
+ * leaves everyone else's untouched.
+ */
+async function selectWhere(
+  table: string,
+  column: string,
+  value: string,
+  orderBy = "id"
+): Promise<{ data: Row[]; error: { message: string } | null }> {
+  const rows: Row[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabaseAdmin
+      .from(table)
+      .select("*")
+      .eq(column, value)
+      .order(orderBy, { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) return { data: [], error };
+    const page = (data || []) as Row[];
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) return { data: rows, error: null };
+  }
+}
+
 async function selectAll(table: string, orderBy = "id"): Promise<{ data: Row[]; error: { message: string } | null }> {
   const rows: Row[] = [];
   for (let from = 0; ; from += PAGE_SIZE) {
@@ -511,6 +548,10 @@ export const readDb = cache(() => readDbUncached(true));
 export const readDbLite = cache(() => readDbUncached(false));
 
 async function readDbUncached(withOrders: boolean): Promise<DbShape> {
+  // Read from the cookie, which costs nothing and touches no table — so this
+  // cannot recurse back into readDb the way getCurrentUser() would.
+  const sessionUserId = await getSessionUserId();
+
   const { data: existingProfiles, error: checkError } = await supabaseAdmin.from("profiles").select("id").limit(1);
   if (checkError) throw new Error(`Supabase read failed: ${checkError.message}`);
 
@@ -545,7 +586,16 @@ async function readDbUncached(withOrders: boolean): Promise<DbShape> {
     selectAll("call_log_records"),
     selectAll("role_permissions"),
     selectAll("leave_requests"),
-    selectAll("notifications"),
+    // Only the signed-in person's. See selectWhere() above for why, and for why
+    // this is safe.
+    //
+    // Empty for a request with no session — a webhook, a cron sweep, the login
+    // action itself. None of them reads a notification, and notify() adding one
+    // still works: writeDb upserts what the array holds, which is then just the
+    // new row.
+    sessionUserId
+      ? selectWhere("notifications", "recipient_id", sessionUserId)
+      : Promise.resolve({ data: [] as Row[], error: null }),
     selectAll("schedules"),
     selectAll("suspensions"),
     // Keyed by seq_date, not id.
