@@ -194,6 +194,36 @@ export async function listSessionsForOrder(orderId: string): Promise<CallSession
   return (data || []).map(map);
 }
 
+/**
+ * Call history for a page of orders, keyed by order id — one query, not one
+ * per row.
+ *
+ * The Leads page used to call listSessionsForOrder() inside a loop, which is
+ * survivable at twenty-five rows and is what stopped the page size being
+ * raised: a hundred rows meant a hundred round trips before anything rendered.
+ */
+export async function listSessionsForOrders(orderIds: string[]): Promise<Map<string, CallSession[]>> {
+  const byOrder = new Map<string, CallSession[]>();
+  if (orderIds.length === 0) return byOrder;
+
+  const { data, error } = await supabaseAdmin
+    .from("call_sessions")
+    .select("*")
+    .in("order_id", orderIds)
+    .order("started_at", { ascending: false });
+  if (error) throw new Error(`call_sessions read failed: ${error.message}`);
+
+  for (const row of data || []) {
+    const session = map(row);
+    const key = session.order_id;
+    if (!key) continue;
+    const list = byOrder.get(key);
+    if (list) list.push(session);
+    else byOrder.set(key, [session]);
+  }
+  return byOrder;
+}
+
 /** Every agent currently on a call, keyed by agent id — one query for the whole
  * monitor rather than one per row. */
 export async function getActiveSessions(agentIds: string[]): Promise<Map<string, CallSession>> {

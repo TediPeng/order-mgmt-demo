@@ -8,7 +8,7 @@ import { canonicalPhone, todayInTz } from "@/lib/utils";
 import { BreakControls } from "@/components/BreakControls";
 import { BackToCallButton } from "@/components/BackToCallButton";
 import { getActiveBioBreak } from "@/lib/bio-breaks";
-import { findDuplicates, latestOrderDateByCustomer, sharedCustomerIdsForAgent } from "@/lib/customers";
+import { allCustomers, findDuplicates, latestOrderDateByCustomer, sharedCustomerIdsForAgent } from "@/lib/customers";
 import { canAssignLeads } from "@/lib/order-access";
 import { detachFromPancakeOrderAction } from "@/lib/actions/pancake";
 import { guardExemptRole, isBlockingMatch } from "@/lib/regular-customer-guard";
@@ -23,9 +23,30 @@ import { LeadStatusCards, QUICK_FILTER_STATUSES } from "@/components/LeadStatusC
 
 import { displayCallName } from "@/lib/types";
 import type { CallSession, OrderStatus } from "@/lib/types";
-import { listSessionsForOrder } from "@/lib/call-sessions";
+import { listSessionsForOrders } from "@/lib/call-sessions";
 
-const PAGE_SIZE = 25;
+/**
+ * How many leads one page may show.
+ *
+ * There is no "all" here, and it is not a limit anybody chose: at 110,000 leads
+ * one page would be a 110,000-row table, which the browser cannot lay out and
+ * PostgREST would not return anyway — it caps a response at a thousand rows.
+ * Five hundred is a real page somebody can scroll; the number after that is a
+ * page nobody reads.
+ *
+ * Raising it at all needed two fixes first. This page ran findDuplicates() per
+ * order, and each call with no candidate set reads the WHOLE customers table —
+ * twenty-five rows meant twenty-five full reads. It also fetched call history
+ * one order at a time. Both are batched below now; without that, a hundred rows
+ * would have been four times the wait rather than four times the leads.
+ */
+const PAGE_SIZES = [25, 50, 100, 200, 500] as const;
+const DEFAULT_PAGE_SIZE = 25;
+
+function pageSizeFrom(value: string | undefined): number {
+  const n = Number(value);
+  return (PAGE_SIZES as readonly number[]).includes(n) ? n : DEFAULT_PAGE_SIZE;
+}
 
 export default async function LeadsPage({
   searchParams,
@@ -52,6 +73,7 @@ export default async function LeadsPage({
     open?: string;
     open_id?: string;
     include_regular?: string;
+    per_page?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -88,6 +110,7 @@ export default async function LeadsPage({
   }
 
   const page = Math.max(1, parseInt(sp.page || "1", 10) || 1);
+  const pageSize = pageSizeFrom(sp.per_page);
 
   // Off by default: Regular Customers stay their own section. On, the list and
   // the cards both include them, because a count that disagrees with the rows
@@ -136,7 +159,7 @@ export default async function LeadsPage({
           },
       isAgentView: isAgent,
       page,
-      pageSize: PAGE_SIZE,
+      pageSize,
       usernameToIds,
     }).then(
       (page) => ({ ok: true as const, page }),
@@ -171,7 +194,7 @@ export default async function LeadsPage({
       sp.product || sp.date_from || sp.date_to || sp.prev_from || sp.prev_to
   );
 
-  const totalPages = Math.max(1, Math.ceil(leadPage.total / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(leadPage.total / pageSize));
 
   // "Return to active call" asks for one specific order, and the modal that
   // ends the call only exists inside this table. That order may be on another
@@ -262,16 +285,28 @@ export default async function LeadsPage({
   > = {};
   const findingsByOrderId = new Map<string, Awaited<ReturnType<typeof findDuplicates>>>();
   if (canSeeDuplicateWarnings) {
+    // Read once for the whole page, not once per row.
+    //
+    // findDuplicates() falls back to reading the entire customers table when it
+    // is not handed a set to compare against, and this loop was not handing it
+    // one — so twenty-five rows meant twenty-five full reads of the customers
+    // table before the page could render. It is the reason the page size could
+    // not be raised, and it was already being paid at twenty-five.
+    const allCustomerRecords = await allCustomers();
+
     for (const o of pageOrders) {
       if (!o.customer_phone.trim()) continue;
-      const findings = await findDuplicates({
-        full_name: o.customer_name,
-        phone_normalized: canonicalPhone(o.customer_phone),
-        purok: o.purok,
-        barangay: o.barangay,
-        city: o.city,
-        province: o.province,
-      });
+      const findings = await findDuplicates(
+        {
+          full_name: o.customer_name,
+          phone_normalized: canonicalPhone(o.customer_phone),
+          purok: o.purok,
+          barangay: o.barangay,
+          city: o.city,
+          province: o.province,
+        },
+        allCustomerRecords
+      );
       if (findings.length > 0) findingsByOrderId.set(o.id, findings);
     }
 
@@ -319,9 +354,11 @@ export default async function LeadsPage({
   // the layout), so this page no longer fetches or forwards it.
   const callSessionsByOrderId: Record<string, CallSession[]> = {};
   if (isAgent && pageOrders.length > 0) {
-    for (const o of pageOrders) {
-      const sessions = await listSessionsForOrder(o.id);
-      if (sessions.length > 0) callSessionsByOrderId[o.id] = sessions;
+    // One query for the page. This was a round trip per row, which is what a
+    // page size of five hundred turns from a habit into a timeout.
+    const sessionsByOrder = await listSessionsForOrders(pageOrders.map((o) => o.id));
+    for (const [orderId, sessions] of sessionsByOrder) {
+      if (sessions.length > 0) callSessionsByOrderId[orderId] = sessions;
     }
   }
 
@@ -567,10 +604,34 @@ export default async function LeadsPage({
       />
       )}
 
-      {totalPages > 1 && (
-        <div className="mt-4 flex items-center justify-between text-sm text-slate-500">
-          <span>
-            Page {page} of {totalPages} ({leadPage.total} leads)
+      {/* Shown even at one page: the size is how somebody GETS to one page, so
+          hiding the control until they are already there is the wrong way
+          round. */}
+      {leadPage.total > 0 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-500">
+          <span className="flex flex-wrap items-center gap-2">
+            <span>
+              Page {page} of {totalPages} ({leadPage.total} leads)
+            </span>
+            {/* Plain links, not a select: this page's controls are all links,
+                the choice belongs in the URL so it survives a refresh and can
+                be shared, and a link needs no JavaScript to work. Going back to
+                page 1 is deliberate — page 40 of 25-per-page is not page 40 of
+                500, and landing somewhere unrelated reads as losing your
+                place. */}
+            <span className="flex items-center gap-1">
+              <span className="text-slate-400">Show</span>
+              {PAGE_SIZES.map((size) => (
+                <LinkButton
+                  key={size}
+                  href={qs({ per_page: String(size), page: "1" })}
+                  variant={size === pageSize ? "secondary" : "outline"}
+                  size="sm"
+                >
+                  {size}
+                </LinkButton>
+              ))}
+            </span>
           </span>
           <div className="flex gap-2">
             <LinkButton
