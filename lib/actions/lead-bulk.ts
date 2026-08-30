@@ -9,6 +9,7 @@ import { protectedReason } from "@/lib/duplicate-leads";
 import { ordersByIds } from "@/lib/duplicates-query";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { can } from "@/lib/permissions";
+import { MAX_LEAD_PAGE_SIZE } from "@/lib/leads-query";
 import { requireUserLite } from "./guards";
 import type { Order } from "@/lib/types";
 
@@ -29,13 +30,34 @@ import type { Order } from "@/lib/types";
  * sent to Pancake.
  */
 
-/** Ticked at once. The list shows twenty-five rows a page, so this is already
- * far above what the UI can hand over; it exists to bound a crafted request. */
-const MAX_SELECTION = 200;
+/**
+ * Ticked at once — a full page of the largest size the list offers.
+ *
+ * Derived rather than written down again. It used to be 200 with a note saying
+ * that was "far above what the UI can hand over", which was true while the list
+ * showed twenty-five rows and stopped being true the day it could show five
+ * hundred. Two numbers describing one thing drift the moment either moves.
+ */
+const MAX_SELECTION = MAX_LEAD_PAGE_SIZE;
 
-/** Ids per audit snapshot — the entry holds whole rows, because after this it
- * is the only copy of them that exists. */
-const AUDIT_SAMPLE = 50;
+/**
+ * How many deleted orders keep a copy.
+ *
+ * This is the number that decides whether a deletion can be undone, and it used
+ * to be 50 while 200 could be deleted — so a sweep of 200 kept 50 and lost 150,
+ * silently, with `truncated: true` in a log nobody reads until they need it.
+ * That is not hypothetical here: 12,232 rows went that way on 2026-08-24 and
+ * are not coming back.
+ *
+ * So it matches the selection cap now. Nothing is deleted without a copy of it
+ * surviving, which is the only thing that makes deleting five hundred at once
+ * a reasonable offer rather than a bigger version of that accident.
+ *
+ * It costs a large audit row — five hundred whole orders is on the order of a
+ * megabyte of jsonb, plus their lines and call sessions. That is the price of
+ * the delete being reversible, and it is worth paying.
+ */
+const AUDIT_SAMPLE = MAX_SELECTION;
 
 export interface BulkDeleteSkip {
   order_number: string;

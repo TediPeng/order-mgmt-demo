@@ -26,6 +26,22 @@ import type { DbShape, Order, Profile } from "@/lib/types";
 
 export type AgentScope = string[] | null;
 
+/**
+ * How many leads one page may show, and therefore how many can be ticked at
+ * once.
+ *
+ * Here rather than on the page because the bulk delete has to agree with it.
+ * Those two numbers were written separately and drifted the moment the page
+ * size was raised: the selection cap still described "twenty-five rows a page,
+ * so this is far above what the UI can hand over", while the UI had started
+ * handing over five hundred. Ticking a full page then failed on the limit.
+ *
+ * No "all". At 110,000 leads one page is a table the browser cannot lay out,
+ * and PostgREST caps a response at a thousand rows regardless.
+ */
+export const LEAD_PAGE_SIZES = [25, 50, 100, 200, 500] as const;
+export const MAX_LEAD_PAGE_SIZE = LEAD_PAGE_SIZES[LEAD_PAGE_SIZES.length - 1];
+
 /** Mirrors scopeOrders() in lib/order-access.ts, as a set of agent ids.
  *
  * The two now agree exactly. They did not until 2026-08-11: the in-memory

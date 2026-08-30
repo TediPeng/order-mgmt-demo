@@ -12,7 +12,7 @@ import { allCustomers, findDuplicates, latestOrderDateByCustomer, sharedCustomer
 import { canAssignLeads } from "@/lib/order-access";
 import { detachFromPancakeOrderAction } from "@/lib/actions/pancake";
 import { guardExemptRole, isBlockingMatch } from "@/lib/regular-customer-guard";
-import { leadScopeFor, leadStatusCounts, previousStatusCounts, duplicatePhoneCount, regularCustomerOrderCount, queryLeads, orderForScope } from "@/lib/leads-query";
+import { LEAD_PAGE_SIZES, leadScopeFor, leadStatusCounts, previousStatusCounts, duplicatePhoneCount, regularCustomerOrderCount, queryLeads, orderForScope } from "@/lib/leads-query";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
@@ -40,7 +40,7 @@ import { listSessionsForOrders } from "@/lib/call-sessions";
  * one order at a time. Both are batched below now; without that, a hundred rows
  * would have been four times the wait rather than four times the leads.
  */
-const PAGE_SIZES = [25, 50, 100, 200, 500] as const;
+const PAGE_SIZES = LEAD_PAGE_SIZES;
 const DEFAULT_PAGE_SIZE = 25;
 
 function pageSizeFrom(value: string | undefined): number {
