@@ -10,7 +10,7 @@ import { requireUserLite, requirePermission } from "./guards";
 import { attendanceOverrideSchema } from "@/lib/validation";
 import { computeMinutesBetween, computeMinutesLate, computeOvertimeHours, scheduledInstant } from "@/lib/attendance-logic";
 import { activeSuspensionOn } from "@/lib/schedule-access";
-import { portalClockUrl } from "@/lib/portal-attendance";
+import { portalOwnsAttendance } from "@/lib/portal-attendance";
 import { todayInTz } from "@/lib/utils";
 
 function safeRedirectTarget(raw: FormDataEntryValue | null): string {
@@ -34,7 +34,19 @@ export async function timeInAction(formData: FormData) {
   // And the cost of missing one is not a cosmetic inconsistency: a time-in
   // written only in ROMA satisfies ROMA's gate, so the agent works the whole
   // day and is absent from the record that pays them.
-  if (portalClockUrl()) {
+  // Keyed on whether the portal OWNS the clock, never on whether we happen to
+  // know its address.
+  //
+  // This was `if (portalClockUrl())`, which is null when PORTAL_APP_URL is
+  // unset -- and it was unset. So the menu entry vanished, the dashboard card
+  // vanished, and this refusal quietly did nothing: the Attendance page still
+  // carried working buttons, and agents used them. Four time-ins and time-outs
+  // went into ROMA and not into the portal between 28 and 31 August, which is
+  // the exact failure this guard exists to prevent.
+  //
+  // Where to send them is a courtesy. Whether to refuse is the rule, and it
+  // cannot depend on the courtesy being configured.
+  if (portalOwnsAttendance()) {
     redirect(
       `${target}?error=${encodeURIComponent("Time in and out are kept in the company portal now. Please clock in there.")}`
     );
@@ -115,7 +127,19 @@ export async function timeOutAction(formData: FormData) {
 
   // Same reasoning as timeInAction: a stale tab must not be able to close a day
   // on this side while the portal still has it open.
-  if (portalClockUrl()) {
+  // Keyed on whether the portal OWNS the clock, never on whether we happen to
+  // know its address.
+  //
+  // This was `if (portalClockUrl())`, which is null when PORTAL_APP_URL is
+  // unset -- and it was unset. So the menu entry vanished, the dashboard card
+  // vanished, and this refusal quietly did nothing: the Attendance page still
+  // carried working buttons, and agents used them. Four time-ins and time-outs
+  // went into ROMA and not into the portal between 28 and 31 August, which is
+  // the exact failure this guard exists to prevent.
+  //
+  // Where to send them is a courtesy. Whether to refuse is the rule, and it
+  // cannot depend on the courtesy being configured.
+  if (portalOwnsAttendance()) {
     redirect(
       `${target}?error=${encodeURIComponent("Time in and out are kept in the company portal now. Please clock out there.")}`
     );

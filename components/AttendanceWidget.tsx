@@ -6,7 +6,7 @@ import { formatTime, todayInTz } from "@/lib/utils";
 import { readDbLite } from "@/lib/db";
 import type { Profile } from "@/lib/types";
 import { timeInAction, timeOutAction } from "@/lib/actions/attendance";
-import { portalClockUrl } from "@/lib/portal-attendance";
+import { portalClockUrl, portalOwnsAttendance } from "@/lib/portal-attendance";
 
 export async function AttendanceWidget({
   user,
@@ -32,6 +32,14 @@ export async function AttendanceWidget({
   //
   // What is shown instead is still the day: the status line above is the
   // mirrored row, which is the same fact, just written by the portal.
+  // Two separate questions, and conflating them is what left the buttons live.
+  //
+  // `movedToPortal` decides whether the buttons appear at all, and depends only
+  // on the portal owning the clock. `clockUrl` is where to send somebody
+  // instead, and is null until PORTAL_APP_URL is configured — which it was not,
+  // so this card went on offering a working Time In on the Attendance page long
+  // after the menu entry had gone.
+  const movedToPortal = portalOwnsAttendance();
   const clockUrl = portalClockUrl();
 
   let status: React.ReactNode;
@@ -73,11 +81,13 @@ export async function AttendanceWidget({
             worse than none — they invite a press that does nothing and leave the
             reader to work out why. The card already says Completed above this,
             with the hours and the badge. */}
-        {clockUrl ? (
+        {movedToPortal ? (
           <div className="space-y-2">
-            <Link href={clockUrl}>
-              <Button type="button">Time In / Out in the Portal</Button>
-            </Link>
+            {clockUrl && (
+              <Link href={clockUrl}>
+                <Button type="button">Time In / Out in the Portal</Button>
+              </Link>
+            )}
             <p className="text-xs text-slate-400">
               The clock is kept in the company portal now — that is the record you are paid from. What shows here
               follows it.

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { portalClockUrl } from "@/lib/portal-attendance";
+import { portalClockUrl, portalOwnsAttendance } from "@/lib/portal-attendance";
 import { can } from "@/lib/permissions";
 import { formatDate, formatTime, todayInTz } from "@/lib/utils";
 import { AnalogClock } from "@/components/AnalogClock";
@@ -32,8 +32,22 @@ export default async function TimeClockPage({
   //
   // Nothing else on this page is lost. Scheduled and bio breaks are ROMA's own
   // and are taken from the Leads screen, where the agent already is.
-  const clockLivesInThePortal = portalClockUrl();
-  if (clockLivesInThePortal) redirect(clockLivesInThePortal);
+  // Whether the clock has moved and where it moved to are different questions.
+  // Redirect when the address is known; when it is not, still refuse to draw a
+  // clock — a page that says "the clock is elsewhere" is useless, and a page
+  // that offers a working button is worse than useless.
+  if (portalOwnsAttendance()) {
+    const url = portalClockUrl();
+    if (url) redirect(url);
+    return (
+      <div className="mx-auto max-w-lg">
+        <Alert kind="info">
+          Time in and out are kept in the company portal now — that is the record you are paid from. Sign in there and
+          use Attendance. If you do not know the address, ask your Team Lead.
+        </Alert>
+      </div>
+    );
+  }
 
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
