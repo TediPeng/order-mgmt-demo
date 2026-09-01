@@ -23,6 +23,7 @@ export interface EditableUser {
   username: string;
   email: string;
   call_name: string | null;
+  sip_extension: string | null;
   contact_number: string | null;
   permission_profile: string | null;
   /** Only agents must carry a Call Name — the server checks the same rule. */
@@ -75,6 +76,22 @@ export function EditUserButton({ user, action }: { user: EditableUser; action: (
                   defaultValue={user.call_name || ""}
                   required={user.role === "agent"}
                 />
+              </div>
+              <div>
+                <Label htmlFor="edit_sip_extension">SIP extension</Label>
+                <Input
+                  id="edit_sip_extension"
+                  name="sip_extension"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={12}
+                  defaultValue={user.sip_extension || ""}
+                  placeholder="e.g. 1007"
+                />
+                <p className="mt-1 text-xs text-slate-400">
+                  Their extension on the PBX. Calls the PBX reports are attributed by this and nothing else, so an
+                  agent without one has their calls recorded against nobody. Leave blank until the PBX exists.
+                </p>
               </div>
               <div>
                 <Label htmlFor="edit_contact_number">Contact number</Label>

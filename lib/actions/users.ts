@@ -44,6 +44,7 @@ export async function createUserAction(formData: FormData) {
     call_name: field("call_name"),
     contact_number: field("contact_number"),
     permission_profile: field("permission_profile"),
+    sip_extension: field("sip_extension"),
   });
 
   if (!parsed.success) {
@@ -70,6 +71,10 @@ export async function createUserAction(formData: FormData) {
     role: data.role,
     team_lead_id: data.role === "agent" && data.team_lead_id ? data.team_lead_id : null,
     call_name: data.call_name || null,
+    // Set later, from Edit, once the PBX exists and extensions have been handed
+    // out. The create form does not ask, because an account is made before
+    // anybody knows which extension the person will sit on.
+    sip_extension: null,
     contact_number: data.contact_number || null,
     is_active: true,
     password_hash: hashPassword(tempPassword),
@@ -180,6 +185,7 @@ export async function updateUserProfileAction(userId: string, formData: FormData
     call_name: field("call_name"),
     contact_number: field("contact_number"),
     permission_profile: field("permission_profile"),
+    sip_extension: field("sip_extension"),
   });
   if (!parsed.success) {
     redirect(`/users?error=${encodeURIComponent(describeParseFailure(parsed.error))}`);
@@ -199,6 +205,7 @@ export async function updateUserProfileAction(userId: string, formData: FormData
     call_name: target!.call_name,
     contact_number: target!.contact_number,
     permission_profile: target!.permission_profile,
+    sip_extension: target!.sip_extension,
   };
   const after = {
     username: data.username,
@@ -207,6 +214,7 @@ export async function updateUserProfileAction(userId: string, formData: FormData
     call_name: data.call_name || null,
     contact_number: data.contact_number || null,
     permission_profile: data.permission_profile || null,
+    sip_extension: data.sip_extension || null,
   };
 
   // Opening the form and closing it again is not a change, and an audit trail

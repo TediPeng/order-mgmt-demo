@@ -83,6 +83,8 @@ function seedDb(): DbShape {
 
   const profileDefaults = {
     contact_number: null,
+    // No PBX to have an extension on until somebody sets one.
+    sip_extension: null,
     avatar_url: null,
     theme_preference: "light" as const,
     permission_profile: null,

@@ -24,6 +24,14 @@ export interface Profile {
   /** Agent's Call Name, assigned by an Administrator. Stamped onto every order
    * they create as order_source, and read-only to the agent. */
   call_name: string | null;
+  /**
+   * The agent's extension on the Issabel PBX.
+   *
+   * How a call the PBX reports gets attributed back to a ROMA account — there
+   * is nothing else to match on, so an agent without one has their calls
+   * recorded against nobody. Null until there is a PBX to have an extension on.
+   */
+  sip_extension: string | null;
   contact_number: string | null;
   is_active: boolean;
   password_hash: string;

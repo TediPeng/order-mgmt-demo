@@ -638,6 +638,18 @@ export const userFormSchema = z
     call_name: z.string().trim().optional().default(""),
     contact_number: z.string().trim().optional().default(""),
     permission_profile: z.string().trim().optional().default(""),
+    // The agent's extension on the PBX. Optional: it only means anything once
+    // there is a PBX, and an account is perfectly valid without one.
+    //
+    // Digits only, so a typed "1007 (Zoiper)" is refused rather than stored and
+    // then silently never matching anything the connector sends.
+    sip_extension: z
+      .string()
+      .trim()
+      .regex(/^[0-9]*$/, "Extension must be digits only")
+      .max(12, "That is too long for an extension")
+      .optional()
+      .default(""),
   })
   // Required for agents specifically: every order they create is stamped with
   // it, so an agent without one would produce orders with no source.
