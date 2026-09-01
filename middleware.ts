@@ -9,7 +9,10 @@ import { NextRequest, NextResponse } from "next/server";
 // so requiring one to reach it would be a door that only opens from inside. It
 // carries its own auth -- an HMAC the portal signs, good for sixty seconds --
 // and refuses anything else.
-const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/api/webhooks/pancake", "/api/cron", "/api/sso", "/api/portal"];
+// /api/pbx carries its own bearer check, like /api/portal beside it. Without
+// this line the session gate answers the PBX connector with the login page's
+// HTML and a 200, which reads as success to anything not looking closely.
+const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/api/webhooks/pancake", "/api/cron", "/api/sso", "/api/portal", "/api/pbx"];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
