@@ -307,16 +307,49 @@ export async function claimOrderForSync(
   return data ? mapOrder(data) : null;
 }
 
-/** True when a successful `forward` already exists for this order — the
- * belt-and-braces duplicate check required before any create call. */
+/**
+ * True when a successful `forward` already exists for this order — the
+ * belt-and-braces duplicate check required before any create call.
+ *
+ * Only forwards since the order was last unlinked count.
+ *
+ * Detaching an order says the Pancake order it pointed at is dead and this one
+ * is to be sent again; detachFromPancakeOrderAction is explicit that it "does
+ * NOT send" and that the order "is forwarded the ordinary way, by entering
+ * Packaging". But the successful forward that created the dead order stays in
+ * the log, and this check was reading it as proof the work was already done —
+ * so entering Packaging was refused here and the unlink could never deliver the
+ * re-send it promises.
+ *
+ * Silently, which is what made it expensive to find: the guard returns before
+ * anything is written, so nothing appeared in the sync history to say why.
+ * ORD-20260828-8034 was unlinked from Pancake 24984 at 11:33 on 30 August and
+ * moved into Packaging at 11:34; that forward left no trace at all.
+ *
+ * Nothing else is loosened. An order that has not been unlinked is checked
+ * against its whole history exactly as before.
+ */
 export async function hasSuccessfulForward(orderId: string): Promise<boolean> {
-  const { data, error } = await supabaseAdmin
+  const { data: unlinks, error: unlinkError } = await supabaseAdmin
+    .from("pancake_sync_logs")
+    .select("request_at")
+    .eq("order_id", orderId)
+    .eq("action", "unlinked")
+    .order("request_at", { ascending: false })
+    .limit(1);
+  if (unlinkError) throw new Error(`pancake_sync_logs read failed: ${unlinkError.message}`);
+
+  let query = supabaseAdmin
     .from("pancake_sync_logs")
     .select("id")
     .eq("order_id", orderId)
     .eq("result", "success")
-    .in("action", ["forward", "retry"])
-    .limit(1);
+    .in("action", ["forward", "retry"]);
+
+  const lastUnlink = unlinks?.[0]?.request_at as string | undefined;
+  if (lastUnlink) query = query.gt("request_at", lastUnlink);
+
+  const { data, error } = await query.limit(1);
   if (error) throw new Error(`pancake_sync_logs read failed: ${error.message}`);
   return (data || []).length > 0;
 }
