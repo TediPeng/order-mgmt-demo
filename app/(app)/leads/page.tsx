@@ -14,7 +14,7 @@ import { detachFromPancakeOrderAction } from "@/lib/actions/pancake";
 import { guardExemptRole, isBlockingMatch } from "@/lib/regular-customer-guard";
 import { LEAD_PAGE_SIZES, leadScopeFor, leadStatusCounts, previousStatusCounts, duplicatePhoneCount, regularCustomerOrderCount, queryLeads, orderForScope } from "@/lib/leads-query";
 import { Button, LinkButton } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Field";
+import { Input, Select } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
 import { LeadsTable } from "@/components/LeadsTable";
 import { LeadSearchBox } from "@/components/LeadSearchBox";
@@ -109,6 +109,38 @@ export default async function LeadsPage({
     usernameToIds.set(key, [...(usernameToIds.get(key) || []), p.id]);
   }
 
+  // Whose leads to show, for anyone who can see beyond their own.
+  //
+  // The list is the scope itself: an Administrator picks from the floor, a Team
+  // Lead from their team, and an agent gets no control at all because there is
+  // only ever one answer for them.
+  //
+  // Checked against that list rather than taken from the address bar. The rows
+  // were never at risk — queryLeads applies the scope as well as this filter —
+  // but the status counts below are computed from whatever scope they are
+  // handed, and an unchecked id would have let a Team Lead read another team's
+  // totals off the cards without ever seeing a row.
+  const agentOptions = seesBeyondOwnLeads
+    ? db.profiles
+        .filter(
+          (p) =>
+            !p.is_deleted &&
+            !p.is_test_account &&
+            (scope === null || scope.includes(p.id))
+        )
+        .sort((a, b) => a.full_name.localeCompare(b.full_name))
+    : [];
+  const selectedAgent = agentOptions.some((p) => p.id === sp.agent) ? sp.agent : undefined;
+
+  // With one agent picked the cards are about that agent too. Leaving them on
+  // the whole floor puts one person's rows underneath everybody's totals, which
+  // is a comparison somebody will make by accident.
+  //
+  // Only these two. Duplicates and Regular Customers each link somewhere else
+  // that has its own scope, so narrowing their numbers here would label a
+  // button with a figure the page behind it disagrees with.
+  const countScope = selectedAgent ? [selectedAgent] : scope;
+
   const page = Math.max(1, parseInt(sp.page || "1", 10) || 1);
   const pageSize = pageSizeFrom(sp.per_page);
 
@@ -118,8 +150,8 @@ export default async function LeadsPage({
   const includeRegular = sp.include_regular === "1";
 
   const [countsByStatus, prevStatusOptions, duplicateCount, regularOrderCount, leadResult] = await Promise.all([
-    leadStatusCounts(scope, includeRegular),
-    previousStatusCounts(scope, includeRegular),
+    leadStatusCounts(countScope, includeRegular),
+    previousStatusCounts(countScope, includeRegular),
     duplicatePhoneCount(scope),
     regularCustomerOrderCount(scope),
     // Resolved either way, never rejected.
@@ -146,7 +178,7 @@ export default async function LeadsPage({
             prev_status: sp.prev_status,
             q: sp.q,
             order_number: sp.order_number,
-            agent: sp.agent,
+            agent: selectedAgent,
             customer_name: sp.customer_name,
             phone: sp.phone,
             city: sp.city,
@@ -495,6 +527,30 @@ export default async function LeadsPage({
             }
           />
         </div>
+        {/* Whose leads. Absent for an agent, who has only their own.
+
+            A select rather than the username the search box already matches:
+            typing a name finds leads that MENTION it, this asks for the ones a
+            person owns, and the two answers differ whenever an agent's name
+            appears on somebody else's order. It also spells the names out —
+            usernames are not what the floor calls each other. */}
+        {seesBeyondOwnLeads && agentOptions.length > 0 && (
+          <div className="flex shrink-0 items-center gap-2">
+            <label htmlFor="agent" className="whitespace-nowrap text-xs font-medium text-slate-500">
+              Agent
+            </label>
+            <Select id="agent" name="agent" defaultValue={selectedAgent || ""} className="w-[11rem]">
+              <option value="">All agents</option>
+              {agentOptions.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.full_name}
+                  {p.is_active ? "" : " (inactive)"}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
+
         {/* Previous order date. The range has been filtered on since the query
             layer was written — prev_from / prev_to reach `previous_order_date`
             — but there was no way to set it without typing the parameters into
