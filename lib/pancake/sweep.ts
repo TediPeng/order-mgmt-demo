@@ -3,12 +3,16 @@ import { forwardOrderToPancake } from "./forward";
 import { applyIncomingUpdate } from "./receive";
 import { getOrder } from "./getOrder";
 import { MAX_ATTEMPTS, nextRetryDueAt } from "./retry";
+import { resolveAddressIds } from "./resolve-address";
 import {
   getAccount,
+  listAccounts,
+  listCustomersMissingPancakeAddress,
   listOrdersForPolling,
   listOrdersStuckSyncing,
   listOrdersWithFailedSync,
   listSyncLogs,
+  saveCustomerPancakeAddress,
   updateOrderSyncFields,
   insertSyncLog,
   notifyAdministrators,
@@ -20,6 +24,8 @@ export interface SweepSummary {
   movedToNeedsReview: number;
   polled: number;
   pollApplied: number;
+  addressesChecked: number;
+  addressesResolved: number;
   errors: string[];
 }
 
@@ -28,9 +34,13 @@ export interface SweepOptions {
   maxRetries?: number;
   /** Cap on orders polled in one run. */
   maxPolls?: number;
+  /** Cap on regular-customer addresses resolved in one run. */
+  maxAddresses?: number;
 }
 
 const POLL_BATCH_LIMIT = 20;
+/** Small: each one can cost two Pancake calls the geo cache has not seen yet. */
+const ADDRESS_BATCH_LIMIT = 10;
 /** A sync stuck in `syncing` this long was killed mid-flight. */
 const SYNCING_STALE_MINUTES = 10;
 /** Don't re-poll an order that synced more recently than this. */
@@ -51,7 +61,17 @@ function minutesAgoIso(minutes: number): string {
 export async function runPancakeSync(opts: SweepOptions = {}): Promise<SweepSummary> {
   const maxRetries = opts.maxRetries ?? Number.POSITIVE_INFINITY;
   const maxPolls = opts.maxPolls ?? POLL_BATCH_LIMIT;
-  const summary: SweepSummary = { released: 0, retried: 0, movedToNeedsReview: 0, polled: 0, pollApplied: 0, errors: [] };
+  const maxAddresses = opts.maxAddresses ?? ADDRESS_BATCH_LIMIT;
+  const summary: SweepSummary = {
+    released: 0,
+    retried: 0,
+    movedToNeedsReview: 0,
+    polled: 0,
+    pollApplied: 0,
+    addressesChecked: 0,
+    addressesResolved: 0,
+    errors: [],
+  };
 
   // --- 1. Release stuck `syncing` orders ------------------------------------
   try {
@@ -182,6 +202,53 @@ export async function runPancakeSync(opts: SweepOptions = {}): Promise<SweepSumm
     summary.errors.push(`polling: ${(e as Error).message}`);
   }
 
+  // --- 4. Regular-customer addresses, words into ids ------------------------
+  // The spreadsheet import writes an address as text and leaves the three
+  // Pancake ids empty; 888 customers carried none on 3 September. Their orders
+  // pass the Packaging checks, which only look at the text, and are refused at
+  // forward time hours later with "Address is missing a Pancake province, city
+  // or barangay selection" -- long after the agent who could have fixed it in
+  // ten seconds has moved on.
+  //
+  // Here rather than in the import: the geo lists are cached per instance, so
+  // resolving in the import would have made a large paste wait on Pancake, and
+  // there would then be two places that fill these ids instead of one. This
+  // covers what the import creates tomorrow and what it created in August by
+  // the same route.
+  try {
+    const accounts = await listAccounts();
+    const account = accounts.find((a) => a.is_active && a.is_default) || accounts.find((a) => a.is_active);
+    if (account) {
+      for (const customer of await listCustomersMissingPancakeAddress(maxAddresses)) {
+        try {
+          const resolved = await resolveAddressIds(account, {
+            province: customer.province,
+            city: customer.city,
+            barangay: customer.barangay,
+          });
+          summary.addressesChecked++;
+          // Stamped either way — that is what moves this customer to the back
+          // of the queue. Written only when all three matched.
+          const saved = await saveCustomerPancakeAddress(
+            customer.id,
+            resolved.provinceId && resolved.districtId && resolved.communeId
+              ? {
+                  provinceId: resolved.provinceId,
+                  districtId: resolved.districtId,
+                  communeId: resolved.communeId,
+                }
+              : null
+          );
+          if (saved && !resolved.error) summary.addressesResolved++;
+        } catch (e) {
+          summary.errors.push(`address ${customer.full_name}: ${(e as Error).message}`);
+        }
+      }
+    }
+  } catch (e) {
+    summary.errors.push(`addresses: ${(e as Error).message}`);
+  }
+
   return summary;
 }
 
@@ -200,6 +267,9 @@ const SWEEP_THROTTLE_MS = 30 * 60_000;
 /** Small budget: the sweep shares an invocation with a page render. */
 const LAZY_MAX_RETRIES = 3;
 const LAZY_MAX_POLLS = 5;
+/** Smaller again: an unseen province costs two Pancake round trips, and this
+ *  one is riding on somebody's page render. */
+const LAZY_MAX_ADDRESSES = 3;
 let lastSweepStartedAt = 0;
 let sweepInFlight = false;
 
@@ -217,7 +287,11 @@ export function maybeSweepPancakeSync(): void {
   lastSweepStartedAt = now;
   sweepInFlight = true;
 
-  const task = runPancakeSync({ maxRetries: LAZY_MAX_RETRIES, maxPolls: LAZY_MAX_POLLS })
+  const task = runPancakeSync({
+    maxRetries: LAZY_MAX_RETRIES,
+    maxPolls: LAZY_MAX_POLLS,
+    maxAddresses: LAZY_MAX_ADDRESSES,
+  })
     .catch((e) => console.error("Pancake lazy sweep failed:", (e as Error).message))
     .finally(() => {
       sweepInFlight = false;

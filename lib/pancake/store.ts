@@ -266,6 +266,74 @@ export async function listOrdersForPolling(limit: number): Promise<Order[]> {
   return (data || []).map(mapOrder);
 }
 
+export interface CustomerAddressRow {
+  id: string;
+  full_name: string;
+  province: string | null;
+  city: string | null;
+  barangay: string | null;
+}
+
+/**
+ * Regular customers whose address is words but not yet ids, longest-unchecked
+ * first.
+ *
+ * Only those carrying all three parts. A customer with no province text cannot
+ * be resolved by any amount of asking, so they never enter the queue rather
+ * than sitting in it being skipped -- 136 of the 888 on 3 September. They need
+ * somebody to type an address, which is a different job from this one.
+ *
+ * Ordered by the check stamp for the same reason the poll queue is: the ones
+ * that will never match must sink, not block.
+ */
+export async function listCustomersMissingPancakeAddress(limit: number): Promise<CustomerAddressRow[]> {
+  const { data, error } = await supabaseAdmin
+    .from("customers")
+    .select("id, full_name, province, city, barangay")
+    .is("pancake_province_id", null)
+    .not("province", "is", null)
+    .not("city", "is", null)
+    .not("barangay", "is", null)
+    .neq("province", "")
+    .neq("city", "")
+    .neq("barangay", "")
+    .order("pancake_address_checked_at", { ascending: true, nullsFirst: true })
+    .limit(limit);
+  if (error) throw new Error(`customers read failed: ${error.message}`);
+  return (data || []) as CustomerAddressRow[];
+}
+
+/**
+ * Records the outcome of one address check.
+ *
+ * The stamp is written whether or not anything resolved -- that is what moves
+ * the customer to the back of the queue. The three ids are written only
+ * together, and only over empty fields: a resolver must never overwrite an
+ * address a person chose.
+ */
+export async function saveCustomerPancakeAddress(
+  id: string,
+  ids: { provinceId: string; districtId: string; communeId: string } | null
+): Promise<boolean> {
+  const { data, error } = await supabaseAdmin
+    .from("customers")
+    .update({
+      pancake_address_checked_at: new Date().toISOString(),
+      ...(ids
+        ? {
+            pancake_province_id: ids.provinceId,
+            pancake_district_id: ids.districtId,
+            pancake_commune_id: ids.communeId,
+          }
+        : {}),
+    })
+    .eq("id", id)
+    .is("pancake_province_id", null)
+    .select("id");
+  if (error) throw new Error(`customers update failed: ${error.message}`);
+  return (data || []).length > 0;
+}
+
 /** How many orders are waiting in the Sync Failed queue, for the badge that
  * says so before anyone opens it. A head count rather than the rows: the number
  * is wanted on a page that does not otherwise read orders at all. */
