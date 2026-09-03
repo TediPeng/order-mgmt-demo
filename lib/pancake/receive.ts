@@ -107,6 +107,20 @@ export async function applyIncomingUpdate(update: IncomingUpdate, source: Pancak
       : null;
   if (key && (await hasProcessedEvent(key))) {
     const reason = `Duplicate delivery of an already-applied event (${update.rawStatus} @ ${update.eventTimestamp}) — ignored.`;
+    // Stamped even though nothing is applied, because "we asked and Pancake
+    // answered" is exactly what pancake_synced_at records, and the sweep picks
+    // its next candidates by that stamp.
+    //
+    // Without this the poller ate itself. For a webhook a repeated event really
+    // is a duplicate delivery; for polling an unchanged order returns the same
+    // (order, status, timestamp) triple every single time, which is the normal
+    // answer, not a duplicate. This branch returned before the "status
+    // unchanged" path below — the one that does the stamping — so those orders
+    // stayed permanently stale, were re-selected on the next run, and held the
+    // whole budget for ever. On 2 September that was 4,162 polls spread across
+    // 33 orders, 126 apiece, while 1,212 waited and 704 had not been asked
+    // about in over a week.
+    await updateOrderSyncFields(order.id, { pancake_synced_at: new Date().toISOString() });
     await insertSyncLog({
       ...base,
       order_id: order.id,

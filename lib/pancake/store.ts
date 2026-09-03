@@ -236,13 +236,32 @@ export async function findForwardedOrdersByPhone(phone: string): Promise<Order[]
 
 /** Orders the polling cron should check: forwarded, in a non-terminal
  * fulfillment state — anything Pancake could still move on. */
-export async function listOrdersForPolling(): Promise<Order[]> {
+/**
+ * The orders most overdue a question, longest-unasked first.
+ *
+ * The choosing is the database's, not ours. It used to select every pollable
+ * order and let the caller take the first twenty, which was wrong twice over: a
+ * bare select is capped at a thousand rows, so with 1,390 of them roughly four
+ * hundred were invisible to the poller no matter how long anyone waited; and
+ * with no order by, "the first twenty" was whatever order the rows came back
+ * in -- the same twenty, every ten minutes.
+ *
+ * Ordering by pancake_synced_at makes the queue rotate by construction: an
+ * order polled now goes to the back, and the ones nobody has asked about in a
+ * week come first. Never-polled orders sort ahead of everything.
+ *
+ * It also stops shipping a thousand full rows into memory every ten minutes to
+ * use twenty of them.
+ */
+export async function listOrdersForPolling(limit: number): Promise<Order[]> {
   const { data, error } = await supabaseAdmin
     .from("orders")
     .select("*")
     .eq("pancake_sync_status", "synced")
     .not("pancake_order_id", "is", null)
-    .in("status", POLLABLE_STATUSES as unknown as string[]);
+    .in("status", POLLABLE_STATUSES as unknown as string[])
+    .order("pancake_synced_at", { ascending: true, nullsFirst: true })
+    .limit(limit);
   if (error) throw new Error(`orders read failed: ${error.message}`);
   return (data || []).map(mapOrder);
 }

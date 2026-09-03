@@ -124,11 +124,15 @@ export async function runPancakeSync(opts: SweepOptions = {}): Promise<SweepSumm
 
   // --- 3. Polling fallback (webhook-less accounts only) ---------------------
   try {
+    // The database returns the maxPolls least-recently-asked orders, so the
+    // rotation is its job now rather than a slice of everything. The staleness
+    // filter still runs, on those few rows: if even the stalest was asked
+    // within the interval then nothing is due, and the run does no work.
     const staleBefore = minutesAgoIso(MIN_POLL_INTERVAL_MINUTES);
-    const candidates = (await listOrdersForPolling()).filter(
+    const candidates = (await listOrdersForPolling(maxPolls)).filter(
       (o) => !o.pancake_synced_at || o.pancake_synced_at < staleBefore
     );
-    for (const order of candidates.slice(0, maxPolls)) {
+    for (const order of candidates) {
       try {
         if (!order.pancake_pos_account_id) continue;
         const account = await getAccount(order.pancake_pos_account_id);
