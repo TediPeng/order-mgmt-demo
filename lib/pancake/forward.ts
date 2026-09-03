@@ -123,6 +123,14 @@ async function failSync(
     requestPayload?: Record<string, unknown> | null;
     responsePayload?: Record<string, unknown> | null;
     notify?: boolean;
+    /**
+     * This attempt has already been counted, so do not count it again.
+     *
+     * True in exactly two places: after claimOrderForSync(), which counts it
+     * itself, and on the ambiguous-match path, which deliberately spends the
+     * whole budget at once.
+     */
+    attemptAlreadyCounted?: boolean;
   } = {}
 ): Promise<void> {
   // Refused when the order has since succeeded. The checks that reject an order
@@ -137,6 +145,32 @@ async function failSync(
     ...(extra.requestPayload !== undefined ? { pancake_request_payload: extra.requestPayload } : {}),
     ...(extra.responsePayload !== undefined ? { pancake_response_payload: extra.responsePayload } : {}),
   });
+
+  // A failure before the claim must still cost an attempt.
+  //
+  // claimOrderForSync() is what raises pancake_retry_count, and almost every
+  // way of reaching this function returns before it: the repeat-buyer hold, an
+  // address with no Pancake ids, an account that would not resolve. Those
+  // orders sat at zero attempts for ever, and zero has two consequences that
+  // compound. The backoff is computed from the count, so it never left its
+  // first step and the order was due again immediately; and the budget was
+  // never spent, so the sweep's needs-review branch never fired and nothing
+  // ever stopped.
+  //
+  // By 3 September four orders had accumulated 6,678 identical retries between
+  // them -- one every four minutes since 26 August -- each one a call to the
+  // Pancake API for an answer that could not change until a person acted. The
+  // ambiguous-match path above already spends an attempt by hand for exactly
+  // this reason; this is the same rule applied to the rest of them.
+  //
+  // Only when the failure was actually recorded. If the order reached Pancake
+  // in the meantime, this is a race, not an attempt.
+  if (recorded && !extra.attemptAlreadyCounted) {
+    await updateOrderSyncFields(order.id, {
+      pancake_retry_count: order.pancake_retry_count + 1,
+      pancake_last_sync_attempt_at: new Date().toISOString(),
+    });
+  }
 
   await insertSyncLog({
     order_id: order.id,
@@ -502,6 +536,8 @@ export async function forwardOrderToPancake(
       const reason = `Retry held for review: ${existing.error}`;
       await failSync(order, reason, opts, {
         accountId: account.id,
+        // Spent by hand just above, and an ambiguous match spends all of it.
+        attemptAlreadyCounted: true,
         // Only a hold that says something new is worth telling anyone about.
         notify: (order.pancake_sync_error || "") !== reason,
       });
@@ -627,6 +663,8 @@ export async function forwardOrderToPancake(
     responseAt,
     requestPayload: result.requestPayload,
     responsePayload: result.responsePayload,
+    // Past the claim, which counted this attempt when it stamped the order.
+    attemptAlreadyCounted: true,
     notify: false,
   });
   await notifyAdministrators(
