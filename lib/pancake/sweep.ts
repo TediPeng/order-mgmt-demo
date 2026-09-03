@@ -41,6 +41,15 @@ export interface SweepOptions {
 const POLL_BATCH_LIMIT = 20;
 /** Small: each one can cost two Pancake calls the geo cache has not seen yet. */
 const ADDRESS_BATCH_LIMIT = 10;
+/**
+ * How many customers a run may spend the province-wide city search on.
+ *
+ * That search costs one request per municipality — up to forty for a single
+ * customer, where every other check costs three. Two a run still clears the
+ * backlog in days, and the geo cache makes the next customer in the same
+ * province free.
+ */
+const CITY_SEARCHES_PER_RUN = 2;
 /** A sync stuck in `syncing` this long was killed mid-flight. */
 const SYNCING_STALE_MINUTES = 10;
 /** Don't re-poll an order that synced more recently than this. */
@@ -219,13 +228,28 @@ export async function runPancakeSync(opts: SweepOptions = {}): Promise<SweepSumm
     const accounts = await listAccounts();
     const account = accounts.find((a) => a.is_active && a.is_default) || accounts.find((a) => a.is_active);
     if (account) {
+      // Inferring a missing city costs one request per municipality of the
+      // province — up to forty for one customer, where every other check costs
+      // three. Rationed rather than refused: two a run still clears the backlog
+      // in a few days, and the geo cache makes the second province-mate free.
+      let citySearches = 0;
       for (const customer of await listCustomersMissingPancakeAddress(maxAddresses)) {
         try {
-          const resolved = await resolveAddressIds(account, {
-            province: customer.province,
-            city: customer.city,
-            barangay: customer.barangay,
-          });
+          const resolved = await resolveAddressIds(
+            account,
+            {
+              province: customer.province,
+              city: customer.city,
+              barangay: customer.barangay,
+            },
+            { allowCitySearch: citySearches < CITY_SEARCHES_PER_RUN }
+          );
+          // Counted on the attempt, not the outcome. The cost is the walk
+          // through the municipalities, and that is spent whether or not the
+          // barangay turns out to be unique. Only the resolver knows whether
+          // it got that far -- a shifted row still has something in its city
+          // column, so an empty one is not the test.
+          if (resolved.citySearched) citySearches++;
           summary.addressesChecked++;
           // Stamped either way — that is what moves this customer to the back
           // of the queue. Written only when all three matched.
