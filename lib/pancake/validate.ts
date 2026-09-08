@@ -19,7 +19,21 @@ export const pancakeOrderSchema = z.object({
   province: z.string().trim().min(1, "Province is required"),
   product_name: z.string().trim().min(1, "Product is required"),
   quantity: z.number().int().positive("Quantity must be at least 1"),
-  unit_price: z.number({ message: "Unit price is required" }).nonnegative("Unit price cannot be negative"),
+  // Whole pesos. Pancake answers a price carrying centavos with
+  // `422 [variation_info]: retail_price is invalid`, and that arrives at
+  // forward time -- hours after the agent who typed it has moved on.
+  // ORD-20260822-8197 sat at 299.99 through two attempts on 8 September.
+  //
+  // Stated as a rule rather than rounded away: 299.99 becoming 300 is a peso
+  // the customer did not agree to, and the person who chose the price is the
+  // one who should choose the new one.
+  //
+  // Only the unit price. The error names retail_price, which is the line's,
+  // and nothing has shown that discount or shipping are held to the same rule.
+  unit_price: z
+    .number({ message: "Unit price is required" })
+    .nonnegative("Unit price cannot be negative")
+    .int("Unit price must be a whole peso amount — Pancake POS refuses centavos"),
   discount: z.number().nonnegative("Discount cannot be negative"),
   shipping_fee: z.number().nonnegative("Shipping fee cannot be negative").nullable(),
 });

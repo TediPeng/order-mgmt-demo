@@ -51,6 +51,19 @@ export function packagingProblems(candidate: PackagingCandidate): PackagingField
       // Present AND greater than zero — a free order is not a sale.
       if (v === null || v === undefined || Number(v) <= 0) {
         problems.push({ field: key, label, message: `${label} is required and must be greater than 0.` });
+      } else if (!Number.isInteger(Number(v))) {
+        // And whole pesos, because Pancake refuses anything else.
+        //
+        // Said here, on the field, while the agent is still looking at it. The
+        // same rule is in pancakeOrderSchema, but that one is read at forward
+        // time — and an order refused there is refused hours later, in words
+        // written for a machine: `422 [variation_info]: retail_price is
+        // invalid`. Nobody who typed 299.99 would recognise that as their price.
+        problems.push({
+          field: key,
+          label,
+          message: `${label} must be a whole peso amount — Pancake POS refuses centavos. Use 300, not 299.99.`,
+        });
       }
       continue;
     }
