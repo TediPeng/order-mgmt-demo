@@ -352,7 +352,15 @@ export function computeRtsPercentage(deliveredOrders: number, returnedOrders: nu
  * order-dated figures deliberately keep them: a regular customer's order is a
  * real sale, and dropping it would understate the month to fix a lead count. */
 export function computeAgentDashboardStats(db: DbShape, agentId: string, from: string, to: string): AgentDashboardStats {
+  // Two different questions, and since the sale credit was split out they no
+  // longer have the same answer. The lead figures ask whose desk a lead is on
+  // now (agent_id); the sale figures ask who closed it (sold_by_agent_id), so
+  // that handing a lead over does not hand the commission over with it.
+  //
+  // The fallback to agent_id is for rows the backfill never reached: it gives
+  // exactly the answer this function gave before the column existed.
   const own = db.orders.filter((o) => o.agent_id === agentId);
+  const credited = db.orders.filter((o) => (o.sold_by_agent_id ?? o.agent_id) === agentId);
 
   const cohort = own.filter((o) => {
     if (o.is_regular_customer) return false;
@@ -365,12 +373,12 @@ export function computeAgentDashboardStats(db: DbShape, agentId: string, from: s
 
   // Total Orders = reached Packaging in the period. Keyed off order_date, not
   // the current status, so an order that has since shipped still counts.
-  const packagedInPeriod = own.filter((o) => o.order_date && o.order_date >= from && o.order_date <= to);
+  const packagedInPeriod = credited.filter((o) => o.order_date && o.order_date >= from && o.order_date <= to);
   const totalOrders = packagedInPeriod.length;
   const salesAmount = packagedInPeriod.reduce((s, o) => s + o.total_amount, 0);
 
-  const delivered = aggregateByStatusAndOrderDate(own, "delivered", from, to);
-  const returned = aggregateByStatusAndOrderDate(own, "returned", from, to);
+  const delivered = aggregateByStatusAndOrderDate(credited, "delivered", from, to);
+  const returned = aggregateByStatusAndOrderDate(credited, "returned", from, to);
 
   return {
     totalLeads,

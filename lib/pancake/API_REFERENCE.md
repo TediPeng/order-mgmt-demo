@@ -166,3 +166,72 @@ This decides Section 0.2 outright:
 - **PH data absent/empty** → Strategy A is impossible; fall back to Strategy B (PSGC + alias mapping), and accept that Pancake will hold PH addresses as free text.
 
 Answering it needs one authenticated call, which requires the shop's API key.
+
+---
+
+## 6. Listing orders — added 2026-08-28 for the Logistics module
+
+Re-fetched the same spec (1,258,375 bytes, 85 paths) to answer what the
+single-order adapter never needed: how to pull a *list* of orders incrementally.
+
+### `GET /shops/{SHOP_ID}/orders`
+
+| Parameter | Meaning |
+|---|---|
+| `page_size`, `page_number` | Pagination. No maximum page size is documented. |
+| `updateStatus` | **Selects which timestamp the date window applies to** — not a status filter, despite the name. Enum includes `inserted_at`, `updated_at`, `partner_inserted_at`, `paid_at`, `picked_up_at`, `first_delivery_at`. |
+| `startDateTime`, `endDateTime` | **UNIX SECONDS.** Not ISO, not milliseconds. |
+| `filter_status[]` | Repeatable order-status codes. |
+| `option_sort` | Includes `last_updated_order_asc` / `_desc`, `inserted_at_asc` / `_desc`. |
+| `partner_id[]` | Filter by shipping partner. |
+
+Response: `{ data[], page_number, page_size, total_entries, total_pages, success }`.
+
+So incremental sync is `updateStatus=updated_at` + a `startDateTime`/`endDateTime`
+window + `option_sort=last_updated_order_asc`, paging until
+`page_number >= total_pages`. Ascending matters: a descending sort over a window
+still being written to lets an order updated mid-paging jump to page 1 and push
+an unread row off the end.
+
+### ⚠️ There is no "On Delivery" ORDER status
+
+The 17 integer order statuses (§2 above) contain nothing between `2` Shipped and
+`3` Received. The delivery leg lives on **`partner.partner_status`**, a closed
+enum of twenty values:
+
+```
+waiting · request_received · processing_picked_up · picking_up · delay_pickup
+picked_up · waiting_on_the_way · on_the_way · contact_delivery_company
+out_for_delivery · delay_delivery · inform_recipient · undeliverable
+waiting_for_return · delivered · delivered_cod · returning · returned
+returned_cod · canceled
+```
+
+Any "on delivery" figure must be normalized from BOTH levels — order status for
+the coarse lifecycle, `partner_status` for the delivery leg. Which of
+`out_for_delivery` / `on_the_way` counts is a business decision, not an API fact.
+
+### Other fields the logistics screens read
+
+| Field | Note |
+|---|---|
+| `partner.first_delivery_at` | First delivery attempt — the honest source for an "on delivery since" timestamp. |
+| `partner.first_undeliverable_at` | First failed attempt. |
+| `partner.extend_update[]` | The courier's own updates: `{ key, status, tracking_id, note, update_at }`. |
+| `status_history[]` | `{ old_status, status, updated_at, editor }` per transition — lets a timeline be backfilled for an order first seen mid-life. |
+| `last_update_status_at` | When the status last changed. |
+| `time_send_partner` | When the order went to the courier. |
+| `cod` | Cash on delivery. `money_to_collect` and `total_price` are separate figures. |
+
+### Webhooks
+
+`WebhookOrderResponse` carries the **whole** order object — `partner` and
+`status_history` included. What is NOT documented is whether Pancake fires it on
+a courier-side update as well as on an order-status change. Until that is
+observed, periodic reconciliation is the primary mechanism and the webhook can
+only be an accelerator.
+
+### Rate limits
+
+Still undocumented anywhere in the spec. HTTP 429 handling stays defensive:
+back off, log, cap the attempts.

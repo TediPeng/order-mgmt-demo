@@ -315,6 +315,20 @@ export interface Order {
   created_by: string;
   updated_by: string | null;
   agent_id: string;
+  /**
+   * Who made the sale, as opposed to who holds the lead now.
+   *
+   * `agent_id` answers "whose lead is this today" and moves whenever the lead
+   * is reassigned. That was also the answer to "who earns this", which meant a
+   * lead could not be handed over without handing the commission over with it —
+   * a customer ringing a different agent directly cost the first agent the sale.
+   *
+   * This column is stamped once, on the transition that turns a lead into a
+   * sale (`order_date` going from null to a date), and never moves again. Every
+   * sales total reads it; the pipeline and ownership screens still read
+   * `agent_id`. Null on leads that have never reached Packaging.
+   */
+  sold_by_agent_id: string | null;
   assigned_agent_email: string;
   created_at: string;
   updated_at: string;
@@ -552,6 +566,7 @@ export const MODULES = [
   "integrations",
   "file_uploads",
   "regular_customers",
+  "logistics",
 ] as const;
 export type ModuleKey = (typeof MODULES)[number];
 
@@ -940,4 +955,142 @@ export interface AccountDeletion {
   handling_method: DeletionHandling;
   linked_record_counts: Record<string, number> | null;
   deleted_at: string;
+}
+
+// ============================================================================
+// LOGISTICS MODULE
+// ============================================================================
+// Consolidated logistics view over MULTIPLE Pancake POS shops. Deliberately
+// separate from PancakeAccount, which is the OUTBOUND routing table for our own
+// shop: an extra row there joins resolveAccount()'s fallback chain and could
+// send a real order into the wrong brand's POS. Nothing in lib/logistics/ ever
+// writes to Pancake — it issues GET only.
+
+/** Internal logistics vocabulary. External Pancake values are stored beside
+ * these, never replaced by them (SPEC §15). */
+export const NORMALIZED_LOGISTICS_STATUSES = [
+  "PENDING",
+  "READY_TO_SHIP",
+  "SHIPPED",
+  "IN_TRANSIT",
+  "ON_DELIVERY",
+  "DELIVERED",
+  "DELIVERY_FAILED",
+  "RETURN_TO_SENDER",
+  "CANCELLED",
+  "UNKNOWN",
+] as const;
+export type NormalizedLogisticsStatus = (typeof NORMALIZED_LOGISTICS_STATUSES)[number];
+
+export const NORMALIZED_LOGISTICS_STATUS_LABELS: Record<NormalizedLogisticsStatus, string> = {
+  PENDING: "Pending",
+  READY_TO_SHIP: "Ready to Ship",
+  SHIPPED: "Shipped",
+  IN_TRANSIT: "In Transit",
+  ON_DELIVERY: "On Delivery",
+  DELIVERED: "Delivered",
+  DELIVERY_FAILED: "Delivery Failed",
+  RETURN_TO_SENDER: "Return to Sender",
+  CANCELLED: "Cancelled",
+  UNKNOWN: "Unknown",
+};
+
+/** Derived, never stored: a connection's state is whatever its last attempt and
+ * last success say it is (SPEC §31). */
+export type LogisticsConnectionHealth = "connected" | "syncing" | "degraded" | "error" | "disabled";
+
+export interface LogisticsConnection {
+  id: string;
+  connection_name: string;
+  /** Pancake POS shop ID — the number in the POS URL, not a Facebook page ID. */
+  shop_id: string;
+  account_label: string | null;
+  api_endpoint: string;
+  api_key_encrypted: string; // AES-256-GCM — never plaintext, never sent to the client
+  webhook_secret_encrypted: string | null;
+  is_enabled: boolean;
+  initial_sync_days: number;
+  initial_sync_completed_at: string | null;
+  /** Advances only when a run completes cleanly. */
+  sync_cursor_at: string | null;
+  last_sync_at: string | null;
+  last_successful_sync_at: string | null;
+  last_error_at: string | null;
+  last_error_message: string | null;
+  /** Archived connections stop syncing and leave every order they produced in
+   * place (SPEC §9). */
+  archived_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface LogisticsOrder {
+  id: string;
+  connection_id: string;
+  external_order_id: string;
+  order_number: string | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+  order_source: string | null;
+  caller_name: string | null;
+  courier: string | null;
+  courier_normalized: string | null;
+  tracking_number: string | null;
+  cod_amount: number | null;
+  external_status: string | null;
+  external_status_name: string | null;
+  external_partner_status: string | null;
+  normalized_status: NormalizedLogisticsStatus;
+  created_at_external: string | null;
+  shipped_at: string | null;
+  on_delivery_at: string | null;
+  delivered_at: string | null;
+  failed_at: string | null;
+  returned_at: string | null;
+  delivery_attempts: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  last_synced_at: string | null;
+  raw_updated_at: string | null;
+  roma_order_id: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface LogisticsOrderStatusHistory {
+  id: string;
+  logistics_order_id: string;
+  external_status: string | null;
+  external_partner_status: string | null;
+  normalized_status: NormalizedLogisticsStatus;
+  status_at: string;
+  detected_at: string;
+  source: string;
+  created_at: string;
+}
+
+export type LogisticsSyncRunStatus = "running" | "success" | "partial" | "failed";
+
+export interface LogisticsSyncRun {
+  id: string;
+  connection_id: string;
+  started_at: string;
+  completed_at: string | null;
+  status: LogisticsSyncRunStatus;
+  window_from: string | null;
+  window_to: string | null;
+  pages_fetched: number;
+  records_received: number;
+  records_created: number;
+  records_updated: number;
+  records_unchanged: number;
+  records_failed: number;
+  /** Tally of external statuses that mapped to UNKNOWN (SPEC §16). Counts
+   * only — never a payload, never a credential. */
+  unknown_statuses: Record<string, number> | null;
+  error_message: string | null;
+  triggered_by: string | null;
+  trigger_source: string;
+  duration_ms: number | null;
 }

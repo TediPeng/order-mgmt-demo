@@ -22,6 +22,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   integrations: "Integrations (Pancake POS)",
   file_uploads: "File Uploads",
   regular_customers: "Regular Customers",
+  logistics: "Logistics",
 };
 
 export const ACTION_LABELS: Record<ActionKey, string> = {
@@ -84,6 +85,20 @@ export const MODULE_ACTIONS: Record<ModuleKey, ActionKey[]> = {
   // person's name, number and address. The second is a disclosure, not an edit,
   // and an agent trusted with one is not automatically trusted with the other.
   regular_customers: ["view", "create", "edit", "assign", "manage"],
+  // Two grants cover all six permissions the logistics spec suggests.
+  //
+  // "view" is the whole read side — dashboard, On Delivery, Delayed Parcels,
+  // All Orders, search, filters and order details — because a logistics user
+  // who can see the queue can see every screen that queue is filtered onto;
+  // splitting them would be a distinction nobody administering this would use.
+  //
+  // "manage" is the connections themselves: adding a Pancake shop, editing or
+  // disabling one, testing it, triggering a sync, and reading sync logs. That
+  // is a different kind of trust — it touches credentials — so it is its own
+  // grant, and like `integrations` it is off for everyone by default below.
+  //
+  // "export" is reserved for the CSV the spec defers to a later phase (§49).
+  logistics: ["view", "manage", "export"],
 };
 
 type Grant = [ModuleKey, ActionKey];

@@ -8,6 +8,7 @@ import { notify } from "@/lib/notifications";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { displayUserName } from "@/lib/types";
 import { normalizePhone } from "@/lib/utils";
+import { overrideReasonProblem, overrideReasonText } from "@/lib/lead-transfer";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -47,6 +48,13 @@ export async function POST(req: NextRequest) {
   const apply = !!body.apply;
   // By-number mode: the source is whoever holds it, so no From is required.
   const phoneKey = normalizePhone(String(body.phone || ""));
+  // Moving a lead that has already become a sale. The sale itself does not move
+  // -- sold_by_agent_id was stamped when it was made and nothing here touches it
+  // -- so what this buys is the lead following the customer, at the price of a
+  // written reason.
+  const override = !!body.override;
+  const overrideReason = String(body.override_reason || "");
+  const overrideDetail = String(body.override_detail || "");
 
   const byId = new Map(db.profiles.map((p) => [p.id, p]));
   const fromAgent = byId.get(from);
@@ -71,6 +79,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: `${displayUserName(toAgent)} is not an active account.` }, { status: 400 });
   }
 
+  if (override) {
+    if (!phoneKey) {
+      return NextResponse.json(
+        { ok: false, error: "An override moves one customer's lead. Find it by phone number." },
+        { status: 400 }
+      );
+    }
+    const problem = overrideReasonProblem(overrideReason, overrideDetail);
+    if (problem) return NextResponse.json({ ok: false, error: problem }, { status: 400 });
+  }
+
   const { data, error } = await supabaseAdmin.rpc("transfer_leads", {
     p_from: phoneKey ? null : from,
     p_to: to,
@@ -79,10 +98,18 @@ export async function POST(req: NextRequest) {
     p_limit: limit,
     p_apply: apply,
     p_phone_key: phoneKey || null,
+    p_override: override,
   });
   if (error) return NextResponse.json({ ok: false, error: `Transfer failed: ${error.message}` }, { status: 500 });
 
-  const result = (data || { moved: 0 }) as { moved: number; ids?: string[]; error?: string };
+  const result = (data || { moved: 0 }) as {
+    moved: number;
+    ids?: string[];
+    // Captured before the update, so a by-number move can still name the agents
+    // it took leads off — there is no From box to read them from.
+    from_agents?: string[];
+    error?: string;
+  };
   if (result.error) return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
   if (!apply) return NextResponse.json({ ok: true, preview: true, moved: result.moved });
 
@@ -100,18 +127,26 @@ export async function POST(req: NextRequest) {
     limit,
     moved: result.moved,
     order_ids: result.ids || [],
+    // Null on an ordinary transfer, so the log distinguishes the two at a
+    // glance: an override is the entry that says why a sold lead moved.
+    override: override || null,
+    override_reason: override ? overrideReasonText(overrideReason, overrideDetail) : null,
   }, { module: "orders", ...info });
 
   if (result.moved > 0) {
     const fromLabel = fromAgent ? displayUserName(fromAgent) : "another agent";
     notify(db, [to], "lead_transfer", "Leads transferred to you",
       `${result.moved} lead(s) moved from ${fromLabel}.`, "/leads");
-    // Only when there is one source to tell. A by-number move can take rows off
-    // several agents; they are named in the audit entry rather than each being
-    // sent a notice that says nothing useful.
-    if (fromAgent) {
-      notify(db, [from], "lead_transfer", "Leads moved to another agent",
-        `${result.moved} of your lead(s) were transferred to ${displayUserName(toAgent)}.`, "/leads");
+    // Everyone the leads came off, which a by-number move can only learn from
+    // the function. Losing a lead without being told is how an agent finds out
+    // by noticing it missing — and on an override the lead is one they sold.
+    const losers = (result.from_agents || []).filter((id) => id && id !== to);
+    for (const loser of losers) {
+      notify(db, [loser], "lead_transfer", "Leads moved to another agent",
+        override
+          ? `A lead you sold was moved to ${displayUserName(toAgent)}: ${overrideReasonText(overrideReason, overrideDetail)}. The sale stays credited to you.`
+          : `${result.moved} of your lead(s) were transferred to ${displayUserName(toAgent)}.`,
+        "/leads");
     }
   }
   await writeDb(db);

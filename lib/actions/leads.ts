@@ -337,6 +337,9 @@ export async function createLeadAction(formData: FormData) {
     created_by: user.id,
     updated_by: null,
     agent_id: data.agent_id,
+    // Stamped on the same condition as order_date, because they mark the same
+    // moment: this lead became a sale, and this is who made it.
+    sold_by_agent_id: data.status === PACKAGING_STATUS ? data.agent_id : null,
     assigned_agent_email: assignedAgent?.email || "",
     created_at: now,
     updated_at: now,
@@ -830,9 +833,6 @@ export async function applyLeadUpdate(
   order.order_date = newOrderDate;
   order.courier = data.courier || null;
   order.payment_method = data.payment_method || null;
-    // Re-derived rather than accepted from input: Order Source is the owning
-  // agent's Call Name and must not be settable through the form.
-  order.order_source = db.profiles.find((p) => p.id === order.agent_id)?.call_name || order.order_source;
   order.notes = data.notes || "";
   // The tag is a supervisor's mark on an agent's order, so an agent may read it
   // but not set it — enforced here, not by disabling the control, since a
@@ -843,6 +843,31 @@ export async function applyLeadUpdate(
     order.agent_id = data.agent_id;
     order.assigned_agent_email = db.profiles.find((p) => p.id === data.agent_id)?.email || "";
   }
+  // Re-derived rather than accepted from input: Order Source is a Call Name and
+  // must not be settable through the form.
+  //
+  // Whose Call Name changed with the sale credit. Order Source names who sold
+  // it — it is what Pancake was told and what REG CX matches against — so on a
+  // sale it follows sold_by_agent_id and a later transfer leaves it alone. On a
+  // lead there is no sale yet, so it follows the current agent, which is also
+  // what transfer_leads() does; the two used to disagree, because this line ran
+  // above the reassignment and kept the outgoing agent's name.
+  //
+  // On the save that makes the sale, the stamp below has not run yet, so this
+  // falls to agent_id — which by then is the agent being credited anyway.
+  const sourceAgentId = order.sold_by_agent_id || order.agent_id;
+  order.order_source = db.profiles.find((p) => p.id === sourceAgentId)?.call_name || order.order_source;
+
+  // The sale's credit, stamped once and never moved.
+  //
+  // Written after the reassignment above, so a lead that is handed over and
+  // packaged in the same save credits the agent who actually closed it. The
+  // `!order.sold_by_agent_id` guard is what makes this permanent: re-entering
+  // Packaging overwrites order_date but leaves this alone, and a later transfer
+  // moves the lead without moving the commission. It also repairs any row the
+  // backfill missed, which lands on the current agent — the answer the app gave
+  // before this column existed.
+  if (order.order_date && !order.sold_by_agent_id) order.sold_by_agent_id = order.agent_id;
   order.updated_by = user.id;
   order.updated_at = nowIso();
   // Every field write in this function is covered by this one mark: it is the
@@ -1379,6 +1404,9 @@ export async function importLeadsAction(
       created_by: user.id,
       updated_by: null,
       agent_id: match.id,
+      // No order_date, so no sale yet — the credit is stamped if and when this
+      // lead is packaged.
+      sold_by_agent_id: null,
       assigned_agent_email: match.email,
       created_at: now,
       updated_at: now,

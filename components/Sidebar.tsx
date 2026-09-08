@@ -32,6 +32,7 @@ import {
   ScrollText,
   Activity,
   BarChart3,
+  Truck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ModuleKey } from "@/lib/types";
@@ -65,6 +66,7 @@ export function Sidebar({
   canMonitor = false,
   canSeeRemainingLeads = false,
   canImportRegularCustomers = false,
+  canManageLogistics = false,
   workforceInPortal = false,
   collapsed = false,
   onNavigate,
@@ -84,6 +86,10 @@ export function Sidebar({
    * only. The page enforces the same rule; this decides whether the link
    * shows. */
   canImportRegularCustomers?: boolean;
+  /** Managing a Pancake connection means handling a credential, which is a
+   * narrower trust than reading the parcel queue — so the link is gated on
+   * logistics.manage, an action grant that `access` (view only) cannot carry. */
+  canManageLogistics?: boolean;
   /**
    * True once the company portal is where the floor keeps its own time and
    * roster, which drops Time In / Out and Schedule from this menu.
@@ -161,6 +167,18 @@ export function Sidebar({
         { href: "/schedule", label: "Schedule", icon: CalendarDays, show: access.schedules && !workforceInPortal },
         { href: "/leave", label: "Leave Requests", icon: CalendarClock, show: access.leave },
         { href: "/schedule/suspensions", label: "Disciplinary", icon: ShieldAlert, show: access.disciplinary },
+      ],
+    },
+    {
+      // Its own group rather than an entry under Sales: these are parcels in
+      // couriers' hands across every connected Pancake shop, not this floor's
+      // own leads, and the people who watch them are not the people selling.
+      title: "Logistics",
+      items: [
+        { href: "/logistics", label: "Logistics", icon: Truck, show: access.logistics },
+        // Connections carry credentials, so the link follows the manage grant
+        // rather than the module's view grant. The page enforces the same rule.
+        { href: "/logistics/connections", label: "Pancake Connections", icon: Plug, show: canManageLogistics },
       ],
     },
     {

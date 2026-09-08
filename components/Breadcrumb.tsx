@@ -39,6 +39,8 @@ const SEGMENT_LABELS: Record<string, string> = {
   reports: "Reports",
   "audit-logs": "Audit Logs",
   dashboard: "Dashboard",
+  logistics: "Logistics",
+  connections: "Pancake Connections",
   new: "New",
   import: "Import",
   upload: "Upload",

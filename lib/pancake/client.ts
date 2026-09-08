@@ -1,6 +1,21 @@
-import type { PancakeAccount } from "@/lib/types";
 import { decryptSecret } from "./crypto";
 import { AUTH_QUERY_PARAM, DEFAULT_API_BASE_URL, REQUEST_TIMEOUT_MS, mockMode } from "./config";
+
+/**
+ * The three fields an authenticated Pancake call actually needs.
+ *
+ * Widened from PancakeAccount so the Logistics module can reuse this transport
+ * without its read-only connections having to live in `pancake_accounts` —
+ * that table is the OUTBOUND routing table, and an extra active row in it joins
+ * resolveAccount()'s fallback chain, where a mis-resolved forward writes a real
+ * order into another brand's shop. PancakeAccount satisfies this structurally,
+ * so every existing caller is unchanged.
+ */
+export interface PancakeCredentials {
+  api_endpoint: string;
+  shop_or_page_id: string;
+  api_key_encrypted: string;
+}
 
 export interface PancakeHttpResult {
   ok: boolean;
@@ -19,7 +34,7 @@ function summarizeErrorBody(body: unknown, rawText: string): string {
   return text.length > 400 ? `${text.slice(0, 400)}…` : text;
 }
 
-function baseUrl(account: PancakeAccount): string {
+function baseUrl(account: PancakeCredentials): string {
   return (account.api_endpoint || DEFAULT_API_BASE_URL).replace(/\/+$/, "");
 }
 
@@ -46,7 +61,7 @@ function describeTransportFailure(e: unknown): string {
   return `${base} (${trimmed})`;
 }
 
-export function resolvePath(template: string, account: PancakeAccount, orderId?: string): string {
+export function resolvePath(template: string, account: PancakeCredentials, orderId?: string): string {
   return template
     .replace("{shopId}", encodeURIComponent(account.shop_or_page_id))
     .replace("{orderId}", encodeURIComponent(orderId || ""));
@@ -57,7 +72,7 @@ export function resolvePath(template: string, account: PancakeAccount, orderId?:
  * — the key is appended here, server-side only, and never logged. MOCK_MODE is
  * short-circuited by the callers (createOrder/getOrder/testConnection). */
 export async function pancakeFetch(
-  account: PancakeAccount,
+  account: PancakeCredentials,
   path: string,
   init: { method: string; body?: unknown; headers?: Record<string, string>; timeoutMs?: number }
 ): Promise<PancakeHttpResult> {
@@ -148,19 +163,15 @@ function explainConnectionFailure(httpStatus: number | null, raw: string): strin
   return raw;
 }
 
-/** Test Connection button: verifies credentials decrypt and the shop endpoint
- * responds. In MOCK_MODE it only checks decryptability. */
-export async function testConnection(account: PancakeAccount): Promise<{ ok: boolean; message: string }> {
-  if (mockMode() !== "off") {
-    try {
-      decryptSecret(account.api_key_encrypted);
-      return mockMode() === "success"
-        ? { ok: true, message: "MOCK_MODE: credentials decrypt OK; connection simulated as successful." }
-        : { ok: false, message: "MOCK_MODE=fail: connection simulated as failed." };
-    } catch (e) {
-      return { ok: false, message: (e as Error).message };
-    }
-  }
+/**
+ * The real credential check, with no mock-mode short circuit.
+ *
+ * Split out from testConnection so the Logistics module can verify a shop for
+ * real while PANCAKE_MOCK_MODE is simulating the outbound integration locally —
+ * they are different credentials against different shops, and a simulated
+ * success for one must not be reported as proof for the other.
+ */
+export async function probeShop(account: PancakeCredentials): Promise<{ ok: boolean; message: string }> {
   // A shop id has to be there before there is any point asking Pancake about
   // it — an empty one makes the path `/shops/`, which comes back as the same
   // 404 as a wrong id and sends you looking in the wrong place.
@@ -173,4 +184,20 @@ export async function testConnection(account: PancakeAccount): Promise<{ ok: boo
   return res.ok
     ? { ok: true, message: `Connected (HTTP ${res.httpStatus}).` }
     : { ok: false, message: explainConnectionFailure(res.httpStatus, res.error || "Connection failed.") };
+}
+
+/** Test Connection button: verifies credentials decrypt and the shop endpoint
+ * responds. In MOCK_MODE it only checks decryptability. */
+export async function testConnection(account: PancakeCredentials): Promise<{ ok: boolean; message: string }> {
+  if (mockMode() !== "off") {
+    try {
+      decryptSecret(account.api_key_encrypted);
+      return mockMode() === "success"
+        ? { ok: true, message: "MOCK_MODE: credentials decrypt OK; connection simulated as successful." }
+        : { ok: false, message: "MOCK_MODE=fail: connection simulated as failed." };
+    } catch (e) {
+      return { ok: false, message: (e as Error).message };
+    }
+  }
+  return probeShop(account);
 }
