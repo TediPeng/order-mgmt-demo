@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { Input, Label } from "@/components/ui/Field";
+import { Input, Label, Select } from "@/components/ui/Field";
+import { DIAL_SCHEMES, DIAL_SCHEME_LABELS } from "@/lib/dial";
 
 /**
  * Edits the details an account is identified by, from its own row.
@@ -24,6 +25,7 @@ export interface EditableUser {
   email: string;
   call_name: string | null;
   sip_extension: string | null;
+  dial_scheme: string | null;
   contact_number: string | null;
   permission_profile: string | null;
   /** Only agents must carry a Call Name — the server checks the same rule. */
@@ -91,6 +93,24 @@ export function EditUserButton({ user, action }: { user: EditableUser; action: (
                 <p className="mt-1 text-xs text-slate-400">
                   Their extension on the PBX. Calls the PBX reports are attributed by this and nothing else, so an
                   agent without one has their calls recorded against nobody. Leave blank until the PBX exists.
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="edit_dial_scheme">Click-to-call</Label>
+                <Select id="edit_dial_scheme" name="dial_scheme" defaultValue={user.dial_scheme || ""}>
+                  <option value="">Use the company setting</option>
+                  {DIAL_SCHEMES.map((scheme) => (
+                    <option key={scheme} value={scheme}>
+                      {DIAL_SCHEME_LABELS[scheme]}
+                    </option>
+                  ))}
+                </Select>
+                <p className="mt-1 text-xs text-slate-400">
+                  Only for this person, and only when their machine needs something different from everyone
+                  else&apos;s. It exists for a rollout: <span className="font-medium">callto:</span> reaches Zoiper, but
+                  on a PC that does not have Zoiper yet it raises a Windows dialog asking which program should open the
+                  link — a question the agent will answer once, wrongly, and permanently. So move each person as their
+                  machine is ready and leave the rest on the company setting.
                 </p>
               </div>
               <div>

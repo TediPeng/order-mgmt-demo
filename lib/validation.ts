@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { PRODUCT_STATUSES, type ProductStatus } from "./types";
+import { DIAL_SCHEMES } from "./dial";
 
 // Pre-sale statuses cover the call workflow. `new` sits here because a lead
 // starts there, but agents cannot set it back — see AGENT_EDITABLE_STATUSES.
@@ -648,6 +649,19 @@ export const userFormSchema = z
       .trim()
       .regex(/^[0-9]*$/, "Extension must be digits only")
       .max(12, "That is too long for an extension")
+      .optional()
+      .default(""),
+    // This person's own click-to-call scheme. Blank means follow the company
+    // setting, which is what every account did before the field existed --
+    // it is not "off", and the two must not be confused.
+    //
+    // Checked against the list rather than accepted as text: an unknown scheme
+    // would render as an href nothing on the machine can open, and the agent
+    // would report it as "the number does nothing" with nothing to find.
+    dial_scheme: z
+      .string()
+      .trim()
+      .refine((v) => v === "" || (DIAL_SCHEMES as readonly string[]).includes(v), "Unknown click-to-call scheme")
       .optional()
       .default(""),
   })

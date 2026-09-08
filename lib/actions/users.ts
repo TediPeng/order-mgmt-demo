@@ -9,6 +9,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { hashPassword } from "@/lib/auth";
 import { randomTempPassword } from "@/lib/passwords";
 import { userFormSchema } from "@/lib/validation";
+import { isDialScheme } from "@/lib/dial";
 import type { Profile } from "@/lib/types";
 import { describeParseFailure } from "@/lib/zod-error";
 import { isMailConfigured, sendMail } from "@/lib/mail/transport";
@@ -45,6 +46,7 @@ export async function createUserAction(formData: FormData) {
     contact_number: field("contact_number"),
     permission_profile: field("permission_profile"),
     sip_extension: field("sip_extension"),
+    dial_scheme: field("dial_scheme"),
   });
 
   if (!parsed.success) {
@@ -75,6 +77,9 @@ export async function createUserAction(formData: FormData) {
     // out. The create form does not ask, because an account is made before
     // anybody knows which extension the person will sit on.
     sip_extension: null,
+    // Follows the company setting until an Administrator gives this person
+    // their own, which the create form does not ask for either.
+    dial_scheme: null,
     contact_number: data.contact_number || null,
     is_active: true,
     password_hash: hashPassword(tempPassword),
@@ -186,6 +191,7 @@ export async function updateUserProfileAction(userId: string, formData: FormData
     contact_number: field("contact_number"),
     permission_profile: field("permission_profile"),
     sip_extension: field("sip_extension"),
+    dial_scheme: field("dial_scheme"),
   });
   if (!parsed.success) {
     redirect(`/users?error=${encodeURIComponent(describeParseFailure(parsed.error))}`);
@@ -206,6 +212,7 @@ export async function updateUserProfileAction(userId: string, formData: FormData
     contact_number: target!.contact_number,
     permission_profile: target!.permission_profile,
     sip_extension: target!.sip_extension,
+    dial_scheme: target!.dial_scheme ?? null,
   };
   const after = {
     username: data.username,
@@ -215,6 +222,9 @@ export async function updateUserProfileAction(userId: string, formData: FormData
     contact_number: data.contact_number || null,
     permission_profile: data.permission_profile || null,
     sip_extension: data.sip_extension || null,
+    // Narrowed rather than cast: blank is a deliberate "follow the company",
+    // and anything that is not a scheme has to read as that too.
+    dial_scheme: isDialScheme(data.dial_scheme) ? data.dial_scheme : null,
   };
 
   // Opening the form and closing it again is not a change, and an audit trail

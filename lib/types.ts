@@ -32,6 +32,15 @@ export interface Profile {
    * recorded against nobody. Null until there is a PBX to have an extension on.
    */
   sip_extension: string | null;
+  /**
+   * This person's own click-to-call scheme, or null to follow the company
+   * setting in app_settings.
+   *
+   * Null is not "off" — it means the account has never been given an opinion
+   * and should keep behaving as it always has. Only a value that is actually a
+   * scheme overrides; see resolveDialScheme in lib/dial.ts.
+   */
+  dial_scheme: DialScheme | null;
   contact_number: string | null;
   is_active: boolean;
   password_hash: string;

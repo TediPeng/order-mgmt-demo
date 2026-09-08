@@ -85,6 +85,9 @@ function seedDb(): DbShape {
     contact_number: null,
     // No PBX to have an extension on until somebody sets one.
     sip_extension: null,
+    // Null follows the company setting, which is what every account did before
+    // this field existed.
+    dial_scheme: null,
     avatar_url: null,
     theme_preference: "light" as const,
     permission_profile: null,

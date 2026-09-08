@@ -23,6 +23,29 @@ export const DIAL_SCHEME_LABELS: Record<DialScheme, string> = {
   off: "Off — show numbers as plain text",
 };
 
+/**
+ * The scheme actually used for one person.
+ *
+ * There is a company-wide setting and, optionally, a personal one. The personal
+ * one wins when it is set, and null means "whatever the company says" — not
+ * "off". That distinction is the whole point: an account that has never been
+ * touched must keep behaving exactly as it did before this field existed.
+ *
+ * It exists because the rollout is gradual. Zoiper arrives on seventeen PCs
+ * over days, not at once, and the setting it needs (`callto:`) does nothing on
+ * a machine without Zoiper except raise a Windows dialog asking which program
+ * should handle it — a question the agent cannot answer and will answer wrongly
+ * once, permanently. So the company setting stays where it is and each agent is
+ * moved as their machine is ready.
+ *
+ * The stored value is validated here rather than trusted. A column added by
+ * hand, or a row written before the column existed, reads as something that is
+ * not a scheme, and falling back is the only safe reading of that.
+ */
+export function resolveDialScheme(personal: unknown, company: DialScheme): DialScheme {
+  return isDialScheme(personal) ? personal : company;
+}
+
 export function isDialScheme(value: unknown): value is DialScheme {
   return typeof value === "string" && (DIAL_SCHEMES as readonly string[]).includes(value);
 }

@@ -24,6 +24,7 @@ import { LeadStatusCards, QUICK_FILTER_STATUSES } from "@/components/LeadStatusC
 import { displayCallName } from "@/lib/types";
 import type { CallSession, OrderStatus } from "@/lib/types";
 import { listSessionsForOrders } from "@/lib/call-sessions";
+import { resolveDialScheme } from "@/lib/dial";
 
 /**
  * How many leads one page may show.
@@ -82,6 +83,7 @@ export default async function LeadsPage({
   // the whole-table read. Loading 57,000 rows to display twenty-five was what
   // made this page take twenty seconds.
   const db = await readDbLite();
+  const dialScheme = resolveDialScheme(user.dial_scheme, db.operations.dial_scheme);
 
   // The page was previously reachable by direct URL for any signed-in role: the
   // sidebar hid the link but nothing here checked the permission, so whether a
@@ -636,7 +638,7 @@ export default async function LeadsPage({
           linesByOrder={linesByOrder}
           canEdit={canEdit}
           callSessionsByOrderId={callSessionsByOrderId}
-          dialScheme={db.operations.dial_scheme}
+          dialScheme={dialScheme}
         agentNameById={agentCallNameById}
           latestStatusUpdateByOrderId={latestStatusUpdateByOrderId}
           initialOpenOrderNumber={sp.open}
@@ -659,7 +661,7 @@ export default async function LeadsPage({
         canTagRegular={canTagRegular}
         requiresCallSession={!isFullAccess(user.role)}
         callSessionsByOrderId={callSessionsByOrderId}
-        dialScheme={db.operations.dial_scheme}
+        dialScheme={dialScheme}
         agentNameById={agentCallNameById}
         canSeeFulfillment={!isAgent}
         fullPageHrefBase={isFullAccess(user.role) ? "/leads" : null}

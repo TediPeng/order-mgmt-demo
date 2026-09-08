@@ -13,6 +13,7 @@ import { creatableStatuses } from "@/lib/validation";
 import { timeInBlockReason, TIME_IN_HREF } from "@/lib/time-in-gate";
 import { getCustomer } from "@/lib/customers";
 import type { RegularCustomerPrefill } from "@/components/LeadForm";
+import { resolveDialScheme } from "@/lib/dial";
 
 export default async function NewLeadPage({
   searchParams,
@@ -22,6 +23,7 @@ export default async function NewLeadPage({
   const { error, time_in_required, customer: customerId } = await searchParams;
   const user = (await getCurrentUser())!;
   const db = await readDbLite();
+  const dialScheme = resolveDialScheme(user.dial_scheme, db.operations.dial_scheme);
 
   if (!can(user.role, "orders", "create", db.role_permissions)) {
     return <Alert kind="error">You do not have permission to create leads.</Alert>;
@@ -109,7 +111,7 @@ export default async function NewLeadPage({
           customerId={regularCustomer.id}
           customerName={regularCustomer.full_name}
           phone={regularCustomer.phone}
-          dialScheme={db.operations.dial_scheme}
+          dialScheme={dialScheme}
         />
       )}
 

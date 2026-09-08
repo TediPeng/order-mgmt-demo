@@ -476,6 +476,7 @@ export default async function UsersPage({
                             email: u.email,
                             call_name: u.call_name,
                             sip_extension: u.sip_extension,
+                            dial_scheme: u.dial_scheme,
                             contact_number: u.contact_number,
                             permission_profile: u.permission_profile,
                             role: u.role,

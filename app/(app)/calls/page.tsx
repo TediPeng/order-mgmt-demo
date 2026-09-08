@@ -14,6 +14,7 @@ import { Button, LinkButton } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Field";
 import { DialLink } from "@/components/DialLink";
 import type { OrderStatus } from "@/lib/types";
+import { resolveDialScheme } from "@/lib/dial";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,7 @@ export default async function CallsPage({
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
   const db = await readDbLite();
+  const dialScheme = resolveDialScheme(user.dial_scheme, db.operations.dial_scheme);
 
   if (!can(user.role, "orders", "view", db.role_permissions)) {
     return <Alert kind="error">You do not have permission to view calls.</Alert>;
@@ -243,7 +245,7 @@ export default async function CallsPage({
                       it is the thing this page exists for, so it is not buried
                       in a tooltip. */}
                   <td className="px-2.5 py-1.5 font-medium text-slate-800">
-                    <DialLink phone={r.customer_phone} scheme={db.operations.dial_scheme} />
+                    <DialLink phone={r.customer_phone} scheme={dialScheme} />
                   </td>
                   <td className="px-2.5 py-1.5">
                     {/* A call raised from a Regular Customer's record has no

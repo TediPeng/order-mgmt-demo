@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/Field";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { BackToCallButton } from "@/components/BackToCallButton";
 import { untagRegularCustomerAction } from "@/lib/actions/regular-customers";
+import { resolveDialScheme } from "@/lib/dial";
 
 export default async function RegularCustomersPage({
   searchParams,
@@ -30,6 +31,7 @@ export default async function RegularCustomersPage({
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
   const db = await readDbLite();
+  const dialScheme = resolveDialScheme(user.dial_scheme, db.operations.dial_scheme);
 
   if (!can(user.role, "regular_customers", "view", db.role_permissions)) redirect("/dashboard");
   const canManage = can(user.role, "regular_customers", "manage", db.role_permissions);
@@ -209,7 +211,7 @@ export default async function RegularCustomersPage({
               <tr key={customer.id} className="odd:bg-slate-50/40 hover:bg-slate-50">
                 <td className="px-4 py-3 font-medium text-slate-800">{customer.full_name}</td>
                 <td className="px-4 py-3 text-slate-600">
-                  <DialLink phone={customer.phone_raw} scheme={db.operations.dial_scheme} />
+                  <DialLink phone={customer.phone_raw} scheme={dialScheme} />
                 </td>
                 <td className="px-4 py-3 text-slate-600">
                   {[customer.purok, customer.barangay, customer.city, customer.province].filter(Boolean).join(", ") || "—"}
