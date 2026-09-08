@@ -14,7 +14,7 @@ import type { PancakeAccount, Profile } from "@/lib/types";
  *
  * Two conditions, and the second is an OR:
  *
- *   at least 3 DELIVERED orders in Pancake
+ *   at least MIN_DELIVERED_ORDERS delivered orders in Pancake
  *   AND ( same Order Source OR same Caller )
  *
  * Delivered only. A customer who ordered five times and kept nothing is the
@@ -26,7 +26,19 @@ import type { PancakeAccount, Profile } from "@/lib/types";
  * agent can move between them.
  */
 
-export const MIN_DELIVERED_ORDERS = 3;
+/**
+ * Lowered from 3 to 2 on 8 September 2026, at the floor's request.
+ *
+ * This is a judgement about when a buyer has become a regular one, not a
+ * technical limit — so it lives here as one number, and everything that speaks
+ * about it reads it rather than repeating it. Two prose copies of "3" had
+ * already drifted out of reach of this constant; both now interpolate it.
+ *
+ * Changing it does not retag anybody. The check runs at tagging time, so
+ * existing records keep whatever they were given, and the audit page is what
+ * measures those against the rule as it stands today.
+ */
+export const MIN_DELIVERED_ORDERS = 2;
 
 export type RegCxValidationResult =
   | "QUALIFIED"
@@ -151,7 +163,7 @@ export async function validateRegCxTagging(owner: Profile, phone: string): Promi
       result: "ORDER_SOURCE_CALLER_MISMATCH",
       allowed: false,
       message:
-        "REG CX Validation Failed\n\nThis customer has at least 3 delivered orders, but the Order Source or Caller Name does not match the previous REG CX processing history.\n\nPlease verify the customer's previous orders in Pancake.",
+        `REG CX Validation Failed\n\nThis customer has at least ${MIN_DELIVERED_ORDERS} delivered orders, but the Order Source or Caller Name does not match the previous REG CX processing history.\n\nPlease verify the customer's previous orders in Pancake.`,
     };
   }
 
