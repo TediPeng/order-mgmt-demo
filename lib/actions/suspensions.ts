@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { writeDb, uuid, nowIso, queueDelete } from "@/lib/db";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { notify } from "@/lib/notifications";
@@ -153,6 +154,35 @@ export async function issueSuspensionAction(formData: FormData) {
   }
 
   await writeDb(db);
+
+  // The suspension is also a disciplinary record, and it writes its own.
+  //
+  // Before this table existed, a suspension was the ONLY conduct this company
+  // could prove -- everything short of it lived in somebody's memory. Now that
+  // there is a file, the most serious entry in it cannot be the one somebody
+  // has to remember to copy across by hand.
+  //
+  // After writeDb, deliberately: the suspension is the thing that stops shifts
+  // and blocks a time-in, and it must not be lost because the record of it
+  // failed to insert. The unique index on suspension_id means a retry cannot
+  // leave two accounts of the same event.
+  const { error: recordError } = await supabaseAdmin.from("disciplinary_actions").insert({
+    id: uuid(),
+    employee_id: employeeId,
+    action_date: suspension.date_issued,
+    action_type: "suspension",
+    offense: reason,
+    details: remarks || `Suspended for ${durationDays} days, ${startDate} to ${endDate}.`,
+    issued_by: user.id,
+    status: "active",
+    suspension_id: suspension.id,
+  });
+  if (recordError) {
+    // Logged, not raised. The suspension itself is already in force and telling
+    // the issuer it failed would invite them to issue it again.
+    console.error("[suspensions] disciplinary record not written: %s", recordError.message);
+  }
+
   redirect(`/schedule/suspensions?issued=1${replaced.length > 0 ? `&replaced=${replaced.length}` : ""}`);
 }
 
