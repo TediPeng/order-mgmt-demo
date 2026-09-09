@@ -62,6 +62,15 @@ export async function GET(req: NextRequest) {
   if (unsentError) {
     console.error("[portal-leave-sync] unsent read failed: %s", unsentError.message);
   } else {
+    // Logged every run, even when it is zero.
+    //
+    // Three filings sat unsent for an hour while this swept seven others past
+    // them, and the logs could not settle whether they were being tried and
+    // refused or never selected at all -- because the only thing recorded was
+    // what happened AFTER the choice. The size of the list is the one fact that
+    // separates a broken query from a broken request, and it was the one fact
+    // missing.
+    console.log("[portal-leave-sync] %d filing(s) still to carry", (unsent || []).length);
     for (const row of unsent || []) {
       const result = await fileLeaveInPortal({
         romaProfileId: String(row.agent_id),
@@ -153,8 +162,6 @@ export async function GET(req: NextRequest) {
     if (notifyError) console.error("[portal-leave-sync] notify failed: %s", notifyError.message);
   }
 
-  if (applied > 0 || filed > 0) {
-    console.log("[portal-leave-sync] filed %d, applied %d decision(s)", filed, applied);
-  }
+  console.log("[portal-leave-sync] filed %d, applied %d decision(s) of %d open", filed, applied, rows.length);
   return NextResponse.json({ ok: true, filed, checked: rows.length, applied });
 }
