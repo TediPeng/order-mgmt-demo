@@ -211,6 +211,12 @@ export default async function CallsPage({
                   Ringing, and counted one sale once per attempt. */}
               <th className="px-2.5 py-2">Ordered</th>
               <th className="px-2.5 py-2 text-right">Talk time</th>
+              {/* What the telephone made of the same call. "Talk time" beside it
+                  is how long the lead was open on screen; this is how long
+                  somebody was actually speaking. They are different numbers and
+                  the page should not pretend otherwise. */}
+              <th className="px-2.5 py-2">Answered</th>
+              <th className="px-2.5 py-2 text-right">Spoke for</th>
               <th className="px-2.5 py-2">Result</th>
             </tr>
           </thead>
@@ -279,6 +285,34 @@ export default async function CallsPage({
                   <td className="px-2.5 py-1.5 text-right font-mono tabular-nums text-slate-600">
                     {r.ended_at ? hms(r.duration_seconds) : "on call"}
                   </td>
+                  {/* A dash is not "no answer" — it is "the PBX has no record of
+                      this call", which is what an agent dialling from a mobile
+                      looks like. Saying NO ANSWER there would blame the
+                      customer for something the telephone never saw. */}
+                  <td className="px-2.5 py-1.5">
+                    {r.pbx_disposition ? (
+                      <Badge
+                        className={
+                          r.pbx_disposition.toUpperCase() === "ANSWERED"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-slate-100 text-slate-600"
+                        }
+                      >
+                        {r.pbx_disposition.toLowerCase()}
+                      </Badge>
+                    ) : (
+                      <span className="text-slate-300" title="No PBX record for this call">
+                        —
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-2.5 py-1.5 text-right font-mono tabular-nums text-slate-600">
+                    {r.pbx_billsec != null && r.pbx_billsec > 0 ? (
+                      hms(r.pbx_billsec)
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
+                  </td>
                   <td className="px-2.5 py-1.5">
                     {status && LEAD_STATUS_STYLES[status] ? (
                       <Badge className={LEAD_STATUS_STYLES[status].badge}>{LEAD_STATUS_LABELS[status]}</Badge>
@@ -291,7 +325,7 @@ export default async function CallsPage({
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={seesOthers ? 9 : 8} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={seesOthers ? 11 : 10} className="px-4 py-10 text-center text-slate-400">
                   {filtered ? (
                     <>
                       No calls on {formatDate(date)} match that filter.{" "}

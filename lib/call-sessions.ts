@@ -354,6 +354,18 @@ export interface CallRecord {
   order_amount: number | null;
   /** Where the order stands now — not necessarily what this call set. */
   order_status: string | null;
+  /**
+   * What the PBX made of this call, when it can be tied to one.
+   *
+   * Null means no pbx_calls row links to this session — an agent who pressed
+   * Calling and dialled from a mobile, or who never dialled at all. That is a
+   * real answer and not a gap to be filled with a zero: "we do not know" and
+   * "nobody picked up" are different, and the second is a judgement on the
+   * customer while the first is a judgement on nothing.
+   */
+  pbx_disposition: string | null;
+  /** Seconds of actual conversation, after pickup. Ringing is not talking. */
+  pbx_billsec: number | null;
 }
 
 /**
@@ -432,6 +444,11 @@ export async function listCallsForDay(
     ordered: Boolean(r.ordered),
     order_amount: r.total_amount == null ? null : Number(r.total_amount),
     order_status: r.order_status ? String(r.order_status) : null,
+    // Null when no PBX call links to this session. Left null rather than
+    // defaulted: "not known" and "nobody answered" are different answers, and
+    // only one of them is about the customer.
+    pbx_disposition: r.pbx_disposition ? String(r.pbx_disposition) : null,
+    pbx_billsec: r.pbx_billsec == null ? null : Number(r.pbx_billsec),
   }));
   return { rows, total: Number(payload.total ?? 0) };
 }
