@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { CellStatus } from "@/lib/duty-status";
+import { envFlagIsOn } from "@/lib/env-flag";
 
 /**
  * The roster built here, carried to the company portal.
@@ -28,7 +29,7 @@ import type { CellStatus } from "@/lib/duty-status";
 
 /** Off unless explicitly on, so a missing variable changes nothing. */
 export function portalOwnsRosterSync(): boolean {
-  return process.env.PORTAL_SCHEDULE === "on";
+  return envFlagIsOn("PORTAL_SCHEDULE");
 }
 
 /**

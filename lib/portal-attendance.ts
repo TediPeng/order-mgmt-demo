@@ -1,4 +1,5 @@
 import type { AttendanceStatus } from "./types";
+import { envFlagIsOn } from "./env-flag";
 
 /**
  * Attendance, as the company portal now keeps it.
@@ -54,7 +55,7 @@ export interface PortalAttendanceResponse {
  * has always worked.
  */
 export function portalOwnsAttendance(): boolean {
-  return process.env.PORTAL_ATTENDANCE === "on";
+  return envFlagIsOn("PORTAL_ATTENDANCE");
 }
 
 /**

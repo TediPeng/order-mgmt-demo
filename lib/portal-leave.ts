@@ -1,5 +1,7 @@
 import "server-only";
 
+import { envFlagIsOn } from "@/lib/env-flag";
+
 /**
  * Leave filed here, decided in the company portal.
  *
@@ -29,7 +31,7 @@ import "server-only";
  * need a build. Off unless explicitly on.
  */
 export function portalOwnsLeave(): boolean {
-  return process.env.PORTAL_LEAVE === "on";
+  return envFlagIsOn("PORTAL_LEAVE");
 }
 
 export type LeaveFiling =
