@@ -366,6 +366,15 @@ export interface CallRecord {
   pbx_disposition: string | null;
   /** Seconds of actual conversation, after pickup. Ringing is not talking. */
   pbx_billsec: number | null;
+  /**
+   * The pbx_calls id, but only when that call has audio stored.
+   *
+   * The id and never the storage path: the bucket is private, and the page has
+   * no business knowing where the object lives. Playback asks
+   * /api/recordings/<id> for a signed address at the moment somebody presses
+   * play, and that route decides whether they may hear it.
+   */
+  pbx_call_id: string | null;
 }
 
 /**
@@ -449,6 +458,7 @@ export async function listCallsForDay(
     // only one of them is about the customer.
     pbx_disposition: r.pbx_disposition ? String(r.pbx_disposition) : null,
     pbx_billsec: r.pbx_billsec == null ? null : Number(r.pbx_billsec),
+    pbx_call_id: r.pbx_call_id ? String(r.pbx_call_id) : null,
   }));
   return { rows, total: Number(payload.total ?? 0) };
 }

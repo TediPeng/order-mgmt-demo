@@ -217,6 +217,7 @@ export default async function CallsPage({
                   the page should not pretend otherwise. */}
               <th className="px-2.5 py-2">Answered</th>
               <th className="px-2.5 py-2 text-right">Spoke for</th>
+              <th className="px-2.5 py-2">Recording</th>
               <th className="px-2.5 py-2">Result</th>
             </tr>
           </thead>
@@ -313,6 +314,22 @@ export default async function CallsPage({
                       <span className="text-slate-300">—</span>
                     )}
                   </td>
+                  {/* A player, not a download. The audio is a customer's voice;
+                      listening in place leaves it where the permissions are,
+                      and the address it plays from is minted per press and
+                      expires in minutes. */}
+                  <td className="px-2.5 py-1.5">
+                    {r.pbx_call_id ? (
+                      <audio
+                        controls
+                        preload="none"
+                        src={`/api/recordings/${r.pbx_call_id}`}
+                        className="h-8 w-44"
+                      />
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
+                  </td>
                   <td className="px-2.5 py-1.5">
                     {status && LEAD_STATUS_STYLES[status] ? (
                       <Badge className={LEAD_STATUS_STYLES[status].badge}>{LEAD_STATUS_LABELS[status]}</Badge>
@@ -325,7 +342,7 @@ export default async function CallsPage({
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={seesOthers ? 11 : 10} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={seesOthers ? 12 : 11} className="px-4 py-10 text-center text-slate-400">
                   {filtered ? (
                     <>
                       No calls on {formatDate(date)} match that filter.{" "}
