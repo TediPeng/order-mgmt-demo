@@ -125,6 +125,15 @@ export interface MonitorRow {
   pbxAnswered: number;
   /** Real talk seconds after pickup. Ringing is not talking. */
   pbxTalkSeconds: number;
+  /**
+   * What the telephone is doing this second — "up", "ringing", or null.
+   *
+   * Separate from `state` above, which is what ROMA believes. They can differ,
+   * and when they do the difference is the useful part: an agent on a call with
+   * no session open is working without recording it, and a session open with a
+   * silent telephone is a timer somebody forgot to stop.
+   */
+  pbxLive: string | null;
   /** Seconds already accounted for as standby before the current state began. */
   standbyBaseSeconds: number;
 }
@@ -427,7 +436,7 @@ export function AgentMonitorBoard({
       )}
 
       <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
-        <table className="w-full min-w-[1240px] text-left text-sm">
+        <table className="w-full min-w-[1380px] text-left text-sm">
           <thead className="sticky top-0 z-20 bg-slate-50 shadow-sm text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Agent</th>
@@ -447,6 +456,7 @@ export function AgentMonitorBoard({
                   app. Kept beside the session figures rather than replacing
                   them: while agents are still being moved onto the softphone,
                   the gap between the pairs is what says who has moved. */}
+              <th className="px-4 py-3">Phone</th>
               <th className="px-4 py-3 text-right">PBX calls</th>
               <th className="px-4 py-3 text-right">PBX talk</th>
               <th className="px-4 py-3 text-right">Standby today</th>
@@ -540,6 +550,25 @@ export function AgentMonitorBoard({
                     )}
                   </td>
                   <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-700">{hms(talk)}</td>
+                  {/* What the handset is doing, beside what the app believes.
+                      A dash is "not on the phone", not "we cannot tell" — the
+                      board hides this column entirely when the PBX has stopped
+                      reporting, rather than showing everyone as idle. */}
+                  <td className="px-4 py-3">
+                    {r.pbxLive === "up" ? (
+                      <span className="inline-flex items-center gap-1.5 text-emerald-700">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                        on the phone
+                      </span>
+                    ) : r.pbxLive === "ringing" ? (
+                      <span className="inline-flex items-center gap-1.5 text-amber-700">
+                        <span className="h-2 w-2 rounded-full bg-amber-400" />
+                        ringing
+                      </span>
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
+                  </td>
                   {/* Answered over placed. A dialled number nobody picked up is
                       not a call made, and showing only the total would flatter
                       an agent who rang forty numbers and spoke to none. */}
@@ -566,7 +595,7 @@ export function AgentMonitorBoard({
             })}
             {visible.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={11} className="px-4 py-10 text-center text-slate-400">
                   {filter
                     ? live
                       ? `Nobody is ${STATE_META[filter].label.toLowerCase()} right now.`

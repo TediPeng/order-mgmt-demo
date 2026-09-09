@@ -7,7 +7,7 @@ import { activeSuspensionOn } from "@/lib/schedule-access";
 import { displayUserName } from "@/lib/types";
 import { getActiveSessions, callTotalsForDay, describeCallTargets } from "@/lib/call-sessions";
 import { getActiveBioBreaks, bioBreakTotalsForDay } from "@/lib/bio-breaks";
-import { pbxTotalsForDay, EMPTY_PBX_TOTALS } from "@/lib/pbx-calls";
+import { pbxTotalsForDay, EMPTY_PBX_TOTALS, liveChannels, NO_LIVE_STATE } from "@/lib/pbx-calls";
 import { AgentMonitorBoard, type AttendanceSource, type MonitorRow, type MonitorState } from "@/components/AgentMonitorBoard";
 import { fetchPortalAttendance, portalOwnsAttendance } from "@/lib/portal-attendance";
 import { MonitorDatePicker } from "@/components/MonitorDatePicker";
@@ -67,7 +67,7 @@ export default async function AgentMonitorPage({
     .sort((a, b) => displayUserName(a).localeCompare(displayUserName(b)));
 
   const agentIds = agents.map((a) => a.id);
-  const [activeCalls, activeBio, callTotals, bioTotals, pbxTotals, portalAttendance] = await Promise.all([
+  const [activeCalls, activeBio, callTotals, bioTotals, pbxTotals, live, portalAttendance] = await Promise.all([
     getActiveSessions(agentIds),
     getActiveBioBreaks(agentIds),
     callTotalsForDay(agentIds, viewDate),
@@ -77,6 +77,9 @@ export default async function AgentMonitorPage({
     // see lib/pbx-calls.ts. A failure inside returns empty rather than throwing
     // — these are two columns, not the reason the board exists.
     pbxTotalsForDay(agentIds, viewDate),
+    // Only for today. A snapshot is what is happening now, and on a historical
+    // board it would be this afternoon's answer printed over last Tuesday.
+    isToday ? liveChannels() : Promise.resolve(NO_LIVE_STATE),
     // The clock lives in the company portal now. Fetched alongside the rest
     // rather than before it: the board should not wait on another application
     // to start counting calls, and if the portal is slow this is the request
@@ -135,6 +138,9 @@ export default async function AgentMonitorPage({
     const calls = callTotals.get(agent.id) || { count: 0, seconds: 0, lastEndedAt: null };
     const bios = bioTotals.get(agent.id) || { count: 0, seconds: 0, lastEndedAt: null };
     const pbx = pbxTotals.get(agent.id) || EMPTY_PBX_TOTALS;
+    // Matched on the extension, which is the only thing the PBX knows an agent
+    // by. An agent without one is simply never live, which is correct.
+    const liveChannel = agent.sip_extension ? live.byExtension.get(agent.sip_extension) || null : null;
 
     // The order below is the precedence when several could apply at once. Call
     // and bio break are mutually exclusive by construction, but a stale open
@@ -258,6 +264,7 @@ export default async function AgentMonitorPage({
       talkSeconds: calls.seconds,
       bioCount: bios.count,
       bioSeconds: bios.seconds,
+      pbxLive: liveChannel ? liveChannel.state : null,
       pbxCalls: pbx.calls,
       pbxAnswered: pbx.answered,
       pbxTalkSeconds: pbx.talkSeconds,
