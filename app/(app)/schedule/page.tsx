@@ -171,7 +171,11 @@ export default async function SchedulePage({
         <Alert kind="info">
           This roster is carried to the company portal within ten minutes, and it is what opens the clock: a day marked
           Off there cannot be timed in. On Leave is set by the approved leave request itself, and Suspended by the
-          disciplinary module, so neither is sent from here.
+          disciplinary module, so neither is sent from here.{" "}
+          <span className="font-medium">
+            An empty cell is not an unscheduled day — it means the standing schedule applies, which is the same 8:00 to
+            5:00 both systems already use. Fill in only what departs from it.
+          </span>
         </Alert>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">
