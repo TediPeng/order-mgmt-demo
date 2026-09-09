@@ -8,6 +8,8 @@ import { logActivity } from "@/lib/activity";
 import { getRequestInfo } from "@/lib/request-info";
 import { notify, supervisorRecipients } from "@/lib/notifications";
 import { requireUserLite, requirePermission } from "./guards";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { portalOwnsLeave, fileLeaveInPortal } from "@/lib/portal-leave";
 import { leaveRequestSchema, leaveReviewSchema } from "@/lib/validation";
 import { todayInTz } from "@/lib/utils";
 import { maxApprovedPerDay, fullDates } from "@/lib/leave";
@@ -337,7 +339,40 @@ export async function fileLeaveAction(formData: FormData) {
   );
 
   await writeDb(db);
-  redirect("/leave?filed=1");
+
+  // The portal is where this gets decided, so it has to arrive there. Waited
+  // for rather than fired and forgotten: a request nobody can see is a day off
+  // nobody granted, and the agent should find that out now rather than on the
+  // morning they do not turn up.
+  //
+  // Written back with a single update rather than through writeDb, which
+  // rewrites whole tables to change one column.
+  let notice = "";
+  if (portalOwnsLeave()) {
+    const filed = await fileLeaveInPortal({
+      romaProfileId: user.id,
+      leaveType: request.leave_type,
+      startDate: request.leave_start,
+      endDate: request.leave_end,
+      reason: request.reason,
+    });
+
+    if (filed.status === "ok") {
+      const { error } = await supabaseAdmin
+        .from("leave_requests")
+        .update({ portal_request_id: filed.requestId })
+        .eq("id", request.id);
+      if (error) console.error("[leave] portal link not stored: %s", error.message);
+    } else if (filed.status === "skipped") {
+      // Not linked to anybody in the portal. Filing here still worked, but
+      // nobody there can decide it, and only an administrator can fix that.
+      notice = "&portal_unlinked=1";
+    } else {
+      notice = "&portal_unsent=1";
+    }
+  }
+
+  redirect(`/leave?filed=1${notice}`);
 }
 
 export async function cancelLeaveAction(requestId: string) {
@@ -425,6 +460,19 @@ export async function resubmitLeaveAction(formData: FormData) {
 }
 
 export async function reviewLeaveAction(formData: FormData) {
+  // Deciding leave moved to the company portal, and this refusal is on the
+  // server because a hidden button is not a closed door: an open tab still
+  // carries the old form. Two systems approving the same request is how one
+  // agent ends up both granted and refused, and only one of the two answers
+  // reaches payroll.
+  if (portalOwnsLeave()) {
+    redirect(
+      `/leave?error=${encodeURIComponent(
+        "Leave is decided in the company portal now — it holds the daily limit and writes the roster. Please approve or reject it there."
+      )}`
+    );
+  }
+
   const { user, db } = await requireUserLite();
   requirePermission(user, "leave", "approve", db, "/leave");
 

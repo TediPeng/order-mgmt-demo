@@ -530,6 +530,12 @@ export interface LeaveRequest {
   management_remarks: string | null;
   reviewed_by: string | null;
   reviewed_at: string | null;
+  /**
+   * Which request in the company portal this became, once leave is decided
+   * there. Optional because rows filed before the bridge existed have none, and
+   * null is what the sweep reads as "never crossed" rather than "already done".
+   */
+  portal_request_id?: string | null;
   created_at: string;
   updated_at: string;
 }

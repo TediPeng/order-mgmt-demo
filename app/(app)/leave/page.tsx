@@ -14,6 +14,8 @@ import { LeaveQueueCalendar } from "@/components/LeaveQueueCalendar";
 import { LEAVE_TYPE_LABELS } from "@/lib/validation";
 import { leaveCountsByDate, leavePickerWindow, maxApprovedPerDay } from "@/lib/leave";
 import { fileLeaveAction, cancelLeaveAction, resubmitLeaveAction } from "@/lib/actions/leave";
+import { portalOwnsLeave } from "@/lib/portal-leave";
+import { portalHomeUrl } from "@/lib/portal-attendance";
 
 /** One month either side of a YYYY-MM, in UTC. */
 function shiftMonth(month: string, delta: number): string {
@@ -31,6 +33,10 @@ export default async function LeavePage({
     cancelled?: string;
     reviewed?: string;
     resubmit?: string;
+    /** Filed here but nobody in the portal is linked to this account. */
+    portal_unlinked?: string;
+    /** Filed here but the portal could not be reached; the sweep will carry it. */
+    portal_unsent?: string;
     /** YYYY-MM — the month the queue calendar is showing. */
     month?: string;
   }>;
@@ -156,6 +162,33 @@ export default async function LeavePage({
       {sp.filed && <Alert kind="success">Leave request submitted.</Alert>}
       {sp.cancelled && <Alert kind="success">Leave request cancelled.</Alert>}
       {sp.reviewed && <Alert kind="success">Leave request updated.</Alert>}
+      {sp.portal_unlinked && (
+        <Alert kind="error">
+          Your request was filed here, but your account is not linked to an employee record in the company portal — which
+          is where leave is decided. Nobody can approve it until an administrator links you. Tell your Team Lead now.
+        </Alert>
+      )}
+      {sp.portal_unsent && (
+        <Alert kind="warning">
+          Your request was filed here, but the company portal could not be reached, and that is where it gets decided.
+          It will be sent again automatically within a few minutes — you do not need to file it twice.
+        </Alert>
+      )}
+      {portalOwnsLeave() && canApprove && (
+        <Alert kind="info">
+          Leave is decided in the company portal now. It holds the limit on how many people may be off on the same day
+          and writes the roster that payroll reads, so approving here would not reach the record that pays.
+          {portalHomeUrl() ? (
+            <>
+              {" "}
+              <a className="font-medium underline" href={`${portalHomeUrl()}/requests`}>
+                Open Requests in the portal
+              </a>
+              .
+            </>
+          ) : null}
+        </Alert>
+      )}
 
       {canFile && resubmitTarget && (
         <Card>

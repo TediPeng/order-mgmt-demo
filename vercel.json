@@ -20,6 +20,10 @@
     {
       "path": "/api/cron/portal-attendance-sync",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/portal-leave-sync",
+      "schedule": "*/10 * * * *"
     }
   ]
 }
