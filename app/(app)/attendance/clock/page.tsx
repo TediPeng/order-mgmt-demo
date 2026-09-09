@@ -14,12 +14,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
+import { PortalClockNotice } from "@/components/PortalClockNotice";
 import { timeInAction, timeOutAction, overrideAttendanceAction } from "@/lib/actions/attendance";
 
 export default async function TimeClockPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; timedin?: string; timedout?: string; overridden?: string; breakstarted?: string; breakended?: string }>;
+  searchParams: Promise<{ error?: string; timedin?: string; timedout?: string; overridden?: string; breakstarted?: string; breakended?: string; portal_refused?: string; portal_unsent?: string }>;
 }) {
   // The clock moved to the company portal, so this page no longer decides
   // anything -- it hands over instead of being deleted.
@@ -95,6 +96,11 @@ export default async function TimeClockPage({
       {sp.error && <Alert kind="error">{sp.error}</Alert>}
       {sp.timedin && <Alert kind="success">Timed in successfully.</Alert>}
       {sp.timedout && <Alert kind="success">Timed out successfully.</Alert>}
+      <PortalClockNotice
+        refused={sp.portal_refused}
+        unsent={Boolean(sp.portal_unsent)}
+        clocked={Boolean(sp.timedin || sp.timedout)}
+      />
       {sp.overridden && <Alert kind="success">Attendance override recorded.</Alert>}
       {sp.breakstarted && <Alert kind="success">Break started.</Alert>}
       {sp.breakended && <Alert kind="success">Break ended.</Alert>}

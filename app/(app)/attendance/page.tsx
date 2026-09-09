@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PortalClockNotice } from "@/components/PortalClockNotice";
 import { Download } from "lucide-react";
 import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
@@ -55,7 +56,7 @@ const SUMMARY_STATUSES: { key: AttendanceStatus; label: string }[] = [
 export default async function AttendancePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; timedin?: string; timedout?: string; user?: string; month?: string; view?: string; date?: string }>;
+  searchParams: Promise<{ error?: string; timedin?: string; timedout?: string; user?: string; month?: string; view?: string; date?: string; portal_refused?: string; portal_unsent?: string }>;
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
@@ -191,6 +192,11 @@ export default async function AttendancePage({
           Timed out successfully.
         </Alert>
       )}
+      <PortalClockNotice
+        refused={sp.portal_refused}
+        unsent={Boolean(sp.portal_unsent)}
+        clocked={Boolean(sp.timedin || sp.timedout)}
+      />
 
       <div className="mb-6 max-w-sm">
         <AttendanceWidget user={user} redirectTo="/attendance" showClock />

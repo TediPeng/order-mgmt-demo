@@ -145,3 +145,17 @@ export async function fetchPortalAttendance(
     clearTimeout(timer);
   }
 }
+
+/**
+ * The portal's front door, regardless of who owns the clock.
+ *
+ * portalClockUrl() answers a different question — "has the clock moved, and
+ * where to" — and is deliberately null while the clock is here. This one is
+ * just the address, for the link an agent follows after timing in: the portal
+ * is where the rest of their day's paperwork lives, and it is one click rather
+ * than a bookmark somebody has to have kept.
+ */
+export function portalHomeUrl(): string | null {
+  const base = process.env.PORTAL_APP_URL;
+  return base ? base.replace(/\/+$/, "") : null;
+}

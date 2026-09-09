@@ -11,11 +11,27 @@ import { attendanceOverrideSchema } from "@/lib/validation";
 import { computeMinutesBetween, computeMinutesLate, computeOvertimeHours, scheduledInstant } from "@/lib/attendance-logic";
 import { activeSuspensionOn } from "@/lib/schedule-access";
 import { portalOwnsAttendance } from "@/lib/portal-attendance";
+import { mirrorToPortal, type PortalMirror } from "@/lib/portal-mirror";
 import { todayInTz } from "@/lib/utils";
 
 function safeRedirectTarget(raw: FormDataEntryValue | null): string {
   const value = String(raw || "");
   return value.startsWith("/") ? value : "/attendance/clock";
+}
+
+/**
+ * What to add to the redirect once the portal has been told.
+ *
+ * The agent is standing at a clock. If the portal declined — a rostered day
+ * off, a department that keeps a manual time card — they have to read it now,
+ * not discover on payday that the day they worked was never recorded where it
+ * is paid. And if it simply did not arrive, that is ours to fix, not theirs to
+ * worry about: the sweep carries it, and the word here says so.
+ */
+function portalNotice(result: PortalMirror): string {
+  if (result.status === "refused") return `&portal_refused=${encodeURIComponent(result.reason)}`;
+  if (result.status === "unsent") return "&portal_unsent=1";
+  return "";
 }
 
 export async function timeInAction(formData: FormData) {
@@ -117,7 +133,12 @@ export async function timeInAction(formData: FormData) {
   }
 
   await writeDb(db);
-  redirect(`${target}?timedin=1`);
+
+  // Waited for, not fired and forgotten. The portal is what pays them: an
+  // agent who is told "timed in" while this quietly failed is the exact
+  // failure of 28-31 August, and it cost four days of somebody's attendance.
+  const mirror = await mirrorToPortal(user.id, "time_in");
+  redirect(`${target}?timedin=1${portalNotice(mirror)}`);
 }
 
 export async function timeOutAction(formData: FormData) {
@@ -183,7 +204,9 @@ export async function timeOutAction(formData: FormData) {
     { module: "attendance", ...info }
   );
   await writeDb(db);
-  redirect(`${target}?timedout=1`);
+
+  const mirror = await mirrorToPortal(user.id, "time_out");
+  redirect(`${target}?timedout=1${portalNotice(mirror)}`);
 }
 
 export async function startBreakAction(formData: FormData) {

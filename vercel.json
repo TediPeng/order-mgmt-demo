@@ -16,6 +16,10 @@
     {
       "path": "/api/cron/recordings-retention",
       "schedule": "20 18 * * *"
+    },
+    {
+      "path": "/api/cron/portal-attendance-sync",
+      "schedule": "*/10 * * * *"
     }
   ]
 }
