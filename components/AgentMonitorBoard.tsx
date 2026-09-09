@@ -111,6 +111,20 @@ export interface MonitorRow {
   bioCount: number;
   /** Completed bio break time today, seconds. The live one is added client-side. */
   bioSeconds: number;
+  /**
+   * What the telephone did, as against what the app was told.
+   *
+   * `calls` and `talkSeconds` above come from call sessions — the agent pressing
+   * Calling. These two come from the PBX. They are shown side by side rather
+   * than one replacing the other because during the rollout the gap between
+   * them is the useful number: an agent still on a mobile has sessions and no
+   * PBX calls, and that is how a supervisor sees who has actually moved.
+   */
+  pbxCalls: number;
+  /** Of those, answered. A dialled number nobody picked up is not a call made. */
+  pbxAnswered: number;
+  /** Real talk seconds after pickup. Ringing is not talking. */
+  pbxTalkSeconds: number;
   /** Seconds already accounted for as standby before the current state began. */
   standbyBaseSeconds: number;
 }
@@ -413,7 +427,7 @@ export function AgentMonitorBoard({
       )}
 
       <div className="max-h-[70vh] overflow-auto rounded-lg border border-slate-200 bg-white">
-        <table className="w-full min-w-[1080px] text-left text-sm">
+        <table className="w-full min-w-[1240px] text-left text-sm">
           <thead className="sticky top-0 z-20 bg-slate-50 shadow-sm text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Agent</th>
@@ -429,6 +443,12 @@ export function AgentMonitorBoard({
               <th className="px-4 py-3 text-right">For</th>
               <th className="px-4 py-3 text-right">Calls</th>
               <th className="px-4 py-3 text-right">Talk time</th>
+              {/* The same two questions asked of the telephone instead of the
+                  app. Kept beside the session figures rather than replacing
+                  them: while agents are still being moved onto the softphone,
+                  the gap between the pairs is what says who has moved. */}
+              <th className="px-4 py-3 text-right">PBX calls</th>
+              <th className="px-4 py-3 text-right">PBX talk</th>
               <th className="px-4 py-3 text-right">Standby today</th>
               <th className="px-4 py-3 text-right">Bio breaks</th>
             </tr>
@@ -520,6 +540,22 @@ export function AgentMonitorBoard({
                     )}
                   </td>
                   <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-700">{hms(talk)}</td>
+                  {/* Answered over placed. A dialled number nobody picked up is
+                      not a call made, and showing only the total would flatter
+                      an agent who rang forty numbers and spoke to none. */}
+                  <td className="px-4 py-3 text-right tabular-nums text-slate-700">
+                    {r.pbxCalls > 0 ? (
+                      <>
+                        <span className="font-medium">{r.pbxAnswered}</span>
+                        <span className="ml-1 text-xs text-slate-400">/ {r.pbxCalls}</span>
+                      </>
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-700">
+                    {r.pbxCalls > 0 ? hms(r.pbxTalkSeconds) : <span className="text-slate-300">—</span>}
+                  </td>
                   <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-700">{hms(standby)}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-slate-700">
                     {r.bioCount}
@@ -530,7 +566,7 @@ export function AgentMonitorBoard({
             })}
             {visible.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={10} className="px-4 py-10 text-center text-slate-400">
                   {filter
                     ? live
                       ? `Nobody is ${STATE_META[filter].label.toLowerCase()} right now.`

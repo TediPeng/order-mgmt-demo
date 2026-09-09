@@ -7,6 +7,7 @@ import { activeSuspensionOn } from "@/lib/schedule-access";
 import { displayUserName } from "@/lib/types";
 import { getActiveSessions, callTotalsForDay, describeCallTargets } from "@/lib/call-sessions";
 import { getActiveBioBreaks, bioBreakTotalsForDay } from "@/lib/bio-breaks";
+import { pbxTotalsForDay, EMPTY_PBX_TOTALS } from "@/lib/pbx-calls";
 import { AgentMonitorBoard, type AttendanceSource, type MonitorRow, type MonitorState } from "@/components/AgentMonitorBoard";
 import { fetchPortalAttendance, portalOwnsAttendance } from "@/lib/portal-attendance";
 import { MonitorDatePicker } from "@/components/MonitorDatePicker";
@@ -66,11 +67,16 @@ export default async function AgentMonitorPage({
     .sort((a, b) => displayUserName(a).localeCompare(displayUserName(b)));
 
   const agentIds = agents.map((a) => a.id);
-  const [activeCalls, activeBio, callTotals, bioTotals, portalAttendance] = await Promise.all([
+  const [activeCalls, activeBio, callTotals, bioTotals, pbxTotals, portalAttendance] = await Promise.all([
     getActiveSessions(agentIds),
     getActiveBioBreaks(agentIds),
     callTotalsForDay(agentIds, viewDate),
     bioBreakTotalsForDay(agentIds, viewDate),
+    // What the telephone did, as against what the app was told. Fetched here
+    // rather than derived from call sessions because they are different facts:
+    // see lib/pbx-calls.ts. A failure inside returns empty rather than throwing
+    // — these are two columns, not the reason the board exists.
+    pbxTotalsForDay(agentIds, viewDate),
     // The clock lives in the company portal now. Fetched alongside the rest
     // rather than before it: the board should not wait on another application
     // to start counting calls, and if the portal is slow this is the request
@@ -128,6 +134,7 @@ export default async function AgentMonitorPage({
     const bio = isToday ? activeBio.get(agent.id) || null : null;
     const calls = callTotals.get(agent.id) || { count: 0, seconds: 0, lastEndedAt: null };
     const bios = bioTotals.get(agent.id) || { count: 0, seconds: 0, lastEndedAt: null };
+    const pbx = pbxTotals.get(agent.id) || EMPTY_PBX_TOTALS;
 
     // The order below is the precedence when several could apply at once. Call
     // and bio break are mutually exclusive by construction, but a stale open
@@ -251,6 +258,9 @@ export default async function AgentMonitorPage({
       talkSeconds: calls.seconds,
       bioCount: bios.count,
       bioSeconds: bios.seconds,
+      pbxCalls: pbx.calls,
+      pbxAnswered: pbx.answered,
+      pbxTalkSeconds: pbx.talkSeconds,
       standbyBaseSeconds: Math.round(standbyBaseSeconds),
     };
   });
