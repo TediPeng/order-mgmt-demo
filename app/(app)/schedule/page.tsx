@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import { Alert } from "@/components/ui/Alert";
+import { portalOwnsRosterSync } from "@/lib/portal-schedule";
 import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
@@ -165,6 +167,13 @@ export default async function SchedulePage({
 
   return (
     <div className="space-y-4">
+      {portalOwnsRosterSync() && (
+        <Alert kind="info">
+          This roster is carried to the company portal within ten minutes, and it is what opens the clock: a day marked
+          Off there cannot be timed in. On Leave is set by the approved leave request itself, and Suspended by the
+          disciplinary module, so neither is sent from here.
+        </Alert>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-page-title text-slate-900">Schedule</h1>
         <div className="flex flex-wrap gap-2">

@@ -24,6 +24,10 @@
     {
       "path": "/api/cron/portal-leave-sync",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/portal-schedule-sync",
+      "schedule": "*/10 * * * *"
     }
   ]
 }
