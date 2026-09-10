@@ -59,6 +59,8 @@ export interface RegularCustomerPrefill {
  * customer gave in August may not be where they live in September.
  */
 export interface RepeatOrderPrefill {
+  /** The order this was copied from — what the call attaches to meanwhile. */
+  fromOrderId: string;
   fromOrderNumber: string;
   full_name: string;
   phone: string;

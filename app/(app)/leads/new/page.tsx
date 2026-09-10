@@ -4,6 +4,7 @@ import { LinkButton } from "@/components/ui/Button";
 import { LeadForm, type RepeatOrderPrefill } from "@/components/LeadForm";
 import { orderById } from "@/lib/orders-lookup";
 import { RegularCustomerCallPanel } from "@/components/RegularCustomerCallPanel";
+import { RepeatOrderCallPanel } from "@/components/RepeatOrderCallPanel";
 import { createLeadAction } from "@/lib/actions/leads";
 import { allowedAssigneeIds, canAssignLeads } from "@/lib/order-access";
 import { getCurrentUser } from "@/lib/auth";
@@ -98,6 +99,7 @@ export default async function NewLeadPage({
     const source = await orderById(fromOrderId);
     if (source && allowedIds.has(source.agent_id) && source.customer_phone.trim()) {
       repeatOrder = {
+        fromOrderId: source.id,
         fromOrderNumber: source.order_number,
         full_name: source.customer_name,
         phone: source.customer_phone,
@@ -148,6 +150,19 @@ export default async function NewLeadPage({
           started here rather than left unrecorded. Withheld while the agent is
           not timed in — the server refuses the call for the same reason it
           refuses the order, and a button that can only fail is not a control. */}
+      {/* Same reason as the regular-customer panel below: the call is taken
+          on the phone like any other, and an agent who arrived here mid-call
+          would otherwise lose the timer and the only way to end it. */}
+      {repeatOrder && !notTimedIn && (
+        <RepeatOrderCallPanel
+          orderId={repeatOrder.fromOrderId}
+          fromOrderNumber={repeatOrder.fromOrderNumber}
+          customerName={repeatOrder.full_name}
+          phone={repeatOrder.phone}
+          dialScheme={dialScheme}
+        />
+      )}
+
       {regularCustomer && !notTimedIn && (
         <RegularCustomerCallPanel
           customerId={regularCustomer.id}
