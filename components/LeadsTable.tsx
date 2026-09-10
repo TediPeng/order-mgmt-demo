@@ -496,7 +496,7 @@ export function LeadsTable({
                       two different things, and the control stays reachable
                       however far the row is scrolled. */}
                   <td className={cn("sticky right-0 z-10 border-l border-slate-200 px-2.5 py-1.5", style.row)}>
-                    <LeadCallCell order={o} onOpen={() => setOpenOrder(o)} />
+                    <LeadCallCell order={o} onOpen={() => setOpenOrder(o)} dialScheme={dialScheme} />
                   </td>
                 </tr>
               );

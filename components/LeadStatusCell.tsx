@@ -6,6 +6,7 @@ import { useCallSession } from "@/components/CallSessionProvider";
 import { StatusBadge } from "@/components/ui/Badge";
 import { isOrderLocked } from "@/lib/lead-workflow";
 import { shortOrderId } from "@/lib/types";
+import { dialHref, type DialScheme } from "@/lib/dial";
 import type { Order } from "@/lib/types";
 
 /**
@@ -51,7 +52,16 @@ export function LeadStatusCell({
  * rings a customer too, and this is also the shortest way from the list into the
  * order.
  */
-export function LeadCallCell({ order, onOpen }: { order: Order; onOpen: () => void }) {
+export function LeadCallCell({
+  order,
+  onOpen,
+  dialScheme,
+}: {
+  order: Order;
+  onOpen: () => void;
+  /** How this agent's browser hands a number to their softphone. */
+  dialScheme: DialScheme;
+}) {
   const { session, startCall } = useCallSession();
   // Once Pancake has the order there is nothing left to call about: it is out of
   // this floor's hands and the popup opens read-only anyway. Offering CALL would
@@ -77,6 +87,25 @@ export function LeadCallCell({ order, onOpen }: { order: Order; onOpen: () => vo
 
     if (result.ok) {
       onOpen();
+
+      // And ring the phone, from the same press.
+      //
+      // Dialling used to be a separate click on the number, which meant the two
+      // halves of one act could be done apart: a session with no call, or a call
+      // ROMA never counted. It also meant the number -- the one thing on a row
+      // people read and copy -- was the control, and a misjudged click rang a
+      // customer.
+      //
+      // Here it inherits every rule this button already enforces: one call at a
+      // time, not while another is open, not on an order Pancake has taken, and
+      // only once the session is actually recorded. If startCall refuses, no
+      // phone rings.
+      //
+      // After onOpen so the agent is already looking at the order when their
+      // softphone comes up. A protocol URL hands off to the handler without
+      // navigating away, so the popup behind it stays exactly as it is.
+      const href = dialHref(order.customer_phone, dialScheme);
+      if (href) window.location.href = href;
       return;
     }
 
