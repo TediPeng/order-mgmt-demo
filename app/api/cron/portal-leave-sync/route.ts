@@ -70,7 +70,17 @@ export async function GET(req: NextRequest) {
     // what happened AFTER the choice. The size of the list is the one fact that
     // separates a broken query from a broken request, and it was the one fact
     // missing.
-    console.log("[portal-leave-sync] %d filing(s) still to carry", (unsent || []).length);
+    // Named, not counted.
+    //
+    // A count said seven while the database said three, and no amount of
+    // re-reading either could settle which was lying. Numbers agree with too
+    // many stories; identifiers agree with one. The window is at most a handful
+    // of rows, so printing them costs nothing and ends the argument.
+    console.log(
+      "[portal-leave-sync] to carry (today=%s): %s",
+      today,
+      (unsent || []).map((r) => `${r.id.slice(0, 8)}:${r.leave_end}`).join(" ") || "none"
+    );
     for (const row of unsent || []) {
       const result = await fileLeaveInPortal({
         romaProfileId: String(row.agent_id),
@@ -79,7 +89,10 @@ export async function GET(req: NextRequest) {
         endDate: String(row.leave_end),
         reason: String(row.reason),
       });
-      if (result.status !== "ok") continue;
+      if (result.status !== "ok") {
+        console.log("[portal-leave-sync] %s not carried: %s", row.id.slice(0, 8), result.status);
+        continue;
+      }
 
       const { error: linkError } = await supabaseAdmin
         .from("leave_requests")
