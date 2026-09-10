@@ -289,7 +289,13 @@ export function LeadForm({
         <LinkButton href={regularCustomer ? "/regular-customers" : "/leads"} variant="outline">
           Cancel
         </LinkButton>
-        <Button type="submit">{regularCustomer ? "Save Order" : "Save Lead"}</Button>
+        {/* "Lead" is what ROMA calls every row in that table, whether it has
+            ever been rung or was delivered last month -- one word doing two
+            jobs. It is the right word on an empty form and the wrong one here:
+            the heading above already says this is an order, and a screen that
+            calls the same thing two names makes the reader stop and work out
+            which is true. */}
+        <Button type="submit">{prefill ? "Save Order" : "Save Lead"}</Button>
       </div>
     </form>
   );

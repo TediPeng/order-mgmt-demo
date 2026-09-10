@@ -159,7 +159,7 @@ export default async function NewLeadPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>{regularCustomer ? "Order details" : "Lead details"}</CardTitle>
+          <CardTitle>{regularCustomer || repeatOrder ? "Order details" : "Lead details"}</CardTitle>
         </CardHeader>
         <CardContent>
           {error && !time_in_required && (
