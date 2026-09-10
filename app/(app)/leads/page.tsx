@@ -25,6 +25,7 @@ import { displayCallName } from "@/lib/types";
 import type { CallSession, OrderStatus } from "@/lib/types";
 import { listSessionsForOrders } from "@/lib/call-sessions";
 import { resolveDialScheme } from "@/lib/dial";
+import { FINISHED_STATUSES } from "@/lib/validation";
 
 /**
  * How many leads one page may show.
@@ -56,6 +57,8 @@ export default async function LeadsPage({
     q?: string;
     order_number?: string;
     status?: string;
+    /** "1" puts finished orders back in the list. */
+    finished?: string;
     date_from?: string;
     date_to?: string;
     agent?: string;
@@ -151,6 +154,22 @@ export default async function LeadsPage({
   // beneath it is worse than either answer.
   const includeRegular = sp.include_regular === "1";
 
+  // Finished orders are left out of the list by default.
+  //
+  // The list is a queue of work and a delivered order is a record, not work. A
+  // customer who buys every month put a row in it for every purchase, and the
+  // agent reading for who to ring next had to read past all of them.
+  //
+  // Three ways back, none of which needs to be taught: search finds them, the
+  // status cards and dropdown show them when one of those statuses is chosen,
+  // and the line above the list says how many are hidden with a button beside
+  // it. A search is deliberately exempt -- somebody typing a phone number wants
+  // that customer, not that customer's unfinished orders.
+  const searching = Boolean(
+    sp.q || sp.phone || sp.order_number || sp.customer_name || sp.city || sp.province || sp.product
+  );
+  const hideFinished = sp.finished !== "1" && !sp.status && !searching;
+
   const [countsByStatus, prevStatusOptions, duplicateCount, regularOrderCount, leadResult] = await Promise.all([
     leadStatusCounts(countScope, includeRegular),
     previousStatusCounts(countScope, includeRegular),
@@ -170,6 +189,7 @@ export default async function LeadsPage({
     queryLeads({
       scope,
       includeRegular,
+      hideFinished,
       // Dashboard cards deep-link into a pre-filtered status view — that is
       // internal navigation, not a search control, so status is honoured for
       // everyone. Every other filter stays Agent-rejected (Section 3).
@@ -215,6 +235,9 @@ export default async function LeadsPage({
   // status filter is applied, so selecting a card doesn't zero the others.
   const totalLeads = Array.from(countsByStatus.values()).reduce((n, c) => n + c, 0);
   const statusCounts = QUICK_FILTER_STATUSES.map((s) => ({ status: s, count: countsByStatus.get(s) ?? 0 }));
+  // From the counts already fetched for the cards, so saying how many are
+  // hidden costs no extra query.
+  const finishedCount = FINISHED_STATUSES.reduce((sum, st) => sum + (countsByStatus.get(st) ?? 0), 0);
   const statusHref = (status?: string) => qs({ status, page: undefined });
   const prevStatusHref = (prev_status?: string) => qs({ prev_status, page: undefined });
 
@@ -612,6 +635,28 @@ export default async function LeadsPage({
           </LinkButton>
           <LinkButton href="/regular-customers" variant="outline" size="sm">
             Regular Customers {regularOrderCount}
+          </LinkButton>
+        </div>
+      )}
+
+      {/* Said, not hidden silently. A list that quietly leaves rows out is a
+          list nobody can trust the total of. */}
+      {hideFinished && finishedCount > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-slate-500">
+            {finishedCount} finished order{finishedCount === 1 ? "" : "s"} {finishedCount === 1 ? "is" : "are"} not
+            shown — delivered, returned, cancelled and the rest.
+          </span>
+          <LinkButton href={qs({ finished: "1", page: undefined })} variant="outline" size="sm">
+            Show finished orders
+          </LinkButton>
+        </div>
+      )}
+      {!hideFinished && sp.finished === "1" && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-slate-500">Showing finished orders as well.</span>
+          <LinkButton href={qs({ finished: undefined, page: undefined })} variant="outline" size="sm">
+            Hide finished orders
           </LinkButton>
         </div>
       )}

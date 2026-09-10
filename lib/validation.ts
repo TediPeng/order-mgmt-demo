@@ -53,6 +53,33 @@ export const FULFILLMENT_STATUSES = [
 export const LEAD_STATUSES = [...PRE_SALE_STATUSES, ...FULFILLMENT_STATUSES] as const;
 
 /**
+ * Orders nobody on the floor has anything left to do about.
+ *
+ * The Leads list is a queue of work, and a delivered order is not work: it is a
+ * record. A customer who buys every month accumulates a row per purchase, and
+ * an agent scanning for who to ring next had to read past all of them.
+ *
+ * Deliberately narrow. `shipped`, `returning` and `partial_return` are still
+ * moving and stay in the list; `delivered` is the point the floor's part ends,
+ * even though the money on a COD order arrives after it. `odz` is here because
+ * it is Pancake's way of saying the order is out of the delivery zone and will
+ * not proceed.
+ *
+ * Hiding is not deleting, and this list is used in exactly one place -- the
+ * default view of the Leads page. A search still finds these, choosing the
+ * status still shows them, the counts above the list still count them, and
+ * every report reads them as before.
+ */
+export const FINISHED_STATUSES = [
+  "delivered",
+  "collected_money",
+  "returned",
+  "cancelled",
+  "deleted",
+  "odz",
+] as const;
+
+/**
  * How a status is written wherever a person reads it.
  *
  * Capitals throughout, on the floor's instruction: these are the taggings, the

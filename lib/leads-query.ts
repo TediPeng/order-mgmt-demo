@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { isFullAccess } from "@/lib/permissions";
 import { normalizePhone } from "@/lib/utils";
-import { statusesMatching } from "@/lib/validation";
+import { FINISHED_STATUSES, statusesMatching } from "@/lib/validation";
 import {
   MAX_PHONE_TERMS,
   MAX_SEARCH_TERMS,
@@ -161,11 +161,15 @@ export async function queryLeads(input: {
   pageSize: number;
   usernameToIds: Map<string, string[]>;
   includeRegular?: boolean;
+  /** Leave finished orders out — see FINISHED_STATUSES. The caller decides,
+   * because it is right for the default list and wrong for a search. */
+  hideFinished?: boolean;
 }): Promise<LeadPage> {
-  const { scope, filters, isAgentView, page, pageSize, includeRegular } = input;
+  const { scope, filters, isAgentView, page, pageSize, includeRegular, hideFinished } = input;
 
   let query = supabaseAdmin.from("orders").select("*", { count: "exact" });
   if (!includeRegular) query = query.not("is_regular_customer", "is", true);
+  if (hideFinished) query = query.not("status", "in", `(${FINISHED_STATUSES.join(",")})`);
   query = applyScope(query, scope);
 
   if (filters.status) query = query.eq("status", filters.status);
