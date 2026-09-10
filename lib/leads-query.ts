@@ -284,16 +284,32 @@ export async function orderForScope(orderId: string, scope: AgentScope): Promise
   return (data as unknown as Order) ?? null;
 }
 
+/**
+ * How long the Leads page's counters may be stale.
+ *
+ * A minute, where the duplicate badge takes ten. These numbers sit on the chips
+ * an agent watches while they work, so they have to move as the day moves —
+ * but recomputing them per page load meant three sequential scans of 117,000
+ * orders, measured at ~490 ms before the list itself was fetched. Indexes took
+ * that to ~227 ms and a minute's cache takes it to ~11 ms.
+ *
+ * Nothing is decided on the difference between a count and the same count
+ * sixty seconds ago. The lists themselves are always live; only the totals on
+ * the chips are cached.
+ */
+const COUNTER_CACHE_SECONDS = 60;
+
 /** Counts per status for the cards, from one grouped query. Deliberately
  * ignores the current status filter: selecting a card must not zero the
- * others. */
+ * others. Cached — see COUNTER_CACHE_SECONDS. */
 export async function leadStatusCounts(
   scope: AgentScope,
   includeRegular = false
 ): Promise<Map<string, number>> {
-  const { data, error } = await supabaseAdmin.rpc("lead_status_counts", {
+  const { data, error } = await supabaseAdmin.rpc("lead_status_counts_cached", {
     p_agent_ids: scope,
     p_include_regular: includeRegular,
+    p_max_age_seconds: COUNTER_CACHE_SECONDS,
   });
   if (error) throw new Error(`Lead status counts failed: ${error.message}`);
   const counts = new Map<string, number>();
@@ -309,7 +325,11 @@ export async function leadStatusCounts(
  * card this feeds says how much work is sitting in the other section.
  */
 export async function regularCustomerOrderCount(scope: AgentScope): Promise<number> {
-  const { data, error } = await supabaseAdmin.rpc("regular_customer_order_count", { p_agent_ids: scope });
+  // Cached — see COUNTER_CACHE_SECONDS.
+  const { data, error } = await supabaseAdmin.rpc("regular_customer_order_count_cached", {
+    p_agent_ids: scope,
+    p_max_age_seconds: COUNTER_CACHE_SECONDS,
+  });
   if (error) throw new Error(`Regular customer order count failed: ${error.message}`);
   return Number(data ?? 0);
 }
@@ -351,9 +371,12 @@ export async function previousStatusCounts(
   scope: AgentScope,
   includeRegular = false
 ): Promise<{ value: string; count: number }[]> {
-  const { data, error } = await supabaseAdmin.rpc("previous_status_counts", {
+  // Cached — see COUNTER_CACHE_SECONDS. An index cannot save this one: the I/O
+  // fell a hundredfold and upper(trim()) over 81,000 values still cost 134 ms.
+  const { data, error } = await supabaseAdmin.rpc("previous_status_counts_cached", {
     p_agent_ids: scope,
     p_include_regular: includeRegular,
+    p_max_age_seconds: COUNTER_CACHE_SECONDS,
   });
   if (error) throw new Error(`Previous status counts failed: ${error.message}`);
   return ((data || []) as { value: string; n: number }[]).map((r) => ({ value: r.value, count: Number(r.n) }));
