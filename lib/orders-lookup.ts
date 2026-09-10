@@ -172,3 +172,23 @@ export async function findOrderIdByNumberOrId(term: string): Promise<string | nu
   if (error) throw new Error(`Order lookup failed: ${error.message}`);
   return (data || [])[0]?.id ?? null;
 }
+
+/**
+ * One order, by id.
+ *
+ * readDbLite() leaves `orders` empty on purpose — that emptiness is what makes
+ * the pages outside Leads affordable — so a page that needs exactly one order
+ * has to ask for it. Reaching for db.orders instead returns undefined, which
+ * reads as "no such order" and produces a blank form rather than an error: the
+ * silent kind of wrong the lite read's own docstring warns about, and the one
+ * this function exists to stop repeating.
+ */
+export async function orderById(id: string): Promise<Order | null> {
+  if (!id) return null;
+  const { data, error } = await supabaseAdmin.from("orders").select("*").eq("id", id).maybeSingle();
+  if (error) {
+    console.error("[orders-lookup] order %s read failed: %s", id, error.message);
+    return null;
+  }
+  return (data as unknown as Order) ?? null;
+}

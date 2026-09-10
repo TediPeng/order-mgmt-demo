@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Alert } from "@/components/ui/Alert";
 import { LinkButton } from "@/components/ui/Button";
 import { LeadForm, type RepeatOrderPrefill } from "@/components/LeadForm";
+import { orderById } from "@/lib/orders-lookup";
 import { RegularCustomerCallPanel } from "@/components/RegularCustomerCallPanel";
 import { createLeadAction } from "@/lib/actions/leads";
 import { allowedAssigneeIds, canAssignLeads } from "@/lib/order-access";
@@ -91,7 +92,10 @@ export default async function NewLeadPage({
   // bar would read out another agent's customer's address.
   let repeatOrder: RepeatOrderPrefill | null = null;
   if (fromOrderId && !regularCustomer) {
-    const source = db.orders.find((o) => o.id === fromOrderId);
+    // Asked of the database, not of db.orders: readDbLite() leaves that array
+    // empty, so looking there always answered "no such order" and quietly
+    // produced the blank form this prefill exists to avoid.
+    const source = await orderById(fromOrderId);
     if (source && allowedIds.has(source.agent_id) && source.customer_phone.trim()) {
       repeatOrder = {
         fromOrderNumber: source.order_number,
@@ -116,7 +120,11 @@ export default async function NewLeadPage({
       {/* This page adds a LEAD. Adding a Regular Customer is a separate act
           with its own page at /regular-customers/new. */}
       <h1 className="mb-4 text-page-title text-slate-900">
-        {regularCustomer ? "New Order — Regular Customer" : "New Lead"}
+        {regularCustomer
+          ? "New Order — Regular Customer"
+          : repeatOrder
+            ? "New Order — Repeat Customer"
+            : "New Lead"}
       </h1>
 
       {customerId && !regularCustomer && (
