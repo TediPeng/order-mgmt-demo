@@ -74,6 +74,11 @@ export const FINISHED_STATUSES = [
   "delivered",
   "collected_money",
   "returned",
+  // Both spellings, because they are two different statuses and not a typo:
+  // `cancel` is the agent's own, set on the call; `cancelled` is Pancake's,
+  // arriving through sync. Listing only the fulfilment one hid four rows and
+  // left two and a half thousand of the floor's own cancellations in the queue.
+  "cancel",
   "cancelled",
   "deleted",
   "odz",
