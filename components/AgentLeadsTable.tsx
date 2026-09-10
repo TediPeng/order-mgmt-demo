@@ -302,6 +302,7 @@ export function AgentLeadsTable({
 
       {openOrder && (
         <OrderDetailsModal
+          dialScheme={dialScheme}
           order={openOrder}
           agentName={careStaffById[openOrder.agent_id]?.name || "—"}
           productName={productNameByOrderId[openOrder.id] || openOrder.product_name}

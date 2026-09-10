@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, ChevronRight, ChevronUp, Copy, Maximize2, Minimize2, Repeat, Star } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, ChevronUp, Copy, Maximize2, Minimize2, PhoneCall, Star } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
@@ -16,6 +16,7 @@ import { useCallSession } from "@/components/CallSessionProvider";
 import { isPendingOrderId, PANCAKE_SYNC_SOURCE_LABELS, shortOrderId, type PancakeSyncSource } from "@/lib/types";
 import { AddressSelect } from "@/components/AddressSelect";
 import { CallingPanel } from "@/components/CallingPanel";
+import { dialHref, type DialScheme } from "@/lib/dial";
 import { CallHistory } from "@/components/CallHistory";
 import { DuplicateBlockDialog, type DuplicateWarning } from "@/components/DuplicateBlockDialog";
 import { CustomerReturnRate } from "@/components/CustomerReturnRate";
@@ -100,6 +101,7 @@ interface SyncHistoryEntry {
 const MISSING_PREFIX = "Missing required fields for Packaging: ";
 
 export function OrderDetailsModal({
+  dialScheme,
   order,
   agentName,
   productName,
@@ -122,6 +124,8 @@ export function OrderDetailsModal({
   onSaved,
 }: {
   order: Order;
+  /** How this agent's browser hands a number to their softphone. */
+  dialScheme: DialScheme;
   agentName: string;
   productName: string;
   latestStatusUpdate: { status: OrderStatus; from: string | null; at: string } | null;
@@ -166,6 +170,7 @@ export function OrderDetailsModal({
   const [lines, setLines] = useState<EditorLine[]>(initialLines);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [callingAgain, setCallingAgain] = useState(false);
   const [missing, setMissing] = useState<string[]>([]);
   const [syncHistoryOpen, setSyncHistoryOpen] = useState(false);
   const [syncHistory, setSyncHistory] = useState<SyncHistoryEntry[] | null>(null);
@@ -247,7 +252,7 @@ export function OrderDetailsModal({
   // refuses the same edits independently, so this is only the visible half.
   // The session is app-level state (CallSessionProvider) so the timer survives
   // so a server-rendered open popup has the right state on first paint.
-  const { session: callSession, clearSession } = useCallSession();
+  const { session: callSession, clearSession, startCall } = useCallSession();
   const callActive = Boolean(callSession && callSession.order_id === order.id);
   // A synced order is frozen for everyone (the server rejects the same edits);
   // an Administrator unlock sets manual_unlock_active and reopens it for one save.
@@ -425,6 +430,46 @@ export function OrderDetailsModal({
         notes: form.notes,
       })
     );
+  }
+
+  /**
+   * Ring this customer again, and take the new order.
+   *
+   * The same act the CALL button in the leads row performs, reached from the one
+   * place CALL is not offered: a delivered order. The floor's most ordinary
+   * repeat sale starts exactly there -- the customer who received last month's
+   * parcel is the one worth ringing -- and until now the only way to do it was
+   * to dial around ROMA entirely, which is how a call ends up counted nowhere.
+   *
+   * It inherits the rules rather than repeating them. startCall refuses a second
+   * call while one is open, refuses an agent who has not timed in, and records
+   * the session the monitor and the day's figures are built from. If it refuses,
+   * no phone rings and the form does not open: the refusal is the answer, and it
+   * is shown where every other refusal here is shown.
+   *
+   * A call already running on this order is not restarted. The agent is on the
+   * phone to this person now, and that is the call the new order belongs to.
+   */
+  async function callAgain() {
+    setCallingAgain(true);
+    setError(null);
+
+    const alreadyOnThisCall = Boolean(callSession && callSession.order_id === order.id);
+    if (!alreadyOnThisCall) {
+      const result = await startCall(order.id);
+      if (!result.ok) {
+        setCallingAgain(false);
+        setError(result.error || "Could not start the call.");
+        return;
+      }
+
+      // Dial after the session is recorded, never before: a phone ringing on a
+      // call ROMA refused is the one outcome worth avoiding.
+      const href = dialHref(order.customer_phone, dialScheme);
+      if (href) window.location.href = href;
+    }
+
+    window.location.href = `/leads/new?from_order=${order.id}`;
   }
 
   function requestClose() {
@@ -1156,12 +1201,15 @@ export function OrderDetailsModal({
                 order — a delivered order is exactly when a customer rings back,
                 and it is the one case where the form here is read-only. */}
             {order.customer_phone.trim() && (
-              <Link
-                href={`/leads/new?from_order=${order.id}`}
-                className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-slate-300 px-4 py-2 text-control font-medium text-slate-700 transition-colors hover:bg-slate-50"
+              <Button
+                type="button"
+                variant="outline"
+                onClick={callAgain}
+                disabled={callingAgain || saving}
+                className="whitespace-nowrap"
               >
-                <Repeat className="h-4 w-4" aria-hidden /> Order Again
-              </Link>
+                <PhoneCall className="h-4 w-4" aria-hidden /> {callingAgain ? "Calling…" : "Call Again"}
+              </Button>
             )}
 
             {/* No Edit Order and no Cancel. There is nothing to switch into —

@@ -514,6 +514,7 @@ export function LeadsTable({
 
       {openOrder && (
         <OrderDetailsModal
+          dialScheme={dialScheme}
           order={openOrder}
           agentName={agentCallNameById[openOrder.agent_id] || "—"}
           productName={productNameByOrderId[openOrder.id] || openOrder.product_name}
