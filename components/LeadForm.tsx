@@ -46,6 +46,27 @@ export interface RegularCustomerPrefill {
   address: AddressValue;
 }
 
+/**
+ * The same details, copied from an order the customer already placed.
+ *
+ * Deliberately NOT a RegularCustomerPrefill. That one carries `customer_id`,
+ * which attaches the order to a customer record and takes it out of the Leads
+ * list -- the right thing when somebody is a regular customer, and a decision
+ * nobody should make by accident just because a customer rang twice.
+ *
+ * This one fills the fields and nothing else. The order it came from is named
+ * so the agent can see which record they are copying, since an address a
+ * customer gave in August may not be where they live in September.
+ */
+export interface RepeatOrderPrefill {
+  fromOrderNumber: string;
+  full_name: string;
+  phone: string;
+  purok: string;
+  landmark: string;
+  address: AddressValue;
+}
+
 export function LeadForm({
   action,
   agents,
@@ -54,6 +75,7 @@ export function LeadForm({
   canReassign,
   agentStatuses = AGENT_EDITABLE_STATUSES as readonly string[],
   regularCustomer = null,
+  repeatOrder = null,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   agents: { id: string; full_name: string; username: string }[];
@@ -66,13 +88,20 @@ export function LeadForm({
    * server can attach the order to that customer rather than re-deriving them
    * from the typed phone number. */
   regularCustomer?: RegularCustomerPrefill | null;
+  /** Set when the details were copied from a previous order, WITHOUT tagging
+   * anybody as a regular customer. Ignored when regularCustomer is set — that
+   * record is the better source of the same fields. */
+  repeatOrder?: RepeatOrderPrefill | null;
 }) {
-  const [address, setAddress] = useState<AddressValue>(regularCustomer?.address ?? EMPTY_ADDRESS);
+  // The regular customer's record wins where both exist: it is maintained,
+  // and a past order is a snapshot of one day.
+  const prefill = regularCustomer ?? repeatOrder ?? null;
+  const [address, setAddress] = useState<AddressValue>(prefill?.address ?? EMPTY_ADDRESS);
   const [values, setValues] = useState({
-    customer_name: regularCustomer?.full_name ?? "",
-    customer_phone: regularCustomer?.phone ?? "",
-    purok: regularCustomer?.purok ?? "",
-    landmark: regularCustomer?.landmark ?? "",
+    customer_name: prefill?.full_name ?? "",
+    customer_phone: prefill?.phone ?? "",
+    purok: prefill?.purok ?? "",
+    landmark: prefill?.landmark ?? "",
     product_id: "",
     quantity: "1",
     unit_price: "",
@@ -137,6 +166,14 @@ export function LeadForm({
       {showProblems && problems.length > 0 && (
         <Alert kind="error">
           Missing required fields for Packaging: {problems.map((p) => p.label).join(", ")}.
+        </Alert>
+      )}
+
+      {!regularCustomer && repeatOrder && (
+        <Alert kind="info">
+          Details copied from order <strong>{repeatOrder.fromOrderNumber}</strong>. Check the address before saving —
+          this is where they lived when they last ordered, not necessarily now. Nobody has been made a regular
+          customer; this is an ordinary lead.
         </Alert>
       )}
 

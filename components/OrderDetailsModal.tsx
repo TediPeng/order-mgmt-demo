@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, ChevronRight, ChevronUp, Copy, Maximize2, Minimize2, Star } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, ChevronUp, Copy, Maximize2, Minimize2, Repeat, Star } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Select, Textarea } from "@/components/ui/Field";
 import { Alert } from "@/components/ui/Alert";
@@ -1137,6 +1137,31 @@ export function OrderDetailsModal({
                   <Star className="h-4 w-4" /> Make Regular Customer
                 </ConfirmSubmitButton>
               </form>
+            )}
+
+            {/* Ordering again without becoming a regular customer.
+                
+                The two acts had been welded together: the only way to reuse a
+                customer's details was Make Regular Customer, which is not a
+                convenience but a claim of ownership — it takes their orders out
+                of the Leads list and refuses every other agent who tries to
+                ring them. Somebody buying a second time does not necessarily
+                mean any of that, and an agent who only wanted to save typing an
+                address should not be deciding it.
+
+                So this copies the details and tags nothing. The lead it opens is
+                an ordinary one.
+
+                Offered whenever there is a number to copy, including on a synced
+                order — a delivered order is exactly when a customer rings back,
+                and it is the one case where the form here is read-only. */}
+            {order.customer_phone.trim() && (
+              <Link
+                href={`/leads/new?from_order=${order.id}`}
+                className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-slate-300 px-4 py-2 text-control font-medium text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                <Repeat className="h-4 w-4" aria-hidden /> Order Again
+              </Link>
             )}
 
             {/* No Edit Order and no Cancel. There is nothing to switch into —

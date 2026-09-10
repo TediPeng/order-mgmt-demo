@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Alert } from "@/components/ui/Alert";
 import { LinkButton } from "@/components/ui/Button";
-import { LeadForm } from "@/components/LeadForm";
+import { LeadForm, type RepeatOrderPrefill } from "@/components/LeadForm";
 import { RegularCustomerCallPanel } from "@/components/RegularCustomerCallPanel";
 import { createLeadAction } from "@/lib/actions/leads";
 import { allowedAssigneeIds, canAssignLeads } from "@/lib/order-access";
@@ -18,9 +18,15 @@ import { resolveDialScheme } from "@/lib/dial";
 export default async function NewLeadPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; time_in_required?: string; customer?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    time_in_required?: string;
+    customer?: string;
+    /** Copy the customer's details across from an order they already placed. */
+    from_order?: string;
+  }>;
 }) {
-  const { error, time_in_required, customer: customerId } = await searchParams;
+  const { error, time_in_required, customer: customerId, from_order: fromOrderId } = await searchParams;
   const user = (await getCurrentUser())!;
   const db = await readDbLite();
   const dialScheme = resolveDialScheme(user.dial_scheme, db.operations.dial_scheme);
@@ -72,6 +78,34 @@ export default async function NewLeadPage({
           city: found.city || "",
           barangay_id: found.pancake_commune_id || "",
           barangay: found.barangay || "",
+        },
+      };
+    }
+  }
+
+  // A repeat order from somebody who is NOT a regular customer: the details
+  // are copied, nothing is tagged, and the new lead is an ordinary one.
+  //
+  // Scoped to orders this user could have owned, the same rule that decides who
+  // a new order may be attributed to -- otherwise an id typed into the address
+  // bar would read out another agent's customer's address.
+  let repeatOrder: RepeatOrderPrefill | null = null;
+  if (fromOrderId && !regularCustomer) {
+    const source = db.orders.find((o) => o.id === fromOrderId);
+    if (source && allowedIds.has(source.agent_id) && source.customer_phone.trim()) {
+      repeatOrder = {
+        fromOrderNumber: source.order_number,
+        full_name: source.customer_name,
+        phone: source.customer_phone,
+        purok: source.purok || "",
+        landmark: source.landmark || "",
+        address: {
+          province_id: source.pancake_province_id || "",
+          province: source.province || "",
+          city_id: source.pancake_district_id || "",
+          city: source.city || "",
+          barangay_id: source.pancake_commune_id || "",
+          barangay: source.barangay || "",
         },
       };
     }
@@ -138,6 +172,7 @@ export default async function NewLeadPage({
               canReassign={canReassign}
               agentStatuses={creatableStatuses(isFullAccess(user.role))}
               regularCustomer={regularCustomer}
+              repeatOrder={repeatOrder}
             />
           )}
         </CardContent>
