@@ -173,6 +173,22 @@ export const AGENT_EDITABLE_STATUSES = [
   "cancel",
 ] as const;
 
+/** Where Call Again is offered.
+ *
+ * The button exists for the one thing a finished order leads to: the customer
+ * who kept last month's parcel, or the one whose order fell through and can be
+ * talked round. On a lead still being worked it was noise — an agent mid-call
+ * does not need a button that rings the person already on the line — and it sat
+ * beside every status from NEW to SHIPPED offering exactly that.
+ *
+ * Both cancel states belong here. `cancel` is the agent's own and `cancelled`
+ * is Pancake's, and to the floor they mean one thing: the order did not push
+ * through, and the customer is still worth ringing.
+ *
+ * Presentation only. It hides a button; it grants nothing. startCall() applies
+ * the real rules — one open call at a time, and the agent must have timed in. */
+export const CALL_AGAIN_STATUSES = ["delivered", "cancel", "cancelled"] as const;
+
 // Every fulfillment stage past Packaging is downstream of it; a lead must have
 // passed through Packaging at least once (i.e. already have an order_date)
 // before it can move into any of them.

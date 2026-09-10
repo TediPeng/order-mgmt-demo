@@ -10,7 +10,7 @@ import { OrderItemsEditor, type EditorLine } from "@/components/OrderItemsEditor
 import { summarizeItems, totalsFor } from "@/lib/order-totals";
 import { StatusBadge, SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
-import { LEAD_STATUS_LABELS, LEAD_STATUSES, selectableStatuses } from "@/lib/validation";
+import { CALL_AGAIN_STATUSES, LEAD_STATUS_LABELS, LEAD_STATUSES, selectableStatuses } from "@/lib/validation";
 import { isOrderLocked, SYNCED_LOCK_MESSAGE } from "@/lib/lead-workflow";
 import { useCallSession } from "@/components/CallSessionProvider";
 import { isPendingOrderId, PANCAKE_SYNC_SOURCE_LABELS, shortOrderId, type PancakeSyncSource } from "@/lib/types";
@@ -1197,10 +1197,13 @@ export function OrderDetailsModal({
                 So this copies the details and tags nothing. The lead it opens is
                 an ordinary one.
 
-                Offered whenever there is a number to copy, including on a synced
-                order — a delivered order is exactly when a customer rings back,
-                and it is the one case where the form here is read-only. */}
-            {order.customer_phone.trim() && (
+                Offered on a finished order only — Delivered, or either of the
+                two cancel states — which is where a repeat sale actually starts.
+                A synced order is included deliberately: a delivered order is
+                exactly when a customer rings back, and it is the one case where
+                the form here is read-only. See CALL_AGAIN_STATUSES. */}
+            {order.customer_phone.trim() &&
+              (CALL_AGAIN_STATUSES as readonly string[]).includes(order.status) && (
               <Button
                 type="button"
                 variant="outline"
