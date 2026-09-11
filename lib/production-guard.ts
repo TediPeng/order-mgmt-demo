@@ -55,6 +55,21 @@ export function overrideGiven(): boolean {
 }
 
 /**
+ * Whether this page is being served from somebody's machine against the live
+ * database — the state this company now works in permanently, since the
+ * development project was deleted on 12 September 2026 and deliberately not
+ * replaced.
+ *
+ * Nothing is blocked on this. It exists so the screen can SAY so, because the
+ * danger that remains is not a wipe — that is refused below — but an ordinary
+ * edit made in the wrong window. localhost:3000 and the live site look
+ * identical, and the orders on both are now the same orders.
+ */
+export function servingLocalAgainstProduction(): boolean {
+  return targetsProduction() && !runningOnDeployedHost();
+}
+
+/**
  * Non-null reason when a destructive company-wide operation must be refused.
  *
  * `what` names the operation, so the message says which thing was stopped rather

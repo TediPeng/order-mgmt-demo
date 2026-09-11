@@ -22,6 +22,7 @@ export function AppShell({
   canImportRegularCustomers,
   canManageLogistics,
   workforceInPortal,
+  localAgainstProduction,
   notifications,
   releases,
   initialCollapsed,
@@ -38,6 +39,13 @@ export function AppShell({
    * roster. Decided on the server and carried through, because it reads
    * environment neither this component nor the sidebar can. */
   workforceInPortal: boolean;
+  /**
+   * True when this page is served from a developer's machine against the live
+   * database. Decided on the server (servingLocalAgainstProduction) and carried
+   * through, like workforceInPortal, because it reads environment no client
+   * component can see.
+   */
+  localAgainstProduction: boolean;
   notifications: AppNotification[];
   releases: UpdateLog[];
   initialCollapsed: boolean;
@@ -118,7 +126,28 @@ export function AppShell({
   }, [drawerOpen]);
 
   return (
-    <div className="flex h-screen" style={{ background: "var(--surface-muted)" }}>
+    <div className="flex h-screen flex-col" style={{ background: "var(--surface-muted)" }}>
+      {/* The one thing localhost cannot tell you by looking.
+          
+          Since the development project was deleted, a dev server reads and
+          writes the same orders the floor is working in — and the two look
+          identical on screen. This is deliberately ugly, deliberately at the
+          very top, and deliberately not dismissible: it is worth a strip of
+          screen every day to never again edit a live order believing it was a
+          copy. It never appears on Vercel, so nobody on the floor sees it. */}
+      {localAgainstProduction && (
+        <div
+          role="alert"
+          className="flex shrink-0 items-center justify-center gap-2 bg-red-600 px-3 py-1.5 text-center text-[13px] font-semibold text-white"
+        >
+          <span aria-hidden>⚠</span>
+          <span>
+            LOCALHOST → <span className="underline">LIVE DATABASE</span> · every
+            change here is a real change to the floor&apos;s orders
+          </span>
+        </div>
+      )}
+      <div className="flex min-h-0 flex-1">
       <div className="hidden lg:block">
         <Sidebar access={access} canMonitor={canMonitor} canSeeRemainingLeads={canSeeRemainingLeads}
           canImportRegularCustomers={canImportRegularCustomers} canManageLogistics={canManageLogistics} workforceInPortal={workforceInPortal} collapsed={collapsed} />
@@ -162,6 +191,7 @@ export function AppShell({
             <UpdateLogsPanel releases={releases} />
           </footer>
         </div>
+      </div>
       </div>
     </div>
   );

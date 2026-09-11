@@ -5,6 +5,7 @@ import { readDbLite, writeDb } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { sweepAutoAbsences, sweepAutoTimeOuts } from "@/lib/attendance-sweep";
 import { portalOwnsAttendance } from "@/lib/portal-attendance";
+import { servingLocalAgainstProduction } from "@/lib/production-guard";
 import { maybeSweepPancakeSync } from "@/lib/pancake/sweep";
 import { MODULES } from "@/lib/types";
 import type { ModuleKey } from "@/lib/types";
@@ -90,6 +91,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         canImportRegularCustomers={can(user.role, "regular_customers", "create", db.role_permissions)}
         canManageLogistics={can(user.role, "logistics", "manage", db.role_permissions)}
         workforceInPortal={portalOwnsAttendance()}
+        localAgainstProduction={servingLocalAgainstProduction()}
         notifications={notifications}
         releases={releases}
         initialCollapsed={collapsed}
