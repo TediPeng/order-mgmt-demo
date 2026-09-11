@@ -7,9 +7,14 @@
  * integrations.
  *
  * This script never runs by itself. It requires RESET_COMPANY_DATA=CONFIRM and
- * prints the project it is about to touch first, because local development and
- * production share ONE Supabase project on this deployment — there is no second
- * database to fall back on if it is pointed at the wrong place.
+ * prints the project it is about to touch first.
+ *
+ * That confirmation says "yes, delete company data". It does NOT say "yes,
+ * delete it from the live database while sitting on my own laptop", which is a
+ * different sentence and the one that was accidentally true on 7 August 2026.
+ * The second block below asks that question instead. It mirrors
+ * lib/production-guard.ts — a .mjs script cannot import the TypeScript module,
+ * so the two must be changed together.
  *
  *   RESET_COMPANY_DATA=CONFIRM node scripts/reset-company-data.mjs
  *   RESET_COMPANY_DATA=CONFIRM node scripts/reset-company-data.mjs --dry-run
@@ -56,6 +61,29 @@ if (!SUPABASE_URL || !SERVICE_KEY) {
 
 // Project ref only — the key itself is never printed or logged.
 const projectRef = new URL(SUPABASE_URL).hostname.split(".")[0];
+
+// Mirror of lib/production-guard.ts. Keep the ref, the variable and the phrase
+// identical in both places.
+const PRODUCTION_PROJECT_REF = "lvqpvcpcbjujcqlntjjn";
+const OVERRIDE_ENV = "ALLOW_DESTRUCTIVE_PRODUCTION_RUN";
+const OVERRIDE_PHRASE = "YES I AM WIPING PRODUCTION";
+
+if (
+  projectRef === PRODUCTION_PROJECT_REF &&
+  !process.env.VERCEL &&
+  (process.env[OVERRIDE_ENV] || "").trim().toUpperCase() !== OVERRIDE_PHRASE
+) {
+  fail(
+    `This is pointed at the PRODUCTION database (${PRODUCTION_PROJECT_REF}), where 17
+  agents are working right now, and it is not running on Vercel - so it is running
+  on somebody's own machine. That exact combination erased live company records
+  on 7 August 2026.
+
+  If you meant a copy, point .env.local at that copy.
+  If you really do mean production: ${OVERRIDE_ENV}="${OVERRIDE_PHRASE}"`
+  );
+}
+
 const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
 /**

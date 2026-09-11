@@ -7,6 +7,7 @@ import { getCurrentUser, verifyPassword } from "@/lib/auth";
 import { isFullAccess } from "@/lib/permissions";
 import { getRequestInfo } from "@/lib/request-info";
 import { CLEAR_DATA_PHRASE, CLEAR_PLAN } from "@/lib/clear-data";
+import { destructiveRunBlockReason } from "@/lib/production-guard";
 
 /**
  * Company data reset, from the UI. The same job as
@@ -15,12 +16,17 @@ import { CLEAR_DATA_PHRASE, CLEAR_PLAN } from "@/lib/clear-data";
  * accounts stay.
  *
  * The script guards itself with RESET_COMPANY_DATA=CONFIRM and prints the target
- * project before touching it, because local development and production share ONE
- * Supabase project — there is no second database to fall back on. A button has
- * no command line to put a guard on, so the equivalent friction is enforced
- * here: administrator only, the exact phrase typed out, and the caller's own
- * password re-entered. None of that is validated in the browser alone; a crafted
- * request has to satisfy every one of these checks too.
+ * project before touching it. A button has no command line to put a guard on, so
+ * the equivalent friction is enforced here: administrator only, the exact phrase
+ * typed out, and the caller's own password re-entered. None of that is validated
+ * in the browser alone; a crafted request has to satisfy every one of these
+ * checks too.
+ *
+ * All three of those, though, are satisfied just as easily on localhost as on
+ * the live site — which is how this ran against production on 7 August 2026 and
+ * erased live records. destructiveRunBlockReason() is the check none of them
+ * were: it asks which database this process is actually holding, and which
+ * machine is asking. See lib/production-guard.ts.
  */
 
 const SETTINGS_PATH = "/settings/system";
@@ -65,6 +71,11 @@ export async function clearCompanyDataAction(formData: FormData) {
   // Administrator only — not "management", not a custom role that happens to
   // hold settings.manage.
   if (!isFullAccess(user!.role)) back("Administrator access required.");
+
+  // Before the phrase and the password, because neither of them can tell a
+  // laptop from the live site.
+  const unsafe = destructiveRunBlockReason("Clear Company Data");
+  if (unsafe) back(unsafe);
 
   const phrase = String(formData.get("confirm_phrase") || "").trim();
   if (phrase !== CLEAR_DATA_PHRASE) {
