@@ -3,6 +3,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { readDbLite } from "@/lib/db";
 import { LoginForm } from "@/components/LoginForm";
 import { AuthShell } from "@/components/AuthShell";
+import { LiveDatabaseBanner } from "@/components/LiveDatabaseBanner";
+import { servingLocalAgainstProduction } from "@/lib/production-guard";
 import { Alert } from "@/components/ui/Alert";
 import { UpdateLogsPanel } from "@/components/UpdateLogsPanel";
 import { listUpdateLogs } from "@/lib/update-logs";
@@ -23,6 +25,11 @@ export default async function LoginPage({
   const portalOnly = operations.agent_login_via_portal_only;
 
   return (
+    <>
+      {/* Before the password, not after it. Signing in is the moment somebody
+          decides to start working, and until now the only place this warning
+          appeared was behind the login — after that decision was already made. */}
+      {servingLocalAgainstProduction() && <LiveDatabaseBanner />}
     <AuthShell
       title="Welcome back"
       subtitle="Sign in to your account"
@@ -58,5 +65,6 @@ export default async function LoginPage({
       )}
       <LoginForm />
     </AuthShell>
+    </>
   );
 }

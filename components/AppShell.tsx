@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { Sidebar } from "./Sidebar";
+import { LiveDatabaseBanner } from "./LiveDatabaseBanner";
 import { Topbar } from "./Topbar";
 import { Breadcrumb } from "./Breadcrumb";
 import { UpdateLogsPanel } from "./UpdateLogsPanel";
@@ -127,26 +128,7 @@ export function AppShell({
 
   return (
     <div className="flex h-screen flex-col" style={{ background: "var(--surface-muted)" }}>
-      {/* The one thing localhost cannot tell you by looking.
-          
-          Since the development project was deleted, a dev server reads and
-          writes the same orders the floor is working in — and the two look
-          identical on screen. This is deliberately ugly, deliberately at the
-          very top, and deliberately not dismissible: it is worth a strip of
-          screen every day to never again edit a live order believing it was a
-          copy. It never appears on Vercel, so nobody on the floor sees it. */}
-      {localAgainstProduction && (
-        <div
-          role="alert"
-          className="flex shrink-0 items-center justify-center gap-2 bg-red-600 px-3 py-1.5 text-center text-[13px] font-semibold text-white"
-        >
-          <span aria-hidden>⚠</span>
-          <span>
-            LOCALHOST → <span className="underline">LIVE DATABASE</span> · every
-            change here is a real change to the floor&apos;s orders
-          </span>
-        </div>
-      )}
+      {localAgainstProduction && <LiveDatabaseBanner />}
       <div className="flex min-h-0 flex-1">
       <div className="hidden lg:block">
         <Sidebar access={access} canMonitor={canMonitor} canSeeRemainingLeads={canSeeRemainingLeads}
