@@ -46,26 +46,36 @@ the outage that motivated this.
 
 ## Development and production databases
 
-There are two Supabase projects, and `.env.local` decides which one the machine
-you are sitting at talks to:
+**There is currently only one Supabase project, and it is the live one.**
 
 | | Project | Ref | Configured in |
 | --- | --- | --- | --- |
 | Production | `4S RETENTION` | `lvqpvcpcbjujcqlntjjn` | Vercel environment variables |
-| Development | `4S ROMA DEV` | `dpyzykpiplupzcxcpiev` | `.env.local` |
 
-**`.env.local` must point at the DEV project.** It did not always: both once
-shared one project, and on 2026-08-07 a Clear Company Data click against
-`localhost` deleted the live orders, attendance, notifications and the entire
-audit trail. There is no backup on the free plan. Local development is not a
-rehearsal unless the database is a different database.
+A second project, `4S ROMA DEV`, existed from 2026-08-07 to 2026-09-12 and was
+deleted. Until a replacement is made, **`.env.local` has nowhere safe to point,
+and a local `next dev` reads and writes the database seventeen agents are
+working in.** Treat every local run as production.
 
-The dev project carries the same schema — 30 tables, 92 indexes, 55 foreign
-keys, RLS enabled with no policies, and the private `uploads` bucket — but no
-data. On first run against an empty database the app seeds itself (see
-`seedDb()` in `lib/db.ts`), so accounts appear on their own. Address reference
-data does not: run `node scripts/seed-psgc.mjs` once to load the 84 provinces,
-1,634 cities and 42,046 barangays the address picker needs.
+Why this matters: on 2026-08-07 a Clear Company Data click against `localhost`
+deleted the live orders, attendance, notifications and the entire audit trail.
+Local development is not a rehearsal unless the database is a different
+database.
+
+`lib/production-guard.ts` is what stands in the way now. It refuses Clear
+Company Data and `scripts/reset-company-data.mjs` when `SUPABASE_URL` names the
+production project and `process.env.VERCEL` is unset — that is, when a
+company-wide wipe is being run from somebody's own machine against the live
+database. It guards **those two paths only**: editing a lead or an order from
+localhost still changes real data, because sometimes that is the point.
+
+### Making a new development project
+
+Create a Supabase project, point `.env.local` at it, and the app will seed
+itself on first run against an empty database (see `seedDb()` in `lib/db.ts`),
+so accounts appear on their own. Address reference data does not: run
+`node scripts/seed-psgc.mjs` once to load the 84 provinces, 1,634 cities and
+42,046 barangays the address picker needs.
 
 ## Pancake POS integration
 
