@@ -139,6 +139,14 @@ export interface MonitorRow {
   sipExtension: string | null;
   /** Seconds already accounted for as standby before the current state began. */
   standbyBaseSeconds: number;
+  /**
+   * When standby stops counting on this day — the shift's scheduled end.
+   *
+   * The browser adds the running stretch to the stored base, so the cap has to
+   * hold on both sides; capping only the server's half would leave the total
+   * climbing all evening while the base sat still.
+   */
+  standbyStopsAtMs: number | null;
 }
 
 /** `cls`/`dot` still dress the per-row badge in the table; `tone` is the same
@@ -321,6 +329,15 @@ export function AgentMonitorBoard({
     if (!iso) return 0;
     const measuredAt = isStale ? generatedAtMs : now - skewMs;
     return Math.max(0, (measuredAt - new Date(iso).getTime()) / 1000);
+  };
+
+  /** The same stretch, but stopped at a moment that has its own reason to end
+   * it — the shift's scheduled close, for standby. */
+  const elapsedSinceCapped = (iso: string | null, capMs: number | null) => {
+    if (!iso) return 0;
+    const measuredAt = isStale ? generatedAtMs : now - skewMs;
+    const end = capMs ? Math.min(measuredAt, capMs) : measuredAt;
+    return Math.max(0, (end - new Date(iso).getTime()) / 1000);
   };
 
   /**
@@ -531,7 +548,12 @@ export function AgentMonitorBoard({
               // how much of the shift has gone that way.
               const talk = r.talkSeconds + (r.state === "on_call" ? live : 0);
               const bio = r.bioSeconds + (r.state === "bio_break" ? live : 0);
-              const standby = r.standbyBaseSeconds + (r.state === "standby" ? live : 0);
+              // Standby stops at the end of the shift. Past it the stored base
+              // is the whole answer, and the stretch still running is time
+              // outside the working day rather than idle time inside it.
+              const standby =
+                r.standbyBaseSeconds +
+                (r.state === "standby" ? elapsedSinceCapped(r.sinceIso, r.standbyStopsAtMs) : 0);
 
               return (
                 <tr key={r.agentId} className={r.state === "on_call" ? "bg-green-50/40" : undefined}>

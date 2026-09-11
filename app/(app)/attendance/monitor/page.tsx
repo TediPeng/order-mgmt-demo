@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
-import { todayInTz } from "@/lib/utils";
+import { dayRangeUtc, todayInTz } from "@/lib/utils";
 import { activeSuspensionOn } from "@/lib/schedule-access";
 import { displayUserName } from "@/lib/types";
 import { getActiveSessions, callTotalsForDay, describeCallTargets } from "@/lib/call-sessions";
@@ -220,6 +220,35 @@ export default async function AgentMonitorPage({
     // Standby is what is left of the shift after talking and breaks. Computed
     // from the total elapsed shift rather than summed from gaps, so any time
     // unaccounted for lands here rather than silently disappearing.
+    /**
+     * When standby stops accruing for this agent on this day.
+     *
+     * The shift's scheduled end, not the clock on the wall. Without it, an
+     * agent who finishes at five and forgets to time out keeps earning standby
+     * all evening, and by nine the column reports four hours of idleness nobody
+     * was there for. The question the floor is actually asking is how much of
+     * the SHIFT went by without a call, and a shift has an end whether or not
+     * anybody pressed anything.
+     *
+     * Their own duty hours where the roster gives them, the company's working
+     * day otherwise — read rather than assumed, so a late shift is not cut off
+     * at five in the afternoon.
+     *
+     * Built from the day's own midnight rather than a timezone literal:
+     * dayRangeUtc already knows where the company's day starts, and a second
+     * opinion about that is how two parts of one screen disagree.
+     */
+    const dutyEnd =
+      db.schedules.find((s) => s.agent_id === agent.id && s.schedule_date === viewDate)?.duty_end ||
+      db.work_schedule.work_end;
+    const standbyStopsAtMs = (() => {
+      const [h, m] = String(dutyEnd || "").split(":");
+      const hours = Number(h);
+      const minutes = Number(m ?? 0);
+      if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+      return new Date(dayRangeUtc(viewDate).start).getTime() + (hours * 3600 + minutes * 60) * 1000;
+    })();
+
     let standbyBaseSeconds = 0;
     if (attendance?.time_in) {
       // Now, for today. For a past day whose shift was never closed, the last
@@ -228,11 +257,14 @@ export default async function AgentMonitorPage({
       const lastActivity = [attendance.break_end, calls.lastEndedAt, bios.lastEndedAt, attendance.time_in]
         .filter((t): t is string => Boolean(t))
         .reduce((latest, t) => (t > latest ? t : latest));
-      const shiftEnd = attendance.time_out
+      const actualEnd = attendance.time_out
         ? new Date(attendance.time_out).getTime()
         : isToday
           ? Date.now()
           : new Date(lastActivity).getTime();
+      // Capped either way, including for somebody who timed out late. Whatever
+      // they were doing after their hours, it was not standing by.
+      const shiftEnd = standbyStopsAtMs ? Math.min(actualEnd, standbyStopsAtMs) : actualEnd;
       const elapsed = Math.max(0, (shiftEnd - new Date(attendance.time_in).getTime()) / 1000);
       const mainBreak = (attendance.break_minutes ?? 0) * 60;
       standbyBaseSeconds = Math.max(0, elapsed - calls.seconds - bios.seconds - mainBreak);
@@ -248,7 +280,12 @@ export default async function AgentMonitorPage({
       //              misreported as standby.
       const liveStates: MonitorState[] = ["on_call", "bio_break", "break", "standby", "between_calls"];
       if (sinceIso && liveStates.includes(state)) {
-        standbyBaseSeconds = Math.max(0, standbyBaseSeconds - (Date.now() - new Date(sinceIso).getTime()) / 1000);
+        // Measured to the same cap the base was. Subtracting a stretch longer
+        // than the one that was ever added would take the figure to zero for
+        // anybody still signed in at eight in the evening.
+        const cappedNow = standbyStopsAtMs ? Math.min(Date.now(), standbyStopsAtMs) : Date.now();
+        const stretch = Math.max(0, (cappedNow - new Date(sinceIso).getTime()) / 1000);
+        standbyBaseSeconds = Math.max(0, standbyBaseSeconds - stretch);
       }
     }
 
@@ -265,6 +302,7 @@ export default async function AgentMonitorPage({
       bioCount: bios.count,
       bioSeconds: bios.seconds,
       pbxLive: liveChannel ? liveChannel.state : null,
+      standbyStopsAtMs,
       sipExtension: agent.sip_extension ?? null,
       pbxCalls: pbx.calls,
       pbxAnswered: pbx.answered,
