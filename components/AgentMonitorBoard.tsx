@@ -341,7 +341,13 @@ export function AgentMonitorBoard({
    * mobile has no channel to report and would otherwise show as a permanent
    * disagreement, which would make this line noise on the day it was needed.
    */
-  const phoneNoSession = rows.filter((r) => r.sipExtension && r.pbxLive === "up" && r.state !== "on_call");
+  // "ringing" counts as much as "up", and catching only the latter was the
+  // wrong half: a handset that is ringing is already a call this board cannot
+  // see, and it is the EARLIER moment -- the one where a supervisor can still
+  // say something before the customer answers.
+  const phoneNoSession = rows.filter(
+    (r) => r.sipExtension && (r.pbxLive === "up" || r.pbxLive === "ringing") && r.state !== "on_call"
+  );
   const sessionNoPhone = rows.filter((r) => r.sipExtension && r.state === "on_call" && !r.pbxLive);
 
   const counts = rows.reduce<Record<string, number>>((acc, r) => {
