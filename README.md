@@ -52,10 +52,12 @@ the outage that motivated this.
 | --- | --- | --- | --- |
 | Production | `4S RETENTION` | `lvqpvcpcbjujcqlntjjn` | Vercel environment variables |
 
-A second project, `4S ROMA DEV`, existed from 2026-08-07 to 2026-09-12 and was
-deleted. Until a replacement is made, **`.env.local` has nowhere safe to point,
-and a local `next dev` reads and writes the database seventeen agents are
-working in.** Treat every local run as production.
+A second project, `4S ROMA DEV`, existed from 2026-08-07 to 2026-09-12. The
+owner deleted it and decided against replacing it, so this is the settled
+arrangement rather than a gap waiting to be filled: **`.env.local` has nowhere
+to point but production, and a local `next dev` reads and writes the database
+seventeen agents are working in.** Every local run is a production run. There is
+no rehearsal.
 
 Why this matters: on 2026-08-07 a Clear Company Data click against `localhost`
 deleted the live orders, attendance, notifications and the entire audit trail.
@@ -69,13 +71,16 @@ company-wide wipe is being run from somebody's own machine against the live
 database. It guards **those two paths only**: editing a lead or an order from
 localhost still changes real data, because sometimes that is the point.
 
-### Making a new development project
+### If a development project is ever wanted again
 
-Create a Supabase project, point `.env.local` at it, and the app will seed
-itself on first run against an empty database (see `seedDb()` in `lib/db.ts`),
-so accounts appear on their own. Address reference data does not: run
-`node scripts/seed-psgc.mjs` once to load the 84 provinces, 1,634 cities and
-42,046 barangays the address picker needs.
+Create a Supabase project and point `.env.local` at it — URL **and** service
+role key, which differ per project — and the app seeds itself on first run
+against an empty database (see `seedDb()` in `lib/db.ts`), so accounts appear on
+their own. Address reference data does not: run `node scripts/seed-psgc.mjs`
+once to load the 84 provinces, 1,634 cities and 42,046 barangays the address
+picker needs. Never leave two `SUPABASE_URL` lines in the file; the maintenance
+scripts refuse to run on a duplicated key, because a stale second line is how an
+administrator account meant for development was once created in production.
 
 ## Pancake POS integration
 
