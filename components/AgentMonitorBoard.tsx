@@ -134,6 +134,9 @@ export interface MonitorRow {
    * silent telephone is a timer somebody forgot to stop.
    */
   pbxLive: string | null;
+  /** Their extension, or null while they are still working from a mobile.
+   * Only an agent who HAS one can disagree with the telephone. */
+  sipExtension: string | null;
   /** Seconds already accounted for as standby before the current state began. */
   standbyBaseSeconds: number;
 }
@@ -320,6 +323,27 @@ export function AgentMonitorBoard({
     return Math.max(0, (measuredAt - new Date(iso).getTime()) / 1000);
   };
 
+  /**
+   * Where the board and the telephone disagree.
+   *
+   * The tiles count call SESSIONS -- an agent pressing Calling on a lead --
+   * which is the right measure of attention and the wrong measure of whether
+   * anybody is talking. The PBX column beside each row is the other answer, and
+   * the two part company in exactly two ways, both worth a supervisor's time:
+   *
+   *   - on the phone with no session: the call is happening outside ROMA, so
+   *     nothing about it reaches the lead, the timer or the day's figures.
+   *   - a session open with no call: almost always End call never pressed. The
+   *     clock keeps running, the tile keeps counting them as on a call, and
+   *     their talk time for the day inflates while they do something else.
+   *
+   * Counted only for agents who HAVE an extension. Anybody still working from a
+   * mobile has no channel to report and would otherwise show as a permanent
+   * disagreement, which would make this line noise on the day it was needed.
+   */
+  const phoneNoSession = rows.filter((r) => r.sipExtension && r.pbxLive === "up" && r.state !== "on_call");
+  const sessionNoPhone = rows.filter((r) => r.sipExtension && r.state === "on_call" && !r.pbxLive);
+
   const counts = rows.reduce<Record<string, number>>((acc, r) => {
     acc[r.state] = (acc[r.state] || 0) + 1;
     return acc;
@@ -418,6 +442,28 @@ export function AgentMonitorBoard({
           />
         ))}
       </div>
+
+      {/* Said under the tiles rather than folded into them. The tiles have
+          always meant "pressed Calling", every report is built on that meaning,
+          and changing it while half the floor is still on mobiles would show
+          those agents as never on a call. So the numbers stay, and what they
+          cannot see is named beside them. */}
+      {(phoneNoSession.length > 0 || sessionNoPhone.length > 0) && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+          {phoneNoSession.length > 0 && (
+            <span title={phoneNoSession.map((r) => r.name).join(", ")}>
+              <span className="font-medium text-amber-700">{phoneNoSession.length}</span> on the phone without a call
+              open in ROMA — {phoneNoSession.map((r) => r.name).join(", ")}
+            </span>
+          )}
+          {sessionNoPhone.length > 0 && (
+            <span title={sessionNoPhone.map((r) => r.name).join(", ")}>
+              <span className="font-medium text-amber-700">{sessionNoPhone.length}</span> with a call open but not on
+              the phone — {sessionNoPhone.map((r) => r.name).join(", ")}
+            </span>
+          )}
+        </div>
+      )}
 
       {filter && (
         <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">

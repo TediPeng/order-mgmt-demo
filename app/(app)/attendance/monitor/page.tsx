@@ -265,6 +265,7 @@ export default async function AgentMonitorPage({
       bioCount: bios.count,
       bioSeconds: bios.seconds,
       pbxLive: liveChannel ? liveChannel.state : null,
+      sipExtension: agent.sip_extension ?? null,
       pbxCalls: pbx.calls,
       pbxAnswered: pbx.answered,
       pbxTalkSeconds: pbx.talkSeconds,
