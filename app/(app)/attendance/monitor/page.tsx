@@ -307,6 +307,8 @@ export default async function AgentMonitorPage({
       pbxCalls: pbx.calls,
       pbxAnswered: pbx.answered,
       pbxTalkSeconds: pbx.talkSeconds,
+      // The finished break only; the board adds the stretch still running.
+      breakSeconds: (attendance?.break_minutes ?? 0) * 60,
       standbyBaseSeconds: Math.round(standbyBaseSeconds),
     };
   });
@@ -328,11 +330,18 @@ export default async function AgentMonitorPage({
           own regular customers. <span className="font-medium">Between calls</span> is the first three minutes after hanging
           up — dialling again, not idle. Standby is the rest of the shift time that is not a call and not a break —{" "}
           <span className="font-medium">For</span> is how long the current stretch has run,{" "}
-          <span className="font-medium">Standby today</span> is the shift&apos;s total so far. Totals across a date
-          range are in the Activity Report.
+          <span className="font-medium">Standby today</span> is the shift&apos;s total so far. A break past the{" "}
+          {db.work_schedule.break_minutes}-minute allowance is called out in red at the top and stays marked on the
+          agent&apos;s row for the rest of the day. Totals across a date range are in the Activity Report.
         </p>
       </div>
-      <AgentMonitorBoard rows={rows} generatedAt={generatedAt} attendanceSource={attendanceSource} live={isToday} />
+      <AgentMonitorBoard
+        rows={rows}
+        generatedAt={generatedAt}
+        breakAllowanceSeconds={db.work_schedule.break_minutes * 60}
+        attendanceSource={attendanceSource}
+        live={isToday}
+      />
     </div>
   );
 }

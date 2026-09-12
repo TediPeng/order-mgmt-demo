@@ -137,6 +137,22 @@ export interface MonitorRow {
   /** Their extension, or null while they are still working from a mobile.
    * Only an agent who HAS one can disagree with the telephone. */
   sipExtension: string | null;
+  /**
+   * Break taken today, in seconds, as far as the record goes.
+   *
+   * The FINISHED break only -- a break still running has not been written yet.
+   * The browser adds the stretch in progress, which is what makes an over-break
+   * visible while it is still happening rather than after the agent comes back.
+   *
+   * Derived from break_minutes rather than from the stored over_break flag on
+   * purpose. That flag is only written when the agent presses End Break, or
+   * while their own clock page happens to be open to poll for it -- an agent
+   * who wanders off with Leads on screen goes over by half an hour and is
+   * flagged nowhere. Measuring the break against the allowance here needs
+   * nobody to have pressed anything, and it reads the same whether the day came
+   * from ROMA or from the portal.
+   */
+  breakSeconds: number;
   /** Seconds already accounted for as standby before the current state began. */
   standbyBaseSeconds: number;
   /**
@@ -207,11 +223,14 @@ export type AttendanceSource = "roma" | "portal" | "portal-unavailable";
 export function AgentMonitorBoard({
   rows,
   generatedAt,
+  breakAllowanceSeconds,
   attendanceSource = "roma",
   live = true,
 }: {
   rows: MonitorRow[];
   generatedAt: string;
+  /** The day's break allowance, in seconds. Floor-wide, from work_schedule. */
+  breakAllowanceSeconds: number;
   attendanceSource?: AttendanceSource;
   /**
    * Whether this is today.
@@ -367,6 +386,26 @@ export function AgentMonitorBoard({
   );
   const sessionNoPhone = rows.filter((r) => r.sipExtension && r.state === "on_call" && !r.pbxLive);
 
+  /**
+   * How far past the allowance this agent's break has run today.
+   *
+   * Counted live while they are still on it. That is the whole point: an
+   * over-break a supervisor learns about at five o'clock is a payroll line, and
+   * an over-break they can see at minute sixty-two is a conversation.
+   *
+   * Zero for everybody within their allowance, so a floor having a normal lunch
+   * shows nothing at all.
+   */
+  const overBreakSeconds = (r: MonitorRow) => {
+    const running = r.state === "break" ? elapsedSince(r.sinceIso) : 0;
+    return Math.max(0, r.breakSeconds + running - breakAllowanceSeconds);
+  };
+  const overBreak = rows
+    .map((r) => ({ row: r, over: overBreakSeconds(r) }))
+    .filter((x) => x.over > 0)
+    .sort((a, b) => b.over - a.over);
+  const overBreakNow = overBreak.filter((x) => x.row.state === "break");
+
   const counts = rows.reduce<Record<string, number>>((acc, r) => {
     acc[r.state] = (acc[r.state] || 0) + 1;
     return acc;
@@ -471,6 +510,28 @@ export function AgentMonitorBoard({
           and changing it while half the floor is still on mobiles would show
           those agents as never on a call. So the numbers stay, and what they
           cannot see is named beside them. */}
+      {/* Said above the tiles, not among them. Over break is not a state an
+          agent is IN -- somebody who ran forty minutes long this morning has
+          been back on calls since, and the floor still needs to know. */}
+      {overBreak.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900">
+          <Utensils className="h-3.5 w-3.5 shrink-0 text-red-500" aria-hidden />
+          <span className="font-medium">
+            {overBreak.length} over break today
+            {overBreakNow.length > 0
+              ? ` — ${overBreakNow.length} still on ${overBreakNow.length === 1 ? "it" : "them"}`
+              : ""}
+            :
+          </span>
+          {overBreak.map(({ row, over }) => (
+            <span key={row.agentId} className={row.state === "break" ? "font-medium" : undefined}>
+              {row.name} <span className="font-mono tabular-nums">+{hms(over)}</span>
+              {row.state === "break" ? " (still out)" : ""}
+            </span>
+          ))}
+        </div>
+      )}
+
       {(phoneNoSession.length > 0 || sessionNoPhone.length > 0) && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
           {phoneNoSession.length > 0 && (
@@ -554,6 +615,12 @@ export function AgentMonitorBoard({
               const standby =
                 r.standbyBaseSeconds +
                 (r.state === "standby" ? elapsedSinceCapped(r.sinceIso, r.standbyStopsAtMs) : 0);
+              // Live while the break runs, and kept on the row afterwards. The
+              // second half matters more than the first: the state chip can
+              // only say "over break" while they are still out, and by the time
+              // anyone looks they usually are not.
+              const overBreakFor = overBreakSeconds(r);
+              const onOverBreak = r.state === "break" && overBreakFor > 0;
 
               return (
                 <tr key={r.agentId} className={r.state === "on_call" ? "bg-green-50/40" : undefined}>
@@ -571,11 +638,25 @@ export function AgentMonitorBoard({
                     </Link>
                     {r.callName && <span className="ml-2 text-xs text-slate-400">{r.callName}</span>}
                     {r.teamLead && <span className="block text-xs text-slate-400">{r.teamLead}</span>}
+                    {/* Stays on the row for the rest of the day. An over-break
+                        that disappears the moment the agent sits back down is
+                        one nobody was ever going to catch. */}
+                    {overBreakFor > 0 && !onOverBreak && (
+                      <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
+                        <Utensils className="h-3 w-3" aria-hidden />
+                        over break +{hms(overBreakFor)}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${meta.cls}`}>
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+                        onOverBreak ? "bg-red-100 text-red-700" : meta.cls
+                      }`}
+                      title={onOverBreak ? `Over the ${Math.round(breakAllowanceSeconds / 60)}-minute allowance` : undefined}
+                    >
                       <Icon className="h-3.5 w-3.5" aria-hidden />
-                      {meta.label}
+                      {onOverBreak ? "Over break" : meta.label}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -605,7 +686,11 @@ export function AgentMonitorBoard({
                       <span className="text-slate-300">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-600">
+                  <td
+                    className={`px-4 py-3 text-right font-mono tabular-nums ${
+                      onOverBreak ? "font-semibold text-red-600" : "text-slate-600"
+                    }`}
+                  >
                     {r.sinceIso ? hms(live) : "—"}
                   </td>
                   {/* The count is the question; the numbers behind it are the
