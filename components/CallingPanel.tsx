@@ -6,6 +6,7 @@ import { PhoneCall, PhoneOff } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { formatElapsed, useCallSession } from "@/components/CallSessionProvider";
+import { dialHref, type DialScheme } from "@/lib/dial";
 import { TIME_IN_HREF } from "@/lib/time-in-gate";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -22,10 +23,28 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
  * yet: the New Order form raised from Regular Customers shows this panel keyed
  * on the customer, so the agent can ring them and write the order during the
  * call rather than having to invent an order first.
+ *
+ * It also DIALS. That is new, and it is the whole point.
+ *
+ * Pressing Calling and dialling the customer used to be two separate acts in
+ * two separate places -- this button opened the session, and the number beside
+ * it opened the softphone -- with nothing joining them. An agent who pressed
+ * one and not the other left a call ROMA had a record of and the phone system
+ * had never seen: no duration, no answered/unanswered, no recording, nothing
+ * for anybody to review. Between 9 and 12 September that was 3,488 sessions,
+ * and they were LONGER than the ones with a call behind them (median 85s
+ * against 65s), so they were real conversations, not stray clicks.
+ *
+ * One press now does both halves, in this order: open the session, then dial.
+ * Never the other way round. A phone that rings on a call ROMA refused -- the
+ * agent has not timed in, or already has a call open elsewhere -- is the one
+ * outcome worth avoiding, and the refusal is the answer the agent sees.
  */
 export function CallingPanel({
   orderId,
   customerId,
+  dialPhone,
+  dialScheme,
   onStarted,
   onEnded,
   onOpenActive,
@@ -35,6 +54,17 @@ export function CallingPanel({
   orderId?: string;
   /** The regular customer being called, when there is no order yet. */
   customerId?: string;
+  /**
+   * The number to ring once the session is open.
+   *
+   * Required rather than optional, so a new place that shows this panel has to
+   * answer the question rather than quietly go back to the old behaviour --
+   * which looked identical and recorded a call nobody could listen to. Pass
+   * null where there is genuinely no number.
+   */
+  dialPhone: string | null | undefined;
+  /** How this agent's browser hands a number over. "off" means do not dial. */
+  dialScheme: DialScheme;
   onStarted?: () => void;
   onEnded?: () => void;
   onOpenActive: (orderId: string) => void;
@@ -57,6 +87,28 @@ export function CallingPanel({
   // order yet has no order to open, so it returns to the form it started on.
   const otherHref = other && !other.order_id ? `/leads/new?customer=${other.customer_id}` : null;
 
+  const willDial = Boolean(dialHref(dialPhone, dialScheme));
+
+  /**
+   * Hand the number to the softphone.
+   *
+   * Through a real anchor click rather than assigning window.location, because
+   * that is exactly what clicking the number in the leads row already does --
+   * the one path known to work on the floor's PCs. A custom scheme set on
+   * location can be treated as a navigation and fire an unload; a click is not
+   * a navigation at all, and the page the agent is working in stays put.
+   */
+  function dial() {
+    const href = dialHref(dialPhone, dialScheme);
+    if (!href) return;
+    const a = document.createElement("a");
+    a.href = href;
+    a.rel = "noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
   async function start() {
     setBusy(true);
     setError(null);
@@ -64,6 +116,8 @@ export function CallingPanel({
     const result = orderId ? await startCall(orderId) : await startCustomerCall(customerId!);
     setBusy(false);
     if (result.ok) {
+      // Session first, phone second. Always.
+      dial();
       onStarted?.();
       return;
     }
@@ -119,8 +173,18 @@ export function CallingPanel({
           ))}
 
         {!other && !active && (
-          <Button type="button" size="sm" disabled={busy} onClick={start}>
-            <PhoneCall className="h-4 w-4" /> {busy ? "Starting…" : "Calling"}
+          <Button
+            type="button"
+            size="sm"
+            disabled={busy}
+            onClick={start}
+            title={
+              willDial
+                ? "Opens the call and rings the customer on your softphone"
+                : "Opens the call. Dial the number yourself — click-to-call is off for you."
+            }
+          >
+            <PhoneCall className="h-4 w-4" /> {busy ? "Starting…" : willDial ? "Call" : "Calling"}
           </Button>
         )}
 
@@ -205,9 +269,13 @@ export function CallingPanel({
           </Alert>
         )}
         <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-          <p className="text-xs text-slate-500">Click Calling before editing or updating this order.</p>
+          <p className="text-xs text-slate-500">
+            {willDial
+              ? "Press Call to ring the customer — it dials and starts the call record together."
+              : "Click Calling before editing or updating this order."}
+          </p>
           <Button type="button" size="sm" disabled={busy} onClick={start}>
-            <PhoneCall className="h-4 w-4" /> {busy ? "Starting…" : "Calling"}
+            <PhoneCall className="h-4 w-4" /> {busy ? "Starting…" : willDial ? "Call" : "Calling"}
           </Button>
         </div>
       </div>

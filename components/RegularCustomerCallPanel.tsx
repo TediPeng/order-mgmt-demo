@@ -56,6 +56,8 @@ export function RegularCustomerCallPanel({
       <CallingPanel
         compact
         customerId={customerId}
+        dialPhone={phone}
+        dialScheme={dialScheme}
         onOpenActive={(id) => router.push(`/leads?open_id=${id}`)}
       />
     </div>

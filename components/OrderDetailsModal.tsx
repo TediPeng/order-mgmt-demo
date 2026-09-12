@@ -1246,6 +1246,8 @@ export function OrderDetailsModal({
               <CallingPanel
                 compact
                 orderId={order.id}
+                dialPhone={order.customer_phone}
+                dialScheme={dialScheme}
                 onOpenActive={(id) => {
                   window.location.href = `/leads?open_id=${id}`;
                 }}

@@ -62,7 +62,13 @@ export function RepeatOrderCallPanel({
           here is recorded against order {fromOrderNumber} until this new order is saved.
         </p>
       </div>
-      <CallingPanel compact orderId={orderId} onOpenActive={(id) => router.push(`/leads?open_id=${id}`)} />
+      <CallingPanel
+        compact
+        orderId={orderId}
+        dialPhone={phone}
+        dialScheme={dialScheme}
+        onOpenActive={(id) => router.push(`/leads?open_id=${id}`)}
+      />
     </div>
   );
 }
