@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { can, isFullAccess } from "@/lib/permissions";
 import { listItemsFor } from "@/lib/order-items";
 import { canonicalPhone, todayInTz } from "@/lib/utils";
+import { breakCutoffInstant } from "@/lib/attendance-logic";
 import { BreakControls } from "@/components/BreakControls";
 import { BackToCallButton } from "@/components/BackToCallButton";
 import { getActiveBioBreak } from "@/lib/bio-breaks";
@@ -422,6 +423,9 @@ export default async function LeadsPage({
   // Break controls in the header: agents work out of this page all day, so
   // sending them to the clock page to start a break meant losing their place.
   const ownAttendance = db.attendance.find((a) => a.user_id === user.id && a.work_date === todayInTz());
+  // Computed here rather than in the browser: the cutoff is four o'clock in the
+  // company's timezone, and the device's idea of that is not the company's.
+  const breakCutoffMs = breakCutoffInstant(todayInTz(), db.work_schedule.timezone).getTime();
   const ownBioBreak = ownAttendance?.time_in && !ownAttendance.time_out ? await getActiveBioBreak(user.id) : null;
   // The end of shift is worked out in the app layout now, once, for every page —
   // see ShiftWatcher. This page keeps only the break buttons.
@@ -465,6 +469,7 @@ export default async function LeadsPage({
             allowanceMinutes={db.work_schedule.break_minutes}
             bioStartedAt={ownBioBreak?.started_at ?? null}
             canBreak={!!ownAttendance?.time_in && !ownAttendance.time_out}
+            breakCutoffMs={breakCutoffMs}
             redirectTo="/leads"
           />
           {/* Here too, and not redundantly: the order holding the call may be on

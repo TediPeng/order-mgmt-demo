@@ -49,6 +49,30 @@ export function computeOvertimeHours(timeOutIso: string, workDate: string, sched
   return diffHours > 0 ? Math.round(diffHours * 100) / 100 : 0;
 }
 
+/**
+ * The time of day after which a break may no longer be STARTED.
+ *
+ * The last hour of the day is when the floor is chased for the day's numbers,
+ * and a break opened at ten to five runs past the end of the shift, where it
+ * stops being a break and becomes unaccounted time. So the button closes at
+ * four and the hour before close is worked.
+ *
+ * Floor-wide and deliberately not read from anybody's roster: it is a rule
+ * about the afternoon, not about an individual's hours. An agent whose shift
+ * ends after five therefore has to take their break before four as well --
+ * true of everyone on the current roster, and the thing to revisit first if a
+ * genuine evening shift is ever run.
+ *
+ * Only STARTING is closed. Ending a break is never blocked -- somebody already
+ * on one at four must always be able to come back.
+ */
+export const BREAK_CUTOFF_TIME = "16:00";
+
+/** The instant on `workDate` at which the break button closes. */
+export function breakCutoffInstant(workDate: string, timeZone: string): Date {
+  return scheduledInstant(workDate, BREAK_CUTOFF_TIME, timeZone);
+}
+
 export const STATUS_LABELS: Record<AttendanceStatus, string> = {
   on_time: "On Time",
   late: "Late",

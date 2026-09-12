@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { portalClockUrl, portalOwnsAttendance } from "@/lib/portal-attendance";
 import { can } from "@/lib/permissions";
 import { formatDate, formatTime, todayInTz } from "@/lib/utils";
+import { breakCutoffInstant } from "@/lib/attendance-logic";
 import { AnalogClock } from "@/components/AnalogClock";
 import { BreakTimer } from "@/components/BreakTimer";
 import { BioBreakTimer } from "@/components/BioBreakTimer";
@@ -151,6 +152,7 @@ export default async function TimeClockPage({
           breakEnd={record?.break_end ?? null}
           allowanceMinutes={db.work_schedule.break_minutes}
           canBreak={!!record && !record.time_out}
+          breakCutoffMs={breakCutoffInstant(today, db.work_schedule.timezone).getTime()}
           redirectTo="/attendance/clock"
         />
 

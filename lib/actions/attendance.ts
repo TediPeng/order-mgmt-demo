@@ -8,7 +8,13 @@ import { getRequestInfo } from "@/lib/request-info";
 import { notify, agentEventRecipients } from "@/lib/notifications";
 import { requireUserLite, requirePermission } from "./guards";
 import { attendanceOverrideSchema } from "@/lib/validation";
-import { computeMinutesBetween, computeMinutesLate, computeOvertimeHours, scheduledInstant } from "@/lib/attendance-logic";
+import {
+  breakCutoffInstant,
+  computeMinutesBetween,
+  computeMinutesLate,
+  computeOvertimeHours,
+  scheduledInstant,
+} from "@/lib/attendance-logic";
 import { activeSuspensionOn } from "@/lib/schedule-access";
 import { portalOwnsAttendance } from "@/lib/portal-attendance";
 import { mirrorToPortal, type PortalMirror } from "@/lib/portal-mirror";
@@ -226,6 +232,14 @@ export async function startBreakAction(formData: FormData) {
   }
   if (record!.break_start && record!.break_end) {
     redirect(`${target}?error=${encodeURIComponent("You have already used your break for today.")}`);
+  }
+  // Four o'clock closes the break, and it closes here rather than only in the
+  // button. A disabled button is a hint; this is the rule. A page left open
+  // since lunch, a back button, a second tab -- all of them reach this line.
+  if (Date.now() >= breakCutoffInstant(today, db.work_schedule.timezone).getTime()) {
+    redirect(
+      `${target}?error=${encodeURIComponent("Breaks close at 4:00 PM. Please take your break earlier tomorrow.")}`
+    );
   }
 
   record!.break_start = nowIso();

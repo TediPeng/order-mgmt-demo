@@ -18,12 +18,19 @@ export function BreakTimer({
   breakEnd,
   allowanceMinutes,
   canBreak,
+  breakCutoffMs,
   redirectTo,
 }: {
   breakStart: string | null;
   breakEnd: string | null;
   allowanceMinutes: number;
   canBreak: boolean;
+  /**
+   * The instant today's break closes — four in the afternoon. See
+   * BREAK_CUTOFF_TIME in lib/attendance-logic.ts. Starting only: End Break
+   * below is never blocked, whatever the hour.
+   */
+  breakCutoffMs: number;
   redirectTo: string;
 }) {
   const router = useRouter();
@@ -67,6 +74,20 @@ export function BreakTimer({
     return () => clearInterval(id);
   }, [onBreak, router, startTransition]);
 
+  // Closes on a timer, so a card left open through the afternoon shuts at four
+  // without a refresh. One timeout rather than a poll.
+  const [breakClosed, setBreakClosed] = useState(() => Date.now() >= breakCutoffMs);
+  useEffect(() => {
+    if (breakClosed) return;
+    const remaining = breakCutoffMs - Date.now();
+    if (remaining <= 0) {
+      setBreakClosed(true);
+      return;
+    }
+    const id = setTimeout(() => setBreakClosed(true), Math.min(remaining, 2 ** 31 - 1));
+    return () => clearTimeout(id);
+  }, [breakClosed, breakCutoffMs]);
+
   if (!canBreak) return null;
 
   const allowanceSec = allowanceMinutes * 60;
@@ -94,12 +115,22 @@ export function BreakTimer({
           </form>
         </div>
       ) : (
-        <form action={startBreakAction}>
-          <input type="hidden" name="redirect_to" value={redirectTo} />
-          <Button type="submit" variant="outline" className="w-full" disabled={!!breakEnd}>
-            {breakEnd ? "Break already used today" : `Start Break (${allowanceMinutes} min allowance)`}
-          </Button>
-        </form>
+        <div className="space-y-2">
+          <form action={startBreakAction}>
+            <input type="hidden" name="redirect_to" value={redirectTo} />
+            <Button type="submit" variant="outline" className="w-full" disabled={!!breakEnd || breakClosed}>
+              {breakEnd
+                ? "Break already used today"
+                : breakClosed
+                  ? "Breaks close at 4:00 PM"
+                  : `Start Break (${allowanceMinutes} min allowance)`}
+            </Button>
+          </form>
+          {/* Said before four as well, so nobody is surprised by it at ten
+              past. A rule people can plan around is worth more than a rule
+              they only meet when it stops them. */}
+          {!breakEnd && !breakClosed && <p className="text-xs text-slate-400">Breaks close at 4:00 PM.</p>}
+        </div>
       )}
     </div>
   );

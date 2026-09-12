@@ -32,6 +32,7 @@ export function BreakControls({
   allowanceMinutes,
   bioStartedAt,
   canBreak,
+  breakCutoffMs,
   redirectTo,
 }: {
   breakStart: string | null;
@@ -40,6 +41,12 @@ export function BreakControls({
   bioStartedAt: string | null;
   /** Timed in and not yet timed out. */
   canBreak: boolean;
+  /**
+   * The instant today's break closes — four in the afternoon. See
+   * BREAK_CUTOFF_TIME in lib/attendance-logic.ts, which is also where the
+   * server refuses; this only shows the same answer before the click.
+   */
+  breakCutoffMs: number;
   redirectTo: string;
 }) {
   // Read from the app-wide provider rather than a server prop, so the Bio Break
@@ -58,6 +65,25 @@ export function BreakControls({
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onBreak, onBio]);
+
+  // Four o'clock has to arrive on a page nobody has touched since lunch, so the
+  // button closes on a timer rather than on the next render. One timeout, not a
+  // poll -- the moment is known in advance.
+  //
+  // Read against the server's clock, the same one the refusal uses, so a device
+  // running a few minutes fast does not take somebody's break away early.
+  const [breakClosed, setBreakClosed] = useState(() => clock() >= breakCutoffMs);
+  useEffect(() => {
+    if (breakClosed) return;
+    const remaining = breakCutoffMs - clock();
+    if (remaining <= 0) {
+      setBreakClosed(true);
+      return;
+    }
+    const id = setTimeout(() => setBreakClosed(true), Math.min(remaining, 2 ** 31 - 1));
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [breakClosed, breakCutoffMs]);
 
   if (!canBreak) return null;
 
@@ -87,9 +113,15 @@ export function BreakControls({
       ) : (
         <form action={startBreakAction}>
           <input type="hidden" name="redirect_to" value={redirectTo} />
-          <Button type="submit" variant="outline" size="sm" disabled={!!breakEnd || onBio}>
+          <Button
+            type="submit"
+            variant="outline"
+            size="sm"
+            disabled={!!breakEnd || onBio || breakClosed}
+            title={breakClosed && !breakEnd ? "Breaks close at 4:00 PM" : undefined}
+          >
             <Utensils className="h-4 w-4" />
-            {breakEnd ? "Break used" : "Break"}
+            {breakEnd ? "Break used" : breakClosed ? "Break closed" : "Break"}
           </Button>
         </form>
       )}
