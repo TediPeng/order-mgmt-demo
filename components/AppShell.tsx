@@ -62,10 +62,10 @@ export function AppShell({
   // enforces the same rule server-side; this only decides whether the link shows.
   const canMonitor = isFullAccess(user.role) || user.role === "team_lead";
   const canSeeRemainingLeads = isFullAccess(user.role);
-  // Administrators only. See the prop's note in Sidebar for why this is not
-  // canMonitor: a Team Lead supervises their team, which is not the same as
-  // being handed the whole floor's recorded conversations to browse.
-  const canHearRecordings = isFullAccess(user.role);
+  // Supervisory, like the monitor: an Administrator hears the whole floor, a
+  // Team Lead their own agents. The page scopes the rows; this only decides
+  // whether the link shows.
+  const canHearRecordings = canMonitor;
 
   // No websocket backend, so "real-time" dashboard stats, attendance widgets and
   // notifications are refreshed by re-running the server components in place —

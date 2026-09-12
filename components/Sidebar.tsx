@@ -80,12 +80,13 @@ export function Sidebar({
    * board of everyone else's break timers. */
   canMonitor?: boolean;
   /**
-   * Call Recordings is Administrators only — narrower than the player on
-   * Numbers Called, which an agent gets for their own calls and a Team Lead
-   * for their team's. Browsing the whole floor's conversations is a different
-   * trust from hearing a call you were already entitled to see, so it is
-   * neither `access.orders` nor canMonitor. The page redirects on the same
-   * rule, and /api/recordings/<id> decides again per press of play.
+   * Call Recordings is supervisory — Administrators and Team Leads, the same
+   * shape as canMonitor, and each sees only the agents they are over. It is
+   * deliberately not `access.orders`: an agent holds that and hears their own
+   * calls on Numbers Called, which is a player on a row they were already
+   * entitled to see rather than a screen for browsing other people's
+   * conversations. The page redirects on the same rule, and
+   * /api/recordings/<id> decides again per press of play.
    */
   canHearRecordings?: boolean;
   /** The size of the floor's queue is a management number, so this is

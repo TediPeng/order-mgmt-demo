@@ -17,11 +17,19 @@ import { dayRangeUtc } from "@/lib/utils";
  * So this reads the other way round: every call that HAS audio, newest first,
  * narrowed by day, by agent, or by the number that was rung.
  *
- * Administrators only, enforced by the page and independently by
- * /api/recordings/<id>, which mints the playback address. A recording is a
- * customer's voice and an agent's work at the same time; a screen that lays
- * the whole floor's out for browsing is a different trust from a player on the
- * row of a call you were already entitled to see.
+ * Supervisory: an Administrator sees the whole floor, a Team Lead sees their
+ * own agents. An agent does not get this page at all — they still hear their
+ * own calls on Numbers Called, which is a player on a row they were already
+ * entitled to see, not a screen for browsing other people's conversations.
+ *
+ * The scope is passed in as ids and applied IN THE QUERY, never over the rows
+ * in hand. The count under the header and the pager both have to describe what
+ * this viewer may hear, and a filter applied after paging would describe
+ * neither. It is also the difference between a scope and a suggestion: the
+ * page number comes from the address bar.
+ *
+ * Enforced again, independently, by /api/recordings/<id> — which mints the
+ * playback address and decides per press of play. A page is not a lock.
  */
 
 /** How long audio is kept. Mirrors KEEP_DAYS in the retention cron — said here
@@ -51,6 +59,16 @@ export interface RecordingRow {
 export interface RecordingQuery {
   /** Calendar day in the company's timezone. Ignored when `phone` is given. */
   date: string;
+  /**
+   * Whose recordings this viewer may hear, or null for no restriction.
+   *
+   * Null is the Administrator case and means everything — including calls that
+   * matched no extension, which belong to nobody and so are theirs alone. A
+   * Team Lead gets an explicit list, and an empty list gets nothing rather
+   * than everything: a scope that fails open is not a scope.
+   */
+  scopeAgentIds: string[] | null;
+  /** One agent chosen from within that scope. */
   agentId?: string | null;
   /** Digits to look for in the number dialled. Searches every stored day. */
   phone?: string | null;
@@ -86,7 +104,12 @@ export async function listRecordings(q: RecordingQuery): Promise<{ rows: Recordi
     query = query.gte("started_at", start).lt("started_at", endExclusive);
   }
 
-  if (q.agentId) query = query.eq("agent_id", q.agentId);
+  if (q.agentId) {
+    query = query.eq("agent_id", q.agentId);
+  } else if (q.scopeAgentIds) {
+    if (q.scopeAgentIds.length === 0) return { rows: [], total: 0 };
+    query = query.in("agent_id", q.scopeAgentIds);
+  }
 
   const { data, error, count } = await query;
   if (error) throw new Error(`recordings read failed: ${error.message}`);

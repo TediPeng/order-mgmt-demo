@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { Mic } from "lucide-react";
 
 import { getCurrentUser } from "@/lib/auth";
-import { readDbLite } from "@/lib/db";
+import { readDb } from "@/lib/db";
+import { scopeAgentsForUser } from "@/lib/performance";
 import { isFullAccess } from "@/lib/permissions";
 import { listRecordings, RECORDING_KEEP_DAYS } from "@/lib/recordings";
 import { displayUserName } from "@/lib/types";
@@ -27,12 +28,15 @@ const PAGE_SIZE = 50;
  * customer", and "let me listen to a few of yesterday's calls". Both start
  * from the recording.
  *
- * Administrators only. Not because the audio is secret from the agent who made
- * the call — they can still hear their own on Numbers Called — but because
- * laying the whole floor's conversations out for browsing is a different trust
- * from a player on a row somebody was already entitled to see. The rule is
- * enforced twice: here, and again in /api/recordings/<id>, which is what mints
- * the address the player fetches. A page is not a lock.
+ * Supervisory, and scoped like every other report in the app: an Administrator
+ * hears the whole floor, a Team Lead their own agents. An agent does not get
+ * the page — not because the audio is secret from whoever made the call, since
+ * they still hear their own on Numbers Called, but because laying other
+ * people's conversations out for browsing is a different trust from a player on
+ * a row somebody was already entitled to see.
+ *
+ * The rule is enforced twice: here, and again in /api/recordings/<id>, which is
+ * what mints the address the player fetches. A page is not a lock.
  */
 function hms(seconds: number | null): string {
   if (seconds == null) return "—";
@@ -54,24 +58,36 @@ export default async function RecordingsPage({
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
 
-  // Administrators only, and a redirect rather than a message: an account that
+  // Supervisors only, and a redirect rather than a message: an account that
   // cannot be here should not learn that the page exists.
-  if (!isFullAccess(user.role)) redirect("/dashboard");
+  const isTeamLead = user.role === "team_lead";
+  if (!isFullAccess(user.role) && !isTeamLead) redirect("/dashboard");
 
-  const db = await readDbLite();
+  // The full read, not the lite one: scopeAgentsForUser needs the profile rows
+  // it filters on, and this page is opened by a handful of supervisors rather
+  // than by the floor.
+  const db = await readDb();
   const today = todayInTz();
   const date = sp.date || today;
   const page = Math.max(1, parseInt(sp.page || "1", 10) || 1);
   const phone = String(sp.phone || "").trim();
   const searching = Boolean(phone.replace(/[^0-9]/g, ""));
 
-  const agents = db.profiles
-    .filter((p) => p.is_active !== false)
-    .sort((a, b) => displayUserName(a).localeCompare(displayUserName(b)));
-  const selectedAgent = sp.agent && agents.some((a) => a.id === sp.agent) ? sp.agent : "";
+  // Whose recordings this viewer may hear. The same helper the performance and
+  // Calls pages use, so there is one answer to "whose calls are these" rather
+  // than a second opinion living on this page.
+  const scopedAgents = scopeAgentsForUser(db, user).sort((a, b) =>
+    displayUserName(a).localeCompare(displayUserName(b))
+  );
+  // A selected agent must be inside the scope, or the dropdown is decoration
+  // and the address bar is the real control.
+  const selectedAgent = sp.agent && scopedAgents.some((a) => a.id === sp.agent) ? sp.agent : "";
 
   const { rows, total } = await listRecordings({
     date,
+    // Null for a full-access account: everything, including a call that matched
+    // no extension and so belongs to nobody.
+    scopeAgentIds: isFullAccess(user.role) ? null : scopedAgents.map((a) => a.id),
     agentId: selectedAgent || null,
     phone: phone || null,
     page,
@@ -103,7 +119,9 @@ export default async function RecordingsPage({
     <div>
       <PageHeader
         title="Call Recordings"
-        description={`Administrators only. Audio is kept for ${RECORDING_KEEP_DAYS} days, then deleted automatically.`}
+        description={`${
+          isFullAccess(user.role) ? "Every agent" : "Your team"
+        }. Audio is kept for ${RECORDING_KEEP_DAYS} days, then deleted automatically.`}
       />
 
       {/* A plain GET form. The filters belong in the address so a particular
@@ -120,8 +138,8 @@ export default async function RecordingsPage({
             Agent
           </label>
           <Select id="agent" name="agent" defaultValue={selectedAgent}>
-            <option value="">Everyone</option>
-            {agents.map((a) => (
+            <option value="">{isFullAccess(user.role) ? "Everyone" : "My whole team"}</option>
+            {scopedAgents.map((a) => (
               <option key={a.id} value={a.id}>
                 {displayUserName(a)}
                 {a.sip_extension ? ` (${a.sip_extension})` : ""}
