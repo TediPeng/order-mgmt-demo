@@ -9,6 +9,7 @@ import {
   Package,
   PhoneCall,
   PhoneOutgoing,
+  Mic,
   UploadCloud,
   FileUp,
   Users2,
@@ -64,6 +65,7 @@ interface NavGroup {
 export function Sidebar({
   access,
   canMonitor = false,
+  canHearRecordings = false,
   canSeeRemainingLeads = false,
   canImportRegularCustomers = false,
   canManageLogistics = false,
@@ -77,6 +79,15 @@ export function Sidebar({
    * what lets an agent see their OWN record — it should not also hand them a
    * board of everyone else's break timers. */
   canMonitor?: boolean;
+  /**
+   * Call Recordings is Administrators only — narrower than the player on
+   * Numbers Called, which an agent gets for their own calls and a Team Lead
+   * for their team's. Browsing the whole floor's conversations is a different
+   * trust from hearing a call you were already entitled to see, so it is
+   * neither `access.orders` nor canMonitor. The page redirects on the same
+   * rule, and /api/recordings/<id> decides again per press of play.
+   */
+  canHearRecordings?: boolean;
   /** The size of the floor's queue is a management number, so this is
    * Administrators and Management only -- narrower than performance.view,
    * which every Team Lead holds for their own team. */
@@ -117,6 +128,10 @@ export function Sidebar({
         // leads, not an uploaded recording. Same gate as Leads because it shows
         // the same rows, scoped the same way — an agent sees their own.
         { href: "/calls", label: "Numbers Called", icon: PhoneOutgoing, show: access.orders },
+        // Beside Numbers Called, where the same audio already plays one row at
+        // a time. This is the other way into it: the recordings themselves,
+        // newest first, searchable by the number that was rung.
+        { href: "/recordings", label: "Call Recordings", icon: Mic, show: canHearRecordings },
         { href: "/regular-customers", label: "Regular Customers", icon: UserCheck, show: access.regular_customers },
         // Its own entry rather than a button on the list: an agent bringing
         // over a list of their repeat buyers goes straight to it, and the

@@ -62,6 +62,10 @@ export function AppShell({
   // enforces the same rule server-side; this only decides whether the link shows.
   const canMonitor = isFullAccess(user.role) || user.role === "team_lead";
   const canSeeRemainingLeads = isFullAccess(user.role);
+  // Administrators only. See the prop's note in Sidebar for why this is not
+  // canMonitor: a Team Lead supervises their team, which is not the same as
+  // being handed the whole floor's recorded conversations to browse.
+  const canHearRecordings = isFullAccess(user.role);
 
   // No websocket backend, so "real-time" dashboard stats, attendance widgets and
   // notifications are refreshed by re-running the server components in place —
@@ -131,7 +135,7 @@ export function AppShell({
       {localAgainstProduction && <LiveDatabaseBanner />}
       <div className="flex min-h-0 flex-1">
       <div className="hidden lg:block">
-        <Sidebar access={access} canMonitor={canMonitor} canSeeRemainingLeads={canSeeRemainingLeads}
+        <Sidebar access={access} canMonitor={canMonitor} canHearRecordings={canHearRecordings} canSeeRemainingLeads={canSeeRemainingLeads}
           canImportRegularCustomers={canImportRegularCustomers} canManageLogistics={canManageLogistics} workforceInPortal={workforceInPortal} collapsed={collapsed} />
       </div>
 
@@ -143,7 +147,7 @@ export function AppShell({
             onClick={() => setDrawerOpen(false)}
           />
           <div className="relative z-10">
-            <Sidebar access={access} canMonitor={canMonitor} canSeeRemainingLeads={canSeeRemainingLeads}
+            <Sidebar access={access} canMonitor={canMonitor} canHearRecordings={canHearRecordings} canSeeRemainingLeads={canSeeRemainingLeads}
           canImportRegularCustomers={canImportRegularCustomers} canManageLogistics={canManageLogistics} workforceInPortal={workforceInPortal} onNavigate={() => setDrawerOpen(false)} />
           </div>
           <button
