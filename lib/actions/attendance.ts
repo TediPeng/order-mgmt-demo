@@ -247,7 +247,13 @@ export async function startBreakAction(formData: FormData) {
   const info = await getRequestInfo();
   logActivity(db, user.id, "BREAK_START", "attendance", record!.id, { work_date: today }, { module: "attendance", ...info });
   await writeDb(db);
-  redirect(`${target}?breakstarted=1`);
+
+  // Waited for, exactly as the time-in is. The portal is what charges over
+  // break, and a break it never hears about is a break nobody is measured
+  // against -- which is what happened to every agent here between the 10th and
+  // the 13th of September.
+  const mirror = await mirrorToPortal(user.id, "break_start");
+  redirect(`${target}?breakstarted=1${portalNotice(mirror)}`);
 }
 
 export async function endBreakAction(formData: FormData) {
@@ -296,7 +302,13 @@ export async function endBreakAction(formData: FormData) {
     ...info,
   });
   await writeDb(db);
-  redirect(`${target}?breakended=1`);
+
+  // Only the tap is sent. The portal works out its own over break from it,
+  // against the allowance on that person's day rather than the single
+  // company-wide figure this side measures by -- so the two can disagree about
+  // the minutes and only one of them decides pay.
+  const mirror = await mirrorToPortal(user.id, "break_end");
+  redirect(`${target}?breakended=1${portalNotice(mirror)}`);
 }
 
 /** Re-checks a currently-open break against the allowance; called periodically

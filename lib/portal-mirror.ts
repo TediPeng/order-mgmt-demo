@@ -38,9 +38,20 @@ export type PortalMirror =
 /** Long enough for a cold start on the other side, short enough that nobody standing at a clock notices. */
 const TIMEOUT_MS = 5000;
 
+/**
+ * The events the portal knows how to receive.
+ *
+ * It was time_in and time_out, and the two it was missing cost four days of
+ * breaks: the clock moved back here on 9 September, ROMA's break buttons kept
+ * writing only ROMA's own break_start and break_end, and the portal -- which
+ * is what charges over break -- stopped seeing any of them. The sweep could
+ * not catch it either; it compares the clock and nothing else.
+ */
+export type PortalEvent = "time_in" | "time_out" | "break_start" | "break_end";
+
 export async function mirrorToPortal(
   romaProfileId: string,
-  event: "time_in" | "time_out"
+  event: PortalEvent
 ): Promise<PortalMirror> {
   const base = process.env.PORTAL_APP_URL;
   const secret = process.env.PORTAL_API_SECRET;

@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
 
   const { data: rows, error } = await supabaseAdmin
     .from("attendance")
-    .select("user_id, time_in, time_out")
+    .select("user_id, time_in, time_out, break_start, break_end")
     .eq("work_date", today)
     .not("time_in", "is", null)
     .limit(MAX_PER_RUN);
@@ -62,6 +62,8 @@ export async function GET(req: NextRequest) {
 
   let sentIn = 0;
   let sentOut = 0;
+  let sentBreakStart = 0;
+  let sentBreakEnd = 0;
   let refused = 0;
   let failed = 0;
 
@@ -89,6 +91,32 @@ export async function GET(req: NextRequest) {
     // Only after the time-in is known to be there. The portal closes the row it
     // has; if it never opened one, this would fail for a reason that says
     // nothing about the real problem.
+    // The break, before the time-out below. A break belongs inside the shift
+    // and the portal refuses to start one on a row it has already closed, so
+    // sweeping them in the order they happened is the only order that works.
+    //
+    // This pair was missing until 13 September. The clock came back here on
+    // the 9th, the break buttons never mirrored, and neither did this — so
+    // four days of breaks sat in this database and the portal, which is what
+    // charges over break, measured nobody against anything.
+    if (row.break_start && !theirs?.breakStart) {
+      const result = await mirrorToPortal(profileId, "break_start");
+      if (result.status === "ok") sentBreakStart += 1;
+      else if (result.status === "refused") refused += 1;
+      else if (result.status === "unsent") failed += 1;
+
+      if (result.status === "refused" || result.status === "unsent") continue;
+    }
+
+    // Only once the portal has the start. It works out its own over break from
+    // the two taps, so an end with no start would be measured from nothing.
+    if (row.break_end && !theirs?.breakEnd) {
+      const result = await mirrorToPortal(profileId, "break_end");
+      if (result.status === "ok") sentBreakEnd += 1;
+      else if (result.status === "refused") refused += 1;
+      else if (result.status === "unsent") failed += 1;
+    }
+
     if (row.time_out && !theirs?.timeOut) {
       const result = await mirrorToPortal(profileId, "time_out");
       if (result.status === "ok") sentOut += 1;
@@ -97,12 +125,12 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  if (sentIn || sentOut || refused || failed) {
+  if (sentIn || sentOut || sentBreakStart || sentBreakEnd || refused || failed) {
     console.log(
-      "[portal-sync] %s: sent %d time-in, %d time-out, %d refused, %d failed",
-      today, sentIn, sentOut, refused, failed
+      "[portal-sync] %s: sent %d time-in, %d time-out, %d break-start, %d break-end, %d refused, %d failed",
+      today, sentIn, sentOut, sentBreakStart, sentBreakEnd, refused, failed
     );
   }
 
-  return NextResponse.json({ ok: true, date: today, sentIn, sentOut, refused, failed });
+  return NextResponse.json({ ok: true, date: today, sentIn, sentOut, sentBreakStart, sentBreakEnd, refused, failed });
 }
