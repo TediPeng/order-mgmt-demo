@@ -472,28 +472,36 @@ export async function callTotalsForDay(agentIds: string[], workDate: string): Pr
   const out = new Map<string, CallDayTotals>();
   if (agentIds.length === 0) return out;
 
-  const { data, error } = await supabaseAdmin
-    .from("call_sessions")
-    .select("agent_id, duration_seconds, ended_at")
-    .in("agent_id", agentIds)
-    .not("ended_at", "is", null)
-    // The local day, not the UTC one. See dayRangeUtc: bounding a Manila date
-    // with UTC midnight opened the window at 08:00 and dropped the calls before
-    // it.
-    .gte("started_at", dayRangeUtc(workDate).start)
-    .lt("started_at", dayRangeUtc(workDate).endExclusive);
+  // Summed in SQL, one row per agent.
+  //
+  // This read every session row and added them up here, and PostgREST answers
+  // at most a thousand -- silently, and with no order, so WHICH thousand was
+  // arbitrary. On 14 September there were 1,570 completed sessions and the
+  // agents whose rows fell outside the first thousand showed 0 calls, 0 talk
+  // time, and every second of their talking reported as STANDBY instead.
+  // Aaliyah read 8:13:44 of standby on a day she spent 5 hours 15 minutes on
+  // the phone.
+  //
+  // A cap that truncates is worse than one that fails: nothing anywhere said
+  // the answer was short. Thirteen rows cannot be truncated.
+  //
+  // The local day, not the UTC one. See dayRangeUtc: bounding a Manila date
+  // with UTC midnight opened the window at 08:00 and dropped the calls before
+  // it.
+  const { data, error } = await supabaseAdmin.rpc("call_totals", {
+    p_agent_ids: agentIds,
+    p_start: dayRangeUtc(workDate).start,
+    p_end_exclusive: dayRangeUtc(workDate).endExclusive,
+    p_max_call_seconds: MAX_CALL_SECONDS,
+  });
   if (error) throw new Error(`call_sessions read failed: ${error.message}`);
 
   for (const row of data || []) {
-    const key = String(row.agent_id);
-    const current = out.get(key) || { count: 0, seconds: 0, lastEndedAt: null };
-    current.count += 1;
-    // Capped: an abandoned session would otherwise donate its whole open-ended
-    // length to the day, and standby is what is left after talk is subtracted.
-    current.seconds += Math.min(Number(row.duration_seconds ?? 0), MAX_CALL_SECONDS);
-    const ended = row.ended_at ? String(row.ended_at) : null;
-    if (ended && (!current.lastEndedAt || ended > current.lastEndedAt)) current.lastEndedAt = ended;
-    out.set(key, current);
+    out.set(String(row.agent_id), {
+      count: Number(row.sessions ?? 0),
+      seconds: Number(row.seconds ?? 0),
+      lastEndedAt: row.last_ended_at ? String(row.last_ended_at) : null,
+    });
   }
   return out;
 }
@@ -513,23 +521,27 @@ export async function callTotalsForRange(
   const out = new Map<string, CallDayTotals>();
   if (agentIds.length === 0) return out;
 
-  const { data, error } = await supabaseAdmin
-    .from("call_sessions")
-    .select("agent_id, duration_seconds")
-    .in("agent_id", agentIds)
-    .not("ended_at", "is", null)
-    .gte("started_at", dayRangeUtc(from, to).start)
-    .lt("started_at", dayRangeUtc(from, to).endExclusive);
+  // The same function the day totals use, so the Activity Report and the
+  // monitor cannot disagree about how long somebody spent talking -- including
+  // about the cap on an abandoned session.
+  //
+  // This mattered more here than anywhere. A month is around forty thousand
+  // session rows against PostgREST's thousand-row answer, so the report was
+  // reading roughly one day in forty and presenting it as the month.
+  const { data, error } = await supabaseAdmin.rpc("call_totals", {
+    p_agent_ids: agentIds,
+    p_start: dayRangeUtc(from, to).start,
+    p_end_exclusive: dayRangeUtc(from, to).endExclusive,
+    p_max_call_seconds: MAX_CALL_SECONDS,
+  });
   if (error) throw new Error(`call_sessions read failed: ${error.message}`);
 
   for (const row of data || []) {
-    const key = String(row.agent_id);
-    const current = out.get(key) || { count: 0, seconds: 0, lastEndedAt: null };
-    current.count += 1;
-    // Same cap as the daily totals, so the Activity Report and the monitor
-    // cannot disagree about how long an agent spent talking.
-    current.seconds += Math.min(Number(row.duration_seconds ?? 0), MAX_CALL_SECONDS);
-    out.set(key, current);
+    out.set(String(row.agent_id), {
+      count: Number(row.sessions ?? 0),
+      seconds: Number(row.seconds ?? 0),
+      lastEndedAt: null,
+    });
   }
   return out;
 }
@@ -546,19 +558,27 @@ export async function countCompletedSessions(
   const counts = new Map<string, number>();
   if (agentIds.length === 0) return counts;
 
-  const { data, error } = await supabaseAdmin
-    .from("call_sessions")
-    .select("agent_id, started_at, duration_seconds")
-    .in("agent_id", agentIds)
-    .not("ended_at", "is", null)
-    .gte("started_at", dayRangeUtc(from, to).start)
-    .lt("started_at", dayRangeUtc(from, to).endExclusive);
+  // Counted in SQL, for the same reason as the totals above: a month is tens
+  // of thousands of session rows and PostgREST answers a thousand of them
+  // without saying so.
+  //
+  // It also fixes a quieter one. The key was built from
+  // String(started_at).slice(0, 10) -- the UTC date -- while every caller asks
+  // with Manila dates. For the eight hours a day the two disagree, a call was
+  // filed under yesterday and looked for under today, so the first shift of
+  // every morning counted against the day before. The grouping is the
+  // company's day now, done where the timestamp still has a timezone.
+  const { data, error } = await supabaseAdmin.rpc("call_counts_by_day", {
+    p_agent_ids: agentIds,
+    p_start: dayRangeUtc(from, to).start,
+    p_end_exclusive: dayRangeUtc(from, to).endExclusive,
+    p_timezone: APP_TIMEZONE,
+    p_min_seconds: minSeconds,
+  });
   if (error) throw new Error(`call_sessions read failed: ${error.message}`);
 
   for (const row of data || []) {
-    if (minSeconds > 0 && Number(row.duration_seconds ?? 0) < minSeconds) continue;
-    const key = `${row.agent_id}|${String(row.started_at).slice(0, 10)}`;
-    counts.set(key, (counts.get(key) || 0) + 1);
+    counts.set(`${row.agent_id}|${row.work_date}`, Number(row.sessions ?? 0));
   }
   return counts;
 }
