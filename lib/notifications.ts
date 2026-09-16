@@ -1,4 +1,4 @@
-import { uuid, nowIso } from "./db";
+import { uuid, nowIso, markNotificationDirty } from "./db";
 import { isFullAccess } from "./permissions";
 import type { DbShape } from "./types";
 
@@ -12,8 +12,10 @@ export function notify(
 ) {
   const unique = Array.from(new Set(recipientIds.filter(Boolean)));
   for (const recipientId of unique) {
+    const id = uuid();
+    markNotificationDirty(db, id);
     db.notifications.unshift({
-      id: uuid(),
+      id,
       recipient_id: recipientId,
       type,
       title,

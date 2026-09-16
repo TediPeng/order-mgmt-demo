@@ -775,6 +775,16 @@ export interface DbShape {
   pending_deletes: PendingDelete[];
   /** Ids of orders changed by this request — see the note above. */
   dirty_orders: string[];
+  /** Ids of notifications created or read by this request.
+   *
+   * Same reasoning as dirty_orders, and it bites harder. readDbLite() narrows
+   * notifications to the signed-in person, which sounded like a small array
+   * until a failing Pancake sync wrote one to every administrator every few
+   * minutes for a month: three of them now carry sixteen to twenty thousand
+   * each. writeDb() upserting that back in 500-row chunks is forty-one
+   * round trips to save one roster cell, and the roster builder's 500 was
+   * exactly that running out of time. */
+  dirty_notifications: string[];
 }
 
 /** The ids of orders this request actually changed.

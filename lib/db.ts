@@ -403,6 +403,7 @@ function seedDb(): DbShape {
     performance_thresholds: { top_performer_min_ratio: 1.2, needs_improvement_max_ratio: 0.8, rts_warning_threshold_pct: 15 },
     pending_deletes: [],
     dirty_orders: [],
+    dirty_notifications: [],
     operations: { allow_status_import: false, min_call_seconds: 0, dial_scheme: "tel", agent_login_via_portal_only: false },
     work_schedule: DEFAULT_WORK_SCHEDULE,
   };
@@ -689,6 +690,7 @@ async function readDbUncached(withOrders: boolean): Promise<DbShape> {
     // to delete.
     pending_deletes: [],
     dirty_orders: [],
+    dirty_notifications: [],
   };
 
   return shape;
@@ -781,6 +783,28 @@ export function markOrderDirty(db: DbShape, orderId: string): void {
   if (!db.dirty_orders.includes(orderId)) db.dirty_orders.push(orderId);
 }
 
+/** The ids of notifications this request created or marked read.
+ *
+ * Only these are written. Everything else in db.notifications was read from
+ * the database moments ago and is being carried around so the bell can render
+ * it -- writing it back says nothing new and costs a round trip per five
+ * hundred rows. */
+export function markNotificationDirty(db: DbShape, notificationId: string): void {
+  if (!db.dirty_notifications.includes(notificationId)) {
+    db.dirty_notifications.push(notificationId);
+  }
+}
+
+/** Writes the notifications this request created or read, and drains the list
+ * so a second writeDb() in the same request does not rewrite them. */
+async function writeDirtyNotifications(db: DbShape): Promise<void> {
+  if (db.dirty_notifications.length === 0) return;
+  const dirty = new Set(db.dirty_notifications);
+  const rows = db.notifications.filter((n) => dirty.has(n.id)) as unknown as Row[];
+  db.dirty_notifications = [];
+  await upsertTable("notifications", rows);
+}
+
 export async function writeDb(db: DbShape): Promise<void> {
 
   // The outbox: everything in here was logged during this request, so all of it
@@ -818,7 +842,8 @@ export async function writeDb(db: DbShape): Promise<void> {
     upsertTable("call_logs", db.call_logs as unknown as Row[]),
     upsertTable("leave_requests", db.leave_requests as unknown as Row[]),
     upsertTable("suspensions", db.suspensions as unknown as Row[]),
-    upsertTable("notifications", db.notifications as unknown as Row[]),
+    // Only the ones this request touched. See markNotificationDirty().
+    writeDirtyNotifications(db),
   ]);
   await Promise.all([
     upsertTable("call_log_records", db.call_log_records as unknown as Row[]),

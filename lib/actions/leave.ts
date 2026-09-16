@@ -466,11 +466,10 @@ export async function reviewLeaveAction(formData: FormData) {
   // agent ends up both granted and refused, and only one of the two answers
   // reaches payroll.
   if (portalOwnsLeave()) {
-    redirect(
-      `/leave?error=${encodeURIComponent(
-        "Leave is decided in the company portal now — it holds the daily limit and writes the roster. Please approve or reject it there."
-      )}`
-    );
+    // A flag, not a message. The page already carries a standing notice saying
+    // exactly this and linking to the portal; sending the sentence again as an
+    // ?error= printed it twice, in two colours, one above the other.
+    redirect("/leave?portal_decides=1");
   }
 
   const { user, db } = await requireUserLite();

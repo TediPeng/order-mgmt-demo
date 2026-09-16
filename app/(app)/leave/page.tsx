@@ -37,6 +37,10 @@ export default async function LeavePage({
     portal_unlinked?: string;
     /** Filed here but the portal could not be reached; the sweep will carry it. */
     portal_unsent?: string;
+    /** Somebody pressed approve or reject here after leave moved to the portal.
+     *  A flag rather than an ?error= string, so the standing notice below can
+     *  answer it instead of a second alert repeating the same sentence. */
+    portal_decides?: string;
     /** YYYY-MM — the month the queue calendar is showing. */
     month?: string;
   }>;
@@ -175,7 +179,12 @@ export default async function LeavePage({
         </Alert>
       )}
       {portalOwnsLeave() && canApprove && (
-        <Alert kind="info">
+        // One notice, not two. A refused press used to arrive as an ?error=
+        // saying the same thing as the standing note directly beneath it, so
+        // the screen told the same person the same fact twice in two colours.
+        // The press now sets a flag, and this is the only place that answers.
+        <Alert kind={sp.portal_decides ? "warning" : "info"}>
+          {sp.portal_decides ? "That decision was not recorded. " : null}
           Leave is decided in the company portal now. It holds the limit on how many people may be off on the same day
           and writes the roster that payroll reads, so approving here would not reach the record that pays.
           {portalHomeUrl() ? (
