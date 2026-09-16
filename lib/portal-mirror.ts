@@ -49,9 +49,24 @@ const TIMEOUT_MS = 5000;
  */
 export type PortalEvent = "time_in" | "time_out" | "break_start" | "break_end";
 
+/**
+ * When the tap happened, as this database recorded it.
+ *
+ * Optional, and the difference it makes is money. Without it the portal
+ * stamped the moment the message ARRIVED, which is the same instant when the
+ * live mirror gets through and minutes later when it does not -- a 9:02 time
+ * in carried by the ten-minute sweep was written there as 9:38, and thirty-six
+ * minutes of lateness were invented by the delay.
+ *
+ * It is also the only reason the sweep can look at yesterday. The instant
+ * decides which day the portal files the row under, so without it "carry what
+ * did not arrive" could only ever mean "carry today", and anything that missed
+ * its day was lost -- eleven time-ins were, between 1 and 16 September.
+ */
 export async function mirrorToPortal(
   romaProfileId: string,
-  event: PortalEvent
+  event: PortalEvent,
+  at?: string | null
 ): Promise<PortalMirror> {
   const base = process.env.PORTAL_APP_URL;
   const secret = process.env.PORTAL_API_SECRET;
@@ -72,7 +87,7 @@ export async function mirrorToPortal(
     const res = await fetch(`${base.replace(/\/+$/, "")}/api/roma/attendance`, {
       method: "POST",
       headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ romaProfileId, event }),
+      body: JSON.stringify(at ? { romaProfileId, event, at } : { romaProfileId, event }),
       cache: "no-store",
       signal: controller.signal,
     });

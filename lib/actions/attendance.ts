@@ -143,7 +143,7 @@ export async function timeInAction(formData: FormData) {
   // Waited for, not fired and forgotten. The portal is what pays them: an
   // agent who is told "timed in" while this quietly failed is the exact
   // failure of 28-31 August, and it cost four days of somebody's attendance.
-  const mirror = await mirrorToPortal(user.id, "time_in");
+  const mirror = await mirrorToPortal(user.id, "time_in", record.time_in);
   redirect(`${target}?timedin=1${portalNotice(mirror)}`);
 }
 
@@ -211,7 +211,7 @@ export async function timeOutAction(formData: FormData) {
   );
   await writeDb(db);
 
-  const mirror = await mirrorToPortal(user.id, "time_out");
+  const mirror = await mirrorToPortal(user.id, "time_out", record!.time_out);
   redirect(`${target}?timedout=1${portalNotice(mirror)}`);
 }
 
@@ -252,7 +252,7 @@ export async function startBreakAction(formData: FormData) {
   // break, and a break it never hears about is a break nobody is measured
   // against -- which is what happened to every agent here between the 10th and
   // the 13th of September.
-  const mirror = await mirrorToPortal(user.id, "break_start");
+  const mirror = await mirrorToPortal(user.id, "break_start", record!.break_start);
   redirect(`${target}?breakstarted=1${portalNotice(mirror)}`);
 }
 
@@ -307,7 +307,7 @@ export async function endBreakAction(formData: FormData) {
   // against the allowance on that person's day rather than the single
   // company-wide figure this side measures by -- so the two can disagree about
   // the minutes and only one of them decides pay.
-  const mirror = await mirrorToPortal(user.id, "break_end");
+  const mirror = await mirrorToPortal(user.id, "break_end", record!.break_end);
   redirect(`${target}?breakended=1${portalNotice(mirror)}`);
 }
 
