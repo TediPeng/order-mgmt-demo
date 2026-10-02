@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Download } from "lucide-react";
 import { readDbLite } from "@/lib/db";
 import { productIdsInUse } from "@/lib/orders-lookup";
 import { getCurrentUser } from "@/lib/auth";
@@ -68,6 +69,14 @@ export default async function ProductsPage({
   // every order to collect a few dozen ids is the whole cost of this page.
   const usedProductIds = await productIdsInUse();
 
+  // The export carries the filter the page is showing, so the file matches the
+  // table rather than always dumping the whole catalogue. Filtered to one
+  // status, you get that status.
+  const exportParams = new URLSearchParams();
+  if (sp.q) exportParams.set("q", sp.q);
+  if (sp.status) exportParams.set("status", sp.status);
+  const exportHref = `/api/products/export${exportParams.size ? `?${exportParams}` : ""}`;
+
   const boundDeactivate = async (id: string) => {
     "use server";
     await setProductStatusAction(id, "inactive");
@@ -91,6 +100,13 @@ export default async function ProductsPage({
               Upload Product List
             </LinkButton>
           )}
+          {/* A plain anchor, not LinkButton: this returns a file, and the
+              client-side router would try to navigate to it. */}
+          <a href={exportHref}>
+            <Button variant="outline">
+              <Download className="h-4 w-4" /> Export CSV
+            </Button>
+          </a>
           <LinkButton href="/api/products/template" variant="outline">
             Download Product Template
           </LinkButton>
