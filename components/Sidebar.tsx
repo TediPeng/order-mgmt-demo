@@ -20,8 +20,6 @@ import {
   LineChart,
   Clock,
   Timer,
-  CalendarDays,
-  ShieldAlert,
   Users,
   ShieldCheck,
   FileBarChart,
@@ -173,8 +171,6 @@ export function Sidebar({
         // an agent has no row for the day. A roster nobody can reach is a
         // roster that stops being maintained, and the first sign of it would be
         // wrong lateness in ROMA's own timesheet, which nothing announces.
-        { href: "/schedule", label: "Schedule", icon: CalendarDays, show: access.schedules && !workforceInPortal },
-        { href: "/schedule/suspensions", label: "Disciplinary", icon: ShieldAlert, show: access.disciplinary },
       ],
     },
     {
