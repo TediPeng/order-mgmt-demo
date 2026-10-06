@@ -49,6 +49,24 @@ export default async function ReportsPage() {
     <div className="space-y-6">
       <h1 className="text-page-title text-slate-900">Reports</h1>
 
+      {/* A page rather than a download, so it sits above the export grid instead
+          of inside it — the grid's cards all hand back a file. */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Hourly Sales</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-4 text-xs text-slate-500">
+            Dials per agent for one day, hour by hour from 8am to 11:59pm, with the day&rsquo;s sales beside them. Pick any date.
+          </p>
+          <a href="/reports/hourly">
+            <Button variant="outline" size="sm">
+              Open report
+            </Button>
+          </a>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {reports
           .filter((r) => can(user.role, r.module, "export", db.role_permissions))
