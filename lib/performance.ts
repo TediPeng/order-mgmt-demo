@@ -18,7 +18,6 @@ export interface AgentDailyRow {
   calls: number;
   /** Rows from uploaded call logs. Kept as a separate compliance figure, NOT
    * used in any rate, so the two numbers can be compared rather than conflated. */
-  uploaded_call_logs: number;
   orders: number;
   quantity: number; // sum of order.quantity for sale-status orders -- AOV's denominator (Section 0.3)
   amount: number;
@@ -30,13 +29,6 @@ export interface AgentAggRow extends AgentDailyRow {
   aov: number | null;
 }
 
-function callEffectiveDate(callDate: string, uploadedAt: string): string {
-  if (callDate) {
-    const parsed = new Date(callDate);
-    if (!isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
-  }
-  return uploadedAt.slice(0, 10);
-}
 
 /** Every account that carries leads. Full-access roles do not. */
 export function eligibleAgents(db: DbShape): Profile[] {
@@ -92,29 +84,8 @@ export function computeDailyAgentStats(
   orderStats?: Map<string, DailyOrderStat>
 ): AgentDailyRow[] {
   const rowMap = new Map<string, AgentDailyRow>();
-  const key = (agentId: string, date: string) => `${agentId}|${date}`;
   const agentIdSet = new Set(agentIds);
 
-  const callLogById = new Map(db.call_logs.map((c) => [c.id, c]));
-  for (const rec of db.call_log_records) {
-    if (!rec.agent_id || !agentIdSet.has(rec.agent_id)) continue;
-    const callLog = callLogById.get(rec.call_log_id);
-    const date = callEffectiveDate(rec.call_date, callLog?.uploaded_at || "");
-    if (date < from || date > to) continue;
-    const k = key(rec.agent_id, date);
-    const row = rowMap.get(k) || {
-      agent_id: rec.agent_id,
-      date,
-      calls: 0,
-      uploaded_call_logs: 0,
-      orders: 0,
-      quantity: 0,
-      amount: 0,
-      returned: 0,
-    };
-    row.uploaded_call_logs++;
-    rowMap.set(k, row);
-  }
 
   if (sessionCounts) {
     for (const [k, count] of sessionCounts) {
@@ -124,7 +95,6 @@ export function computeDailyAgentStats(
         agent_id: agentId,
         date,
         calls: 0,
-        uploaded_call_logs: 0,
         orders: 0,
         quantity: 0,
         amount: 0,
@@ -147,7 +117,6 @@ export function computeDailyAgentStats(
         agent_id: agentId,
         date,
         calls: 0,
-        uploaded_call_logs: 0,
         orders: 0,
         quantity: 0,
         amount: 0,
@@ -202,14 +171,12 @@ export function aggregateByPeriod(rows: AgentDailyRow[], granularity: Granularit
       agent_id: row.agent_id,
       date: bucket,
       calls: 0,
-      uploaded_call_logs: 0,
       orders: 0,
       quantity: 0,
       amount: 0,
       returned: 0,
     };
     acc.calls += row.calls;
-    acc.uploaded_call_logs += row.uploaded_call_logs;
     acc.orders += row.orders;
     acc.quantity += row.quantity;
     acc.amount += row.amount;
@@ -237,7 +204,6 @@ export function totalsByAgent(rows: AgentDailyRow[]): AgentTotals[] {
     const acc = map.get(row.agent_id) || {
       agent_id: row.agent_id,
       calls: 0,
-      uploaded_call_logs: 0,
       orders: 0,
       quantity: 0,
       amount: 0,

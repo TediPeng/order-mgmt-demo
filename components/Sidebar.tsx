@@ -7,7 +7,6 @@ import {
   LayoutDashboard,
   ShoppingCart,
   Package,
-  PhoneCall,
   PhoneOutgoing,
   Mic,
   UploadCloud,
@@ -148,7 +147,6 @@ export function Sidebar({
     {
       title: "Files",
       items: [
-        { href: "/call-logs", label: "Call Logs", icon: PhoneCall, show: access.call_logs },
         { href: "/file-uploads", label: "File Uploads", icon: UploadCloud, show: access.file_uploads },
       ],
     },

@@ -17,7 +17,7 @@ import { readDbLite } from "@/lib/db";
 import { recentActivity as fetchRecentActivity } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import { formatDateTime } from "@/lib/utils";
 import { StatGrid, StatWidget } from "@/components/StatCard";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
@@ -48,8 +48,6 @@ export default async function DashboardPage({
   const scope = leadScopeFor(user, db);
 
   const canImport = can(user.role, "orders", "upload", db.role_permissions);
-  const canViewCallLogs = !isAgent && can(user.role, "call_logs", "view", db.role_permissions);
-  const canUploadCallLogs = can(user.role, "call_logs", "upload", db.role_permissions);
   const canViewRegularCustomers = can(user.role, "regular_customers", "view", db.role_permissions);
   const canAddRegularCustomer = can(user.role, "regular_customers", "create", db.role_permissions);
   const canViewPerformance = can(user.role, "performance", "view", db.role_permissions);
@@ -189,7 +187,6 @@ export default async function DashboardPage({
         }
       : null;
 
-  const recentCallLogs = [...db.call_logs].sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at)).slice(0, 5);
   const byId = new Map(db.profiles.map((p) => [p.id, p.full_name]));
 
   // Agents only ever see their own entries, so the scoping is pushed into the
@@ -243,11 +240,6 @@ export default async function DashboardPage({
             {canImport && (
               <LinkButton href="/leads/import" variant="outline" size="sm">
                 <FileSpreadsheet className="h-4 w-4" /> Import Excel
-              </LinkButton>
-            )}
-            {canUploadCallLogs && (
-              <LinkButton href="/call-logs" variant="outline" size="sm">
-                <PhoneCall className="h-4 w-4" /> Upload Call Log
               </LinkButton>
             )}
             {/* Which numbers have already been rung today. Every other calling
@@ -487,30 +479,6 @@ export default async function DashboardPage({
             </Card>
           )}
 
-          {canViewCallLogs && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Call Log Uploads</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <ul className="divide-y divide-slate-100">
-                  {recentCallLogs.map((c) => (
-                    <li key={c.id} className="px-5 py-3 text-sm">
-                      <Link href={`/call-logs/${c.id}`} className="font-medium text-[var(--brand-primary)] hover:underline">
-                        {c.file_name}
-                      </Link>
-                      <p className="text-xs text-slate-400">
-                        {byId.get(c.uploaded_by) || "—"} · {formatDate(c.uploaded_at)}
-                      </p>
-                    </li>
-                  ))}
-                  {recentCallLogs.length === 0 && (
-                    <li className="px-5 py-6 text-center text-sm text-slate-400">No uploads yet.</li>
-                  )}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
         </div>
       </div>
     </div>

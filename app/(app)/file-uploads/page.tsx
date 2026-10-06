@@ -16,15 +16,6 @@ export default async function FileUploadsPage() {
 
   const byId = new Map(db.profiles.map((p) => [p.id, p.full_name]));
 
-  const callLogEvents = db.call_logs.map((c) => ({
-    id: c.id,
-    type: "Call Log" as const,
-    file_name: c.file_name,
-    uploaded_by: c.uploaded_by,
-    uploaded_at: c.uploaded_at,
-    count: c.record_count,
-    href: `/call-logs/${c.id}`,
-  }));
 
   const importEvents = (await auditByAction("LEADS_IMPORTED"))
     .map((e) => ({
@@ -37,7 +28,7 @@ export default async function FileUploadsPage() {
       href: "/leads",
     }));
 
-  const all = [...callLogEvents, ...importEvents].sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at));
+  const all = [...importEvents].sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at));
 
   return (
     <div>
@@ -61,9 +52,9 @@ export default async function FileUploadsPage() {
               {all.map((e) => (
                 <tr key={e.id}>
                   <td className="px-4 py-3">
-                    <Badge className={e.type === "Call Log" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"}>
-                      {e.type}
-                    </Badge>
+                    {/* Lead imports are all that reach this list now; the two
+                        colours were here to tell them from call-log uploads. */}
+                    <Badge className="bg-purple-100 text-purple-700">{e.type}</Badge>
                   </td>
                   <td className="px-4 py-3">
                     <Link href={e.href} className="font-medium text-[var(--brand-primary)] hover:underline">
