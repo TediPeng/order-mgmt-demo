@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Input, Label, Select, Textarea } from "@/components/ui/Field";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
@@ -112,6 +112,11 @@ export function LeadForm({
     status: "ringing",
   });
   const [showProblems, setShowProblems] = useState(false);
+  // Guards the Save button against a double-click. A ref rather than state
+  // alone because the second click arrives before React has re-rendered the
+  // first one's disabled state.
+  const submittingRef = useRef(false);
+  const [submitting, setSubmitting] = useState(false);
   // Mirrors the line editor, purely so the Packaging pre-check below can still
   // ask "is there a product, a quantity and a price" now that those live in
   // lines rather than in three fields on this form.
@@ -160,7 +165,26 @@ export function LeadForm({
         if (problems.length > 0) {
           e.preventDefault();
           setShowProblems(true);
+          return;
         }
+        // The second half of a double-click. The first submit is already on its
+        // way, and letting this one through saved the order twice -- which the
+        // line editor then read back as every product listed twice, and the
+        // total doubled with it.
+        if (submittingRef.current) {
+          e.preventDefault();
+          return;
+        }
+        submittingRef.current = true;
+        setSubmitting(true);
+        // A server action that answers with an error instead of navigating
+        // leaves this form mounted, and a Save button disabled for good is a
+        // worse fault than the double it prevents. Nothing re-enables it on
+        // success because the page has gone by then.
+        window.setTimeout(() => {
+          submittingRef.current = false;
+          setSubmitting(false);
+        }, 10_000);
       }}
       className="space-y-4"
       noValidate
@@ -297,7 +321,9 @@ export function LeadForm({
             the heading above already says this is an order, and a screen that
             calls the same thing two names makes the reader stop and work out
             which is true. */}
-        <Button type="submit">{prefill ? "Save Order" : "Save Lead"}</Button>
+        <Button type="submit" disabled={submitting}>
+          {submitting ? "Saving…" : prefill ? "Save Order" : "Save Lead"}
+        </Button>
       </div>
     </form>
   );

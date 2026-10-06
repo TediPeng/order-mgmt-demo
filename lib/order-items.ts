@@ -97,8 +97,19 @@ export async function replaceItems(orderId: string, items: OrderItemInput[]): Pr
     updated_at: new Date().toISOString(),
   }));
 
-  const { error: insError } = await supabaseAdmin.from("order_items").insert(rows);
-  if (insError) throw new Error(`order_items insert failed: ${insError.message}`);
+  // upsert, not insert, on the unique (order_id, position).
+  //
+  // The delete above and this write are two statements, so two saves of the
+  // same order can interleave: both delete, then both write. As an insert that
+  // left every line in twice, and the next save read those doubled lines back
+  // and stamped a doubled total_amount onto the order -- which is what a
+  // double-clicked Save looked like from the floor. An upsert makes the second
+  // writer land on the first writer's rows instead of beside them, so the
+  // order ends with one copy however many times it is saved.
+  const { error: insError } = await supabaseAdmin
+    .from("order_items")
+    .upsert(rows, { onConflict: "order_id,position" });
+  if (insError) throw new Error(`order_items write failed: ${insError.message}`);
 }
 
 /**
