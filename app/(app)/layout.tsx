@@ -1,9 +1,8 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { getCurrentUser } from "@/lib/auth";
-import { readDbLite, writeDb } from "@/lib/db";
+import { readDbLite } from "@/lib/db";
 import { can } from "@/lib/permissions";
-import { sweepAutoAbsences, sweepAutoTimeOuts } from "@/lib/attendance-sweep";
 import { servingLocalAgainstProduction } from "@/lib/production-guard";
 import { maybeSweepPancakeSync } from "@/lib/pancake/sweep";
 import { MODULES } from "@/lib/types";
@@ -38,10 +37,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // roles, permissions and notifications — not the orders table, which on a
   // busy floor is tens of thousands of rows fetched to render a menu.
   const db = await readDbLite();
-  // Two sweeps, one write: a forgotten shift and a missing day are both things
-  // the app notices on the next request rather than on a schedule it does not have.
-  const swept = sweepAutoTimeOuts(db);
-  if (sweepAutoAbsences(db) || swept) await writeDb(db);
+  // The two attendance sweeps that used to run here are gone. They closed a
+  // forgotten shift and marked a missing day, and both only ever had work to do
+  // because ROMA was where a shift began. Nobody times in here now, so they ran
+  // on every request to find nothing -- and they wrote the whole database back
+  // when they did find something.
+  //
   // Throttled, fire-and-forget: drives Pancake retries/polling without
   // depending on the Vercel Cron frequency available on the current plan.
   maybeSweepPancakeSync();

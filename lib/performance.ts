@@ -23,9 +23,6 @@ export interface AgentDailyRow {
   quantity: number; // sum of order.quantity for sale-status orders -- AOV's denominator (Section 0.3)
   amount: number;
   returned: number;
-  time_in: string | null;
-  time_out: string | null;
-  total_hours: number | null;
 }
 
 export interface AgentAggRow extends AgentDailyRow {
@@ -114,9 +111,6 @@ export function computeDailyAgentStats(
       quantity: 0,
       amount: 0,
       returned: 0,
-      time_in: null,
-      time_out: null,
-      total_hours: null,
     };
     row.uploaded_call_logs++;
     rowMap.set(k, row);
@@ -135,9 +129,6 @@ export function computeDailyAgentStats(
         quantity: 0,
         amount: 0,
         returned: 0,
-        time_in: null,
-        time_out: null,
-        total_hours: null,
       };
       row.calls = count;
       rowMap.set(k, row);
@@ -161,9 +152,6 @@ export function computeDailyAgentStats(
         quantity: 0,
         amount: 0,
         returned: 0,
-        time_in: null,
-        time_out: null,
-        total_hours: null,
       };
       row.orders = stat.orders;
       row.quantity = stat.quantity;
@@ -173,28 +161,6 @@ export function computeDailyAgentStats(
     }
   }
 
-  for (const att of db.attendance) {
-    if (!agentIdSet.has(att.user_id)) continue;
-    if (att.work_date < from || att.work_date > to) continue;
-    const k = key(att.user_id, att.work_date);
-    const row = rowMap.get(k) || {
-      agent_id: att.user_id,
-      date: att.work_date,
-      calls: 0,
-      uploaded_call_logs: 0,
-      orders: 0,
-      quantity: 0,
-      amount: 0,
-      returned: 0,
-      time_in: null,
-      time_out: null,
-      total_hours: null,
-    };
-    row.time_in = att.time_in;
-    row.time_out = att.time_out;
-    row.total_hours = att.total_hours;
-    rowMap.set(k, row);
-  }
 
   return Array.from(rowMap.values());
 }
@@ -241,9 +207,6 @@ export function aggregateByPeriod(rows: AgentDailyRow[], granularity: Granularit
       quantity: 0,
       amount: 0,
       returned: 0,
-      time_in: null,
-      time_out: null,
-      total_hours: 0,
     };
     acc.calls += row.calls;
     acc.uploaded_call_logs += row.uploaded_call_logs;
@@ -251,7 +214,6 @@ export function aggregateByPeriod(rows: AgentDailyRow[], granularity: Granularit
     acc.quantity += row.quantity;
     acc.amount += row.amount;
     acc.returned += row.returned;
-    acc.total_hours = (acc.total_hours || 0) + (row.total_hours || 0);
     map.set(k, acc);
   }
   return withComputedRates(Array.from(map.values()));
@@ -264,7 +226,6 @@ export interface AgentTotals {
   quantity: number;
   amount: number;
   returned: number;
-  total_hours: number;
   conversion_rate: number | null;
   aov: number | null;
   return_rate: number | null;
@@ -281,7 +242,6 @@ export function totalsByAgent(rows: AgentDailyRow[]): AgentTotals[] {
       quantity: 0,
       amount: 0,
       returned: 0,
-      total_hours: 0,
       conversion_rate: null,
       aov: null,
       return_rate: null,
@@ -291,7 +251,6 @@ export function totalsByAgent(rows: AgentDailyRow[]): AgentTotals[] {
     acc.quantity += row.quantity;
     acc.amount += row.amount;
     acc.returned += row.returned;
-    acc.total_hours += row.total_hours || 0;
     map.set(row.agent_id, acc);
   }
   for (const acc of map.values()) {

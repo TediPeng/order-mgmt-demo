@@ -7,7 +7,7 @@ import { scopeAgentsForUser, computeDailyAgentStats, aggregateByPeriod, resolveD
 import { agentDailyOrderStats } from "@/lib/performance-query";
 
 import { countCompletedSessions } from "@/lib/call-sessions";
-import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { Input, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
@@ -178,11 +178,8 @@ export default async function AgentPerformancePage({ searchParams }: { searchPar
               </th>
               {granularity === "daily" && (
                 <>
-                  <th className="px-4 py-3">Time In</th>
-                  <th className="px-4 py-3">Time Out</th>
                 </>
               )}
-              <th className="px-4 py-3">Total Hours</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -197,11 +194,8 @@ export default async function AgentPerformancePage({ searchParams }: { searchPar
                 <td className="px-4 py-3">{r.aov === null ? "—" : formatCurrency(r.aov)}</td>
                 {granularity === "daily" && (
                   <>
-                    <td className="px-4 py-3">{formatTime(r.time_in)}</td>
-                    <td className="px-4 py-3">{formatTime(r.time_out)}</td>
                   </>
                 )}
-                <td className="px-4 py-3">{r.total_hours ?? "—"}</td>
               </tr>
             ))}
             {table.length === 0 && (

@@ -49,7 +49,6 @@ export async function GET(req: NextRequest) {
     formatCurrency(r.amount),
     r.conversion_rate === null ? "—" : `${r.conversion_rate}%`,
     r.aov === null ? "—" : formatCurrency(r.aov),
-    r.total_hours ?? "—",
   ]);
   const csv = buildBrandedCsv(`Agent Performance (${range.label})`, header, csvRows);
 
