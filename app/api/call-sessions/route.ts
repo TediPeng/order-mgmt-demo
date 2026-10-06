@@ -7,7 +7,6 @@ import { getRequestInfo } from "@/lib/request-info";
 import { startSession, endSession, getActiveSession, type CallTarget } from "@/lib/call-sessions";
 import { getActiveBioBreak } from "@/lib/bio-breaks";
 import { getCustomer } from "@/lib/customers";
-import { timeInBlockReason, TIME_IN_HREF } from "@/lib/time-in-gate";
 import type { Customer, Order } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -79,11 +78,16 @@ export async function POST(req: NextRequest) {
     target = { customerId };
   }
 
-  // No call may start before the agent has timed in for the day (Section 2).
-  const notTimedIn = timeInBlockReason(db, user);
-  if (notTimedIn) {
-    return NextResponse.json({ ok: false, error: notTimedIn, timeInRequired: true, timeInHref: TIME_IN_HREF }, { status: 403 });
-  }
+  // Calling no longer waits on a time-in. The gate still stands on the three
+  // other things it covered -- creating a lead, creating an order, changing a
+  // status -- because those credit work to a shift. Picking up the phone does
+  // not, and an agent who has not clocked in yet is still an agent the floor
+  // wants ringing customers.
+  //
+  // CallingPanel still knows how to render the "Go to Time In" prompt. It is
+  // fed by `timeInRequired` on this response and nothing sends that now, so the
+  // branch is dormant rather than deleted: if the rule comes back, it is this
+  // block that returns, not the whole path.
 
   // Bio breaks and calls are mutually exclusive, so an agent is never both On
   // Call and On Break at once and the monitor's standby arithmetic has no
