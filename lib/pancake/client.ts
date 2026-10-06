@@ -4,12 +4,12 @@ import { AUTH_QUERY_PARAM, DEFAULT_API_BASE_URL, REQUEST_TIMEOUT_MS, mockMode } 
 /**
  * The three fields an authenticated Pancake call actually needs.
  *
- * Narrower than PancakeAccount on purpose, so a caller can authenticate without
- * having to own a row in `pancake_accounts` — that table is the OUTBOUND
- * routing table, and an extra active row in it joins resolveAccount()'s
- * fallback chain, where a mis-resolved forward writes a real order into another
- * brand's shop. PancakeAccount satisfies this interface structurally, so every
- * caller that does have a row passes one unchanged.
+ * Widened from PancakeAccount so the Logistics module can reuse this transport
+ * without its read-only connections having to live in `pancake_accounts` —
+ * that table is the OUTBOUND routing table, and an extra active row in it joins
+ * resolveAccount()'s fallback chain, where a mis-resolved forward writes a real
+ * order into another brand's shop. PancakeAccount satisfies this structurally,
+ * so every existing caller is unchanged.
  */
 export interface PancakeCredentials {
   api_endpoint: string;
@@ -166,10 +166,10 @@ function explainConnectionFailure(httpStatus: number | null, raw: string): strin
 /**
  * The real credential check, with no mock-mode short circuit.
  *
- * Kept separate from testConnection, which short-circuits under
- * PANCAKE_MOCK_MODE, so there is still a way to put real credentials against a
- * real shop while the outbound integration is being simulated locally. A
- * simulated success must never be reported as proof that a credential works.
+ * Split out from testConnection so the Logistics module can verify a shop for
+ * real while PANCAKE_MOCK_MODE is simulating the outbound integration locally —
+ * they are different credentials against different shops, and a simulated
+ * success for one must not be reported as proof for the other.
  */
 export async function probeShop(account: PancakeCredentials): Promise<{ ok: boolean; message: string }> {
   // A shop id has to be there before there is any point asking Pancake about
