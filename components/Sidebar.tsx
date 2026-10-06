@@ -20,7 +20,6 @@ import {
   LineChart,
   Clock,
   Timer,
-  CalendarClock,
   CalendarDays,
   ShieldAlert,
   Users,
@@ -175,7 +174,6 @@ export function Sidebar({
         // roster that stops being maintained, and the first sign of it would be
         // wrong lateness in ROMA's own timesheet, which nothing announces.
         { href: "/schedule", label: "Schedule", icon: CalendarDays, show: access.schedules && !workforceInPortal },
-        { href: "/leave", label: "Leave Requests", icon: CalendarClock, show: access.leave },
         { href: "/schedule/suspensions", label: "Disciplinary", icon: ShieldAlert, show: access.disciplinary },
       ],
     },

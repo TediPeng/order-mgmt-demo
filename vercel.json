@@ -22,12 +22,12 @@
       "schedule": "*/10 * * * *"
     },
     {
-      "path": "/api/cron/portal-leave-sync",
+      "path": "/api/cron/portal-schedule-sync",
       "schedule": "*/10 * * * *"
     },
     {
-      "path": "/api/cron/portal-schedule-sync",
-      "schedule": "*/10 * * * *"
+      "path": "/api/cron/sales-report",
+      "schedule": "0 0-12 * * *"
     }
   ]
 }

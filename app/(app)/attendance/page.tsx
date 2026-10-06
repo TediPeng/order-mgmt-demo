@@ -7,14 +7,11 @@ import { can, isFullAccess } from "@/lib/permissions";
 import { formatDate, formatTime, todayInTz } from "@/lib/utils";
 import { AttendanceWidget } from "@/components/AttendanceWidget";
 import { AttendanceCalendar } from "@/components/AttendanceCalendar";
-import { RequestLeaveButton } from "@/components/RequestLeaveButton";
-import { leaveCountsByDate, leavePickerWindow, maxApprovedPerDay } from "@/lib/leave";
 import { BackToCallButton } from "@/components/BackToCallButton";
 import { AttendanceStatusBadge, LateFlag, OverBreakFlag } from "@/components/ui/AttendanceBadge";
 import { Alert } from "@/components/ui/Alert";
 import { Select } from "@/components/ui/Field";
 import { Button, LinkButton } from "@/components/ui/Button";
-import { fileLeaveAction } from "@/lib/actions/leave";
 import type { Attendance, AttendanceStatus } from "@/lib/types";
 
 function parseMonth(raw: string | undefined, todayStr: string): { year: number; month: number } {
@@ -64,7 +61,6 @@ export default async function AttendancePage({
   const canViewAll = can(user.role, "attendance", "view", db.role_permissions);
   const canExport = can(user.role, "attendance", "export", db.role_permissions);
   const canManage = can(user.role, "attendance", "create", db.role_permissions);
-  const canFileLeave = can(user.role, "leave", "create", db.role_permissions);
 
   const visibleUserIds =
     canViewAll && user.role === "team_lead"
@@ -102,8 +98,6 @@ export default async function AttendancePage({
   }
 
   // The six weeks the leave form's calendar draws.
-  const leaveWindow = leavePickerWindow(todayStr);
-  const leaveDays = leaveCountsByDate(db, leaveWindow.from, leaveWindow.to);
 
   const isTableView = sp.view === "table";
   // Everyone, for one day. The other two views answer "this person, this
@@ -168,7 +162,6 @@ export default async function AttendancePage({
               in the leads table, so without this the way back is to remember
               which lead it was on. Renders nothing when no call is running. */}
           <BackToCallButton />
-          {canFileLeave && <RequestLeaveButton action={fileLeaveAction} today={todayStr} leaveDays={leaveDays} cap={maxApprovedPerDay(db)} />}
           {canManage && (
             <LinkButton href="/attendance/manage" variant="outline" size="sm">
               Manage Attendance
