@@ -89,7 +89,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         roleName={roleName}
         access={access}
         canImportRegularCustomers={can(user.role, "regular_customers", "create", db.role_permissions)}
-        canManageLogistics={can(user.role, "logistics", "manage", db.role_permissions)}
         workforceInPortal={portalOwnsAttendance()}
         localAgainstProduction={servingLocalAgainstProduction()}
         notifications={notifications}
