@@ -5,6 +5,7 @@ import { Input, Label, Select } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { suggestUsername } from "@/lib/passwords";
 import { createUserAction } from "@/lib/actions/users";
+import { useSubmitGuard } from "@/lib/use-submit-guard";
 
 /**
  * Section 8: the username is generated from the Call Name as `ROMA_<callname>`,
@@ -21,6 +22,7 @@ export function CreateUserForm({
   teamLeads: { id: string; full_name: string }[];
   takenUsernames: string[];
 }) {
+  const { submitting, guardSubmit } = useSubmitGuard();
   const [callName, setCallName] = useState("");
   const [username, setUsername] = useState("");
   const [usernameEdited, setUsernameEdited] = useState(false);
@@ -34,7 +36,7 @@ export function CreateUserForm({
   }
 
   return (
-    <form action={createUserAction} className="grid grid-cols-1 gap-4 sm:grid-cols-6">
+    <form action={createUserAction} onSubmit={guardSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-6">
       <div className="sm:col-span-2">
         <Label htmlFor="full_name">Full name</Label>
         <Input id="full_name" name="full_name" required />
@@ -108,7 +110,7 @@ export function CreateUserForm({
           A unique random temporary password is generated on save and shown to you once. The account must change it
           before it can use the system.
         </p>
-        <Button type="submit">Create User</Button>
+        <Button type="submit" disabled={submitting}>Create User</Button>
       </div>
     </form>
   );

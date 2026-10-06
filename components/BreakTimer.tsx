@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { startBreakAction, endBreakAction, checkOverBreakAction } from "@/lib/actions/attendance";
+import { useSubmitGuard } from "@/lib/use-submit-guard";
 
 function formatMinSec(totalSeconds: number): string {
   const sign = totalSeconds < 0 ? "-" : "";
@@ -33,6 +34,7 @@ export function BreakTimer({
   breakCutoffMs: number;
   redirectTo: string;
 }) {
+  const { submitting, guardSubmit } = useSubmitGuard();
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [elapsedSec, setElapsedSec] = useState(0);
@@ -107,18 +109,18 @@ export function BreakTimer({
             </p>
             <p className="mt-1 text-xs text-slate-400">Elapsed {formatMinSec(elapsedSec)} of {allowanceMinutes} min</p>
           </div>
-          <form action={endBreakAction}>
+          <form action={endBreakAction} onSubmit={guardSubmit}>
             <input type="hidden" name="redirect_to" value={redirectTo} />
-            <Button type="submit" variant="secondary" className="w-full">
+            <Button type="submit" disabled={submitting} variant="secondary" className="w-full">
               End Break
             </Button>
           </form>
         </div>
       ) : (
         <div className="space-y-2">
-          <form action={startBreakAction}>
+          <form action={startBreakAction} onSubmit={guardSubmit}>
             <input type="hidden" name="redirect_to" value={redirectTo} />
-            <Button type="submit" variant="outline" className="w-full" disabled={!!breakEnd || breakClosed}>
+            <Button type="submit" variant="outline" className="w-full" disabled={!!breakEnd || breakClosed || submitting}>
               {breakEnd
                 ? "Break already used today"
                 : breakClosed

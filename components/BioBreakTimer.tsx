@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Coffee } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { startBioBreakAction, endBioBreakAction } from "@/lib/actions/bio-breaks";
+import { useSubmitGuard } from "@/lib/use-submit-guard";
 
 function formatMinSec(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);
@@ -32,6 +33,7 @@ export function BioBreakTimer({
   redirectTo: string;
   onCall: boolean;
 }) {
+  const { submitting, guardSubmit } = useSubmitGuard();
   const [elapsed, setElapsed] = useState(0);
   const active = !!startedAt;
 
@@ -62,17 +64,17 @@ export function BioBreakTimer({
             <p className="text-xs uppercase tracking-wide text-amber-700">On bio break</p>
             <p className="font-mono text-3xl font-bold tabular-nums text-amber-900">{formatMinSec(elapsed)}</p>
           </div>
-          <form action={endBioBreakAction}>
+          <form action={endBioBreakAction} onSubmit={guardSubmit}>
             <input type="hidden" name="redirect_to" value={redirectTo} />
-            <Button type="submit" variant="secondary" className="w-full">
+            <Button type="submit" disabled={submitting} variant="secondary" className="w-full">
               End Bio Break
             </Button>
           </form>
         </div>
       ) : (
-        <form action={startBioBreakAction}>
+        <form action={startBioBreakAction} onSubmit={guardSubmit}>
           <input type="hidden" name="redirect_to" value={redirectTo} />
-          <Button type="submit" variant="outline" className="w-full" disabled={onCall}>
+          <Button type="submit" variant="outline" className="w-full" disabled={onCall || submitting}>
             <Coffee className="h-4 w-4" />
             {onCall ? "End your call first" : "Start Bio Break"}
           </Button>

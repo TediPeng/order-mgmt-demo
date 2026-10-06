@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { startBreakAction, endBreakAction } from "@/lib/actions/attendance";
 import { startBioBreakAction, endBioBreakAction } from "@/lib/actions/bio-breaks";
 import { useCallSession } from "@/components/CallSessionProvider";
+import { useSubmitGuard } from "@/lib/use-submit-guard";
 
 /**
  * Compact break controls for a page header.
@@ -49,6 +50,7 @@ export function BreakControls({
   breakCutoffMs: number;
   redirectTo: string;
 }) {
+  const { submitting, guardSubmit } = useSubmitGuard();
   // Read from the app-wide provider rather than a server prop, so the Bio Break
   // button disables the moment a call starts instead of waiting for a refresh —
   // and the page avoids another query. Its shared tick only runs during a call,
@@ -94,7 +96,7 @@ export function BreakControls({
   return (
     <div className="flex items-center gap-2">
       {onBreak ? (
-        <form action={endBreakAction} className="flex items-center gap-1.5">
+        <form action={endBreakAction} onSubmit={guardSubmit} className="flex items-center gap-1.5">
           <input type="hidden" name="redirect_to" value={redirectTo} />
           <span
             className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-mono text-sm font-semibold tabular-nums ${
@@ -106,18 +108,18 @@ export function BreakControls({
             {overBreak ? "+" : ""}
             {mmss(breakRemaining)}
           </span>
-          <Button type="submit" variant="secondary" size="sm">
+          <Button type="submit" disabled={submitting} variant="secondary" size="sm">
             End Break
           </Button>
         </form>
       ) : (
-        <form action={startBreakAction}>
+        <form action={startBreakAction} onSubmit={guardSubmit}>
           <input type="hidden" name="redirect_to" value={redirectTo} />
           <Button
             type="submit"
             variant="outline"
             size="sm"
-            disabled={!!breakEnd || onBio || breakClosed}
+            disabled={!!breakEnd || onBio || breakClosed || submitting}
             title={breakClosed && !breakEnd ? "Breaks close at 4:00 PM" : undefined}
           >
             <Utensils className="h-4 w-4" />
@@ -127,7 +129,7 @@ export function BreakControls({
       )}
 
       {onBio ? (
-        <form action={endBioBreakAction} className="flex items-center gap-1.5">
+        <form action={endBioBreakAction} onSubmit={guardSubmit} className="flex items-center gap-1.5">
           <input type="hidden" name="redirect_to" value={redirectTo} />
           <span
             className="inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-2.5 py-1.5 font-mono text-sm font-semibold tabular-nums text-amber-800"
@@ -136,18 +138,18 @@ export function BreakControls({
             <Coffee className="h-3.5 w-3.5" aria-hidden />
             {mmss(bioElapsed)}
           </span>
-          <Button type="submit" variant="secondary" size="sm">
+          <Button type="submit" disabled={submitting} variant="secondary" size="sm">
             End Bio
           </Button>
         </form>
       ) : (
-        <form action={startBioBreakAction}>
+        <form action={startBioBreakAction} onSubmit={guardSubmit}>
           <input type="hidden" name="redirect_to" value={redirectTo} />
           <Button
             type="submit"
             variant="outline"
             size="sm"
-            disabled={onCall || onBreak}
+            disabled={onCall || onBreak || submitting}
             title={onCall ? "End your call first" : undefined}
           >
             <Coffee className="h-4 w-4" />

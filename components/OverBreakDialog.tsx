@@ -5,6 +5,7 @@ import { AlertTriangle, Utensils } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useCallSession } from "@/components/CallSessionProvider";
 import { endBreakAction } from "@/lib/actions/attendance";
+import { useSubmitGuard } from "@/lib/use-submit-guard";
 
 function mmss(totalSeconds: number): string {
   const abs = Math.abs(Math.floor(totalSeconds));
@@ -41,6 +42,7 @@ export function OverBreakDialog({
   onDismiss: () => void;
 }) {
   const { clock } = useCallSession();
+  const { submitting, guardSubmit } = useSubmitGuard();
   const [now, setNow] = useState(() => clock());
 
   useEffect(() => {
@@ -92,10 +94,10 @@ export function OverBreakDialog({
                 only reports a problem leaves the agent to go and find the End
                 Break button, which is on another part of the screen and, on the
                 clock page, another route entirely. */}
-            <form action={endBreakAction}>
+            <form action={endBreakAction} onSubmit={guardSubmit}>
               <input type="hidden" name="redirect_to" value={redirectTo} />
-              <Button type="submit" className="w-full justify-center">
-                End Break Now
+              <Button type="submit" className="w-full justify-center" disabled={submitting}>
+                {submitting ? "Ending…" : "End Break Now"}
               </Button>
             </form>
             <Button type="button" variant="outline" className="w-full justify-center" onClick={onDismiss}>

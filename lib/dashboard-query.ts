@@ -3,6 +3,7 @@ import { computeRtsPercentage } from "@/lib/performance";
 import type { AgentScope } from "@/lib/leads-query";
 import type { AgentDashboardStats, ManagementKpiStats } from "@/lib/performance";
 import type { Order } from "@/lib/types";
+import { SALE_STATUSES } from "@/lib/validation";
 
 /**
  * Dashboard figures, counted by the database.
@@ -11,7 +12,7 @@ import type { Order } from "@/lib/types";
  * rows fetched to produce eight numbers. The definitions live in SQL now
  * (lib/../migrations: dashboard_kpis and friends) and are deliberately the
  * same ones lib/performance.ts documents: leads bucket by created_at in the
- * app's timezone, sales and fulfillment bucket by order_date, and RTS is
+ * app's timezone, sales bucket by created_at too, fulfillment by order_date, and RTS is
  * Returned over Delivered on an order-count basis.
  *
  * The lead counts (total/new/ringing) exclude regular customers, matching
@@ -48,6 +49,9 @@ async function fetchKpis(scope: AgentScope, from: string, to: string): Promise<K
     p_from: from,
     p_to: to,
     p_tz: TZ,
+    // Same rule as the Performance page, sent to the query rather than
+    // restated in SQL. Without it the tile counted cancellations as sales.
+    p_sale_statuses: [...SALE_STATUSES],
   });
   if (error) throw new Error(`Dashboard KPIs failed: ${error.message}`);
   const row = (Array.isArray(data) ? data[0] : data) as KpiRow | undefined;

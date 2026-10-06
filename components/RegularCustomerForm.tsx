@@ -7,6 +7,7 @@ import { Button, LinkButton } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { AddressSelect, EMPTY_ADDRESS, type AddressValue } from "@/components/AddressSelect";
 import { regularCustomerOwnersElsewhereAction, type RegularDuplicateCheck } from "@/lib/actions/regular-customers";
+import { useSubmitGuard } from "@/lib/use-submit-guard";
 
 /**
  * Add Regular Customer.
@@ -50,6 +51,7 @@ export function RegularCustomerForm({
   const [duplicate, setDuplicate] = useState<RegularDuplicateCheck | null>(null);
   const [checking, setChecking] = useState(false);
   const confirmed = useRef(false);
+  const { submitting, guardSubmit } = useSubmitGuard();
   const formRef = useRef<HTMLFormElement>(null);
 
   const set = (key: keyof typeof values, value: string) => setValues((v) => ({ ...v, [key]: value }));
@@ -72,7 +74,11 @@ export function RegularCustomerForm({
           setShowProblems(true);
           return;
         }
+        // The duplicate check re-submits this form itself once it is happy, and
+        // that pass must go through -- the guard below would see it as a repeat.
         if (confirmed.current) return;
+        // A real second click, before React has disabled the button.
+        if (!guardSubmit(e)) return;
 
         e.preventDefault();
         setChecking(true);
@@ -180,7 +186,7 @@ export function RegularCustomerForm({
         <LinkButton href="/regular-customers" variant="outline">
           Cancel
         </LinkButton>
-        <Button type="submit" disabled={checking}>
+        <Button type="submit" disabled={checking || submitting}>
           {checking ? "Checking…" : "Save Regular Customer"}
         </Button>
       </div>

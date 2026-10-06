@@ -1,9 +1,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Input, Label, Select } from "@/components/ui/Field";
-import { Button, LinkButton } from "@/components/ui/Button";
+import { LinkButton } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { createProductAction } from "@/lib/actions/products";
 import { PRODUCT_STATUSES, PRODUCT_STATUS_LABELS } from "@/lib/types";
+import { GuardedSubmit } from "@/components/ui/GuardedSubmit";
 
 export default async function NewProductPage({
   searchParams,
@@ -74,7 +75,7 @@ export default async function NewProductPage({
               <LinkButton href="/products" variant="outline">
                 Cancel
               </LinkButton>
-              <Button type="submit">Save Product</Button>
+              <GuardedSubmit pendingLabel="Saving…">Save Product</GuardedSubmit>
             </div>
           </form>
         </CardContent>

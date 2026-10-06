@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Input, Label, Select, Textarea, FieldError } from "@/components/ui/Field";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
+import { useSubmitGuard } from "@/lib/use-submit-guard";
 import { OrderItemsEditor, type EditorLine, type EditorProduct } from "@/components/OrderItemsEditor";
 import { AddressSelect } from "@/components/AddressSelect";
 import { LEAD_STATUS_LABELS, LEAD_STATUSES, PAYMENT_METHOD_SUGGESTIONS, ORDER_TAGS, selectableStatuses } from "@/lib/validation";
@@ -147,7 +148,13 @@ export function LeadEditForm({
     setForm((f) => ({ ...f, [key]: value }));
   }
 
+  const { submitting, guardSubmit, releaseGuard } = useSubmitGuard();
+
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    // Closes before the validation below, so the second half of a double-click
+    // never reaches the server. A rejected submit reopens it at the bottom --
+    // a typo should not leave Save dead for ten seconds.
+    if (!guardSubmit(e)) return;
     if (form.status === "packaging") {
       const missingFields: string[] = [];
       if (!form.customer_name.trim()) missingFields.push("customer_name");
@@ -164,6 +171,7 @@ export function LeadEditForm({
       if (missingFields.length > 0) {
         e.preventDefault();
         setMissing(missingFields);
+        releaseGuard();
         return;
       }
     }
@@ -447,7 +455,11 @@ export function LeadEditForm({
           <LinkButton href="/leads" variant="outline">
             Back
           </LinkButton>
-          {canEdit && <Button type="submit">Save Changes</Button>}
+          {canEdit && (
+            <Button type="submit" disabled={submitting}>
+              {submitting ? "Saving…" : "Save Changes"}
+            </Button>
+          )}
         </div>
       </div>
     </form>
