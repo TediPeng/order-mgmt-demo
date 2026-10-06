@@ -21,7 +21,6 @@ export function AppShell({
   roleName,
   access,
   canImportRegularCustomers,
-  workforceInPortal,
   localAgainstProduction,
   notifications,
   releases,
@@ -37,11 +36,10 @@ export function AppShell({
   /** Whether the company portal is where the floor keeps its own time and
    * roster. Decided on the server and carried through, because it reads
    * environment neither this component nor the sidebar can. */
-  workforceInPortal: boolean;
   /**
    * True when this page is served from a developer's machine against the live
    * database. Decided on the server (servingLocalAgainstProduction) and carried
-   * through, like workforceInPortal, because it reads environment no client
+   * through rather than worked out here, because it reads environment no client
    * component can see.
    */
   localAgainstProduction: boolean;
@@ -134,7 +132,7 @@ export function AppShell({
       <div className="flex min-h-0 flex-1">
       <div className="hidden lg:block">
         <Sidebar access={access} canMonitor={canMonitor} canHearRecordings={canHearRecordings} canSeeRemainingLeads={canSeeRemainingLeads}
-          canImportRegularCustomers={canImportRegularCustomers} workforceInPortal={workforceInPortal} collapsed={collapsed} />
+          canImportRegularCustomers={canImportRegularCustomers} collapsed={collapsed} />
       </div>
 
       {drawerOpen && (
@@ -146,7 +144,7 @@ export function AppShell({
           />
           <div className="relative z-10">
             <Sidebar access={access} canMonitor={canMonitor} canHearRecordings={canHearRecordings} canSeeRemainingLeads={canSeeRemainingLeads}
-          canImportRegularCustomers={canImportRegularCustomers} workforceInPortal={workforceInPortal} onNavigate={() => setDrawerOpen(false)} />
+          canImportRegularCustomers={canImportRegularCustomers} onNavigate={() => setDrawerOpen(false)} />
           </div>
           <button
             className="absolute right-4 top-4 z-10 cursor-pointer rounded-md bg-white p-1.5 shadow"

@@ -3,7 +3,6 @@ import {
   PlusCircle,
   FileSpreadsheet,
   PhoneCall,
-  Clock3,
   ShoppingCart,
   PackageCheck,
   Wallet,
@@ -21,8 +20,6 @@ import { can } from "@/lib/permissions";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { StatGrid, StatWidget } from "@/components/StatCard";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { AttendanceWidget } from "@/components/AttendanceWidget";
-import { portalOwnsAttendance } from "@/lib/portal-attendance";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { LinkButton } from "@/components/ui/Button";
@@ -258,9 +255,6 @@ export default async function DashboardPage({
             <LinkButton href="/calls" variant="outline" size="sm">
               <PhoneCall className="h-4 w-4" /> Numbers Called
             </LinkButton>
-            <LinkButton href="/attendance" variant="outline" size="sm">
-              <Clock3 className="h-4 w-4" /> View Attendance
-            </LinkButton>
           </>
         }
       />
@@ -478,7 +472,6 @@ export default async function DashboardPage({
               thing an agent reaches for and it would send them somewhere else
               every morning. The Attendance page still carries it, for reading
               back the day the portal recorded. */}
-          {!portalOwnsAttendance() && <AttendanceWidget user={user} showClock />}
 
           {rankingWidget && (
             <Card>
