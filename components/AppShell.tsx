@@ -21,7 +21,6 @@ export function AppShell({
   roleName,
   access,
   canImportRegularCustomers,
-  canManageLogistics,
   workforceInPortal,
   localAgainstProduction,
   notifications,
@@ -35,7 +34,6 @@ export function AppShell({
   /** regular_customers.create — an action grant, so it cannot be read off
    * `access`, which carries view only. */
   canImportRegularCustomers: boolean;
-  canManageLogistics: boolean;
   /** Whether the company portal is where the floor keeps its own time and
    * roster. Decided on the server and carried through, because it reads
    * environment neither this component nor the sidebar can. */
@@ -136,7 +134,7 @@ export function AppShell({
       <div className="flex min-h-0 flex-1">
       <div className="hidden lg:block">
         <Sidebar access={access} canMonitor={canMonitor} canHearRecordings={canHearRecordings} canSeeRemainingLeads={canSeeRemainingLeads}
-          canImportRegularCustomers={canImportRegularCustomers} canManageLogistics={canManageLogistics} workforceInPortal={workforceInPortal} collapsed={collapsed} />
+          canImportRegularCustomers={canImportRegularCustomers} workforceInPortal={workforceInPortal} collapsed={collapsed} />
       </div>
 
       {drawerOpen && (
@@ -148,7 +146,7 @@ export function AppShell({
           />
           <div className="relative z-10">
             <Sidebar access={access} canMonitor={canMonitor} canHearRecordings={canHearRecordings} canSeeRemainingLeads={canSeeRemainingLeads}
-          canImportRegularCustomers={canImportRegularCustomers} canManageLogistics={canManageLogistics} workforceInPortal={workforceInPortal} onNavigate={() => setDrawerOpen(false)} />
+          canImportRegularCustomers={canImportRegularCustomers} workforceInPortal={workforceInPortal} onNavigate={() => setDrawerOpen(false)} />
           </div>
           <button
             className="absolute right-4 top-4 z-10 cursor-pointer rounded-md bg-white p-1.5 shadow"
