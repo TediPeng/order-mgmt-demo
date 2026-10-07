@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
   const rows = aggregateByPeriod(daily, granularity);
   const byId = new Map(db.profiles.map((p) => [p.id, p.full_name]));
 
-  const header = ["Agent Name", "Performance Date", "Calls Made", "Order Qty", "Total Order Amount", "Conversion Rate", "AOV", "Total Hours"];
+  const header = ["Agent Name", "Performance Date", "Calls Made", "Order Qty", "Total Order Amount", "Conversion Rate", "AOV"];
   const csvRows = rows.map((r) => [
     byId.get(r.agent_id) || "Unknown",
     formatDate(r.date),
