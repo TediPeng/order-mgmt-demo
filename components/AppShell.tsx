@@ -58,7 +58,6 @@ export function AppShell({
   // Supervisory, like the monitor: an Administrator hears the whole floor, a
   // Team Lead their own agents. The page scopes the rows; this only decides
   // whether the link shows.
-  const canHearRecordings = canMonitor;
 
   // No websocket backend, so "real-time" dashboard stats, attendance widgets and
   // notifications are refreshed by re-running the server components in place —
@@ -128,7 +127,7 @@ export function AppShell({
       {localAgainstProduction && <LiveDatabaseBanner />}
       <div className="flex min-h-0 flex-1">
       <div className="hidden lg:block">
-        <Sidebar access={access} canMonitor={canMonitor} canHearRecordings={canHearRecordings} canSeeRemainingLeads={canSeeRemainingLeads}
+        <Sidebar access={access} canMonitor={canMonitor} canSeeRemainingLeads={canSeeRemainingLeads}
           canImportRegularCustomers={canImportRegularCustomers} collapsed={collapsed} />
       </div>
 
@@ -140,7 +139,7 @@ export function AppShell({
             onClick={() => setDrawerOpen(false)}
           />
           <div className="relative z-10">
-            <Sidebar access={access} canMonitor={canMonitor} canHearRecordings={canHearRecordings} canSeeRemainingLeads={canSeeRemainingLeads}
+            <Sidebar access={access} canMonitor={canMonitor} canSeeRemainingLeads={canSeeRemainingLeads}
           canImportRegularCustomers={canImportRegularCustomers} onNavigate={() => setDrawerOpen(false)} />
           </div>
           <button

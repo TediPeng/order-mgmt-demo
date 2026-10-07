@@ -8,7 +8,6 @@ import {
   ShoppingCart,
   Package,
   PhoneOutgoing,
-  Mic,
   UploadCloud,
   FileUp,
   Users2,
@@ -56,7 +55,6 @@ interface NavGroup {
 export function Sidebar({
   access,
   canMonitor = false,
-  canHearRecordings = false,
   canSeeRemainingLeads = false,
   canImportRegularCustomers = false,
   collapsed = false,
@@ -77,7 +75,6 @@ export function Sidebar({
    * conversations. The page redirects on the same rule, and
    * /api/recordings/<id> decides again per press of play.
    */
-  canHearRecordings?: boolean;
   /** The size of the floor's queue is a management number, so this is
    * Administrators and Management only -- narrower than performance.view,
    * which every Team Lead holds for their own team. */
@@ -109,7 +106,6 @@ export function Sidebar({
         // Beside Numbers Called, where the same audio already plays one row at
         // a time. This is the other way into it: the recordings themselves,
         // newest first, searchable by the number that was rung.
-        { href: "/recordings", label: "Call Recordings", icon: Mic, show: canHearRecordings },
         { href: "/regular-customers", label: "Regular Customers", icon: UserCheck, show: access.regular_customers },
         // Its own entry rather than a button on the list: an agent bringing
         // over a list of their repeat buyers goes straight to it, and the
