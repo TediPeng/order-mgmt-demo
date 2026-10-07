@@ -7,13 +7,9 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   dashboard: "Dashboard",
   orders: "Leads",
   products: "Products",
-  call_logs: "Call Logs",
   performance: "Performance",
   ranking: "Agent Ranking",
   attendance: "Attendance",
-  leave: "Leave Requests",
-  schedules: "Schedule",
-  disciplinary: "Disciplinary Actions",
   users: "Users",
   roles: "Roles & Permissions",
   reports: "Reports",
@@ -22,7 +18,6 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   integrations: "Integrations (Pancake POS)",
   file_uploads: "File Uploads",
   regular_customers: "Regular Customers",
-  logistics: "Logistics",
 };
 
 export const ACTION_LABELS: Record<ActionKey, string> = {
@@ -59,13 +54,9 @@ export const MODULE_ACTIONS: Record<ModuleKey, ActionKey[]> = {
   // in it. Splitting the action means "may import a catalogue" can be answered
   // on its own, which is the question anybody actually asks.
   products: ["view", "create", "edit", "delete", "upload"],
-  call_logs: ["view", "upload", "download", "delete", "export"],
   performance: ["view", "export"],
   ranking: ["view", "export"],
   attendance: ["view", "create", "edit", "export", "approve"],
-  leave: ["view", "create", "approve", "export"],
-  schedules: ["view", "create", "edit", "delete", "assign", "export"],
-  disciplinary: ["view", "manage"],
   users: ["view", "create", "edit", "delete", "assign"],
   roles: ["view", "create", "edit", "manage"],
   reports: ["view", "export"],
@@ -85,20 +76,6 @@ export const MODULE_ACTIONS: Record<ModuleKey, ActionKey[]> = {
   // person's name, number and address. The second is a disclosure, not an edit,
   // and an agent trusted with one is not automatically trusted with the other.
   regular_customers: ["view", "create", "edit", "assign", "manage"],
-  // Two grants cover all six permissions the logistics spec suggests.
-  //
-  // "view" is the whole read side — dashboard, On Delivery, Delayed Parcels,
-  // All Orders, search, filters and order details — because a logistics user
-  // who can see the queue can see every screen that queue is filtered onto;
-  // splitting them would be a distinction nobody administering this would use.
-  //
-  // "manage" is the connections themselves: adding a Pancake shop, editing or
-  // disabling one, testing it, triggering a sync, and reading sync logs. That
-  // is a different kind of trust — it touches credentials — so it is its own
-  // grant, and like `integrations` it is off for everyone by default below.
-  //
-  // "export" is reserved for the CSV the spec defers to a later phase (§49).
-  logistics: ["view", "manage", "export"],
 };
 
 type Grant = [ModuleKey, ActionKey];
@@ -124,10 +101,6 @@ const TEAM_LEAD_DEFAULTS: Grant[] = [
   // supplier's file. Whether that import may overwrite existing products is a
   // separate question, answered by products.edit at the moment of upload.
   ["products", "upload"],
-  ["call_logs", "view"],
-  ["call_logs", "upload"],
-  ["call_logs", "download"],
-  ["call_logs", "export"],
   ["performance", "view"],
   ["performance", "export"],
   ["ranking", "view"],
@@ -136,12 +109,8 @@ const TEAM_LEAD_DEFAULTS: Grant[] = [
   ["attendance", "edit"],
   ["attendance", "export"],
   ["attendance", "approve"],
-  ["leave", "view"],
-  ["leave", "approve"],
   // Section 2: Team Lead sees (but cannot create/edit) their team's schedules
   // and disciplinary records by default; Management can grant more via the matrix.
-  ["schedules", "view"],
-  ["disciplinary", "view"],
   ["audit_logs", "view"],
   ["reports", "view"],
   ["reports", "export"],
@@ -156,19 +125,14 @@ const AGENT_DEFAULTS: Grant[] = [
   ["orders", "view"],
   ["orders", "create"],
   ["orders", "edit"],
-  ["call_logs", "upload"],
   ["performance", "view"],
   // Section 0.7: agents can see the team ranking chart by default (an
   // intentional exception to "own data only", standard for sales floors);
   // Management can flip this off per-role in Settings > Roles & Permissions.
   ["ranking", "view"],
   ["attendance", "view"],
-  ["leave", "view"],
-  ["leave", "create"],
   // Agents see their own schedule and disciplinary history only -- row
   // scoping happens in lib/schedule-access.ts, same pattern as orders/leads.
-  ["schedules", "view"],
-  ["disciplinary", "view"],
   ["file_uploads", "view"],
   ["file_uploads", "upload"],
   // Regular Customers are the agent's OWN repeat buyers: they keep their own
