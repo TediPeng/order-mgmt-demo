@@ -24,7 +24,6 @@ import {
   Settings,
   KeyRound,
   Plug,
-  ScrollText,
   Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -159,7 +158,6 @@ export function Sidebar({
         { href: "/reports", label: "Reports", icon: FileBarChart, show: access.reports },
         { href: "/audit-logs", label: "Audit Logs", icon: History, show: access.audit_logs },
         { href: "/settings/system", label: "System Settings", icon: Settings, show: access.settings },
-        { href: "/settings/update-logs", label: "Update Logs", icon: ScrollText, show: access.settings },
       ],
     },
   ];

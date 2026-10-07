@@ -6,8 +6,6 @@ import { AuthShell } from "@/components/AuthShell";
 import { LiveDatabaseBanner } from "@/components/LiveDatabaseBanner";
 import { servingLocalAgainstProduction } from "@/lib/production-guard";
 import { Alert } from "@/components/ui/Alert";
-import { UpdateLogsPanel } from "@/components/UpdateLogsPanel";
-import { listUpdateLogs } from "@/lib/update-logs";
 import { APP_VERSION } from "@/lib/version";
 
 export default async function LoginPage({
@@ -18,7 +16,6 @@ export default async function LoginPage({
   const user = await getCurrentUser();
   if (user) redirect("/dashboard");
   const { error, reset } = await searchParams;
-  const releases = await listUpdateLogs({ publishedOnly: true });
   // Lite: this page needs one boolean out of app_settings, and it is the one
   // page every signed-out request lands on.
   const { operations } = await readDbLite();
@@ -33,12 +30,7 @@ export default async function LoginPage({
     <AuthShell
       title="Welcome back"
       subtitle="Sign in to your account"
-      footer={
-        <>
-          <p className="text-xs text-slate-400">Version {APP_VERSION}</p>
-          <UpdateLogsPanel releases={releases} />
-        </>
-      }
+      footer={<p className="text-xs text-slate-400">Version {APP_VERSION}</p>}
     >
       {error && (
         <Alert kind="error" className="mb-4">

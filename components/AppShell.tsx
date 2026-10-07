@@ -7,10 +7,9 @@ import { Sidebar } from "./Sidebar";
 import { LiveDatabaseBanner } from "./LiveDatabaseBanner";
 import { Topbar } from "./Topbar";
 import { Breadcrumb } from "./Breadcrumb";
-import { UpdateLogsPanel } from "./UpdateLogsPanel";
 import { APP_NAME, APP_VERSION } from "@/lib/version";
 import { isFullAccess } from "@/lib/permissions";
-import type { AppNotification, ModuleKey, Profile, UpdateLog } from "@/lib/types";
+import type { AppNotification, ModuleKey, Profile } from "@/lib/types";
 
 import { SIDEBAR_COOKIE, SIDEBAR_COOKIE_MAX_AGE } from "@/lib/ui-prefs";
 
@@ -23,7 +22,6 @@ export function AppShell({
   canImportRegularCustomers,
   localAgainstProduction,
   notifications,
-  releases,
   initialCollapsed,
   children,
 }: {
@@ -44,7 +42,6 @@ export function AppShell({
    */
   localAgainstProduction: boolean;
   notifications: AppNotification[];
-  releases: UpdateLog[];
   initialCollapsed: boolean;
   children: React.ReactNode;
 }) {
@@ -169,8 +166,6 @@ export function AppShell({
             <span>{APP_NAME}</span>
             <span aria-hidden>·</span>
             <span>Version {APP_VERSION}</span>
-            <span aria-hidden>·</span>
-            <UpdateLogsPanel releases={releases} />
           </footer>
         </div>
       </div>

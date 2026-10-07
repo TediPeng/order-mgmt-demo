@@ -15,7 +15,6 @@ import { ShiftWatcher } from "@/components/ShiftWatcher";
 
 import { todayInTz } from "@/lib/utils";
 import { getActiveSession } from "@/lib/call-sessions";
-import { listUpdateLogs } from "@/lib/update-logs";
 
 /** The only authenticated route reachable while a password reset is pending. */
 const CHANGE_PASSWORD_PATH = "/settings/password";
@@ -62,7 +61,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Read server-side so the sidebar renders at its saved width on first paint
   // rather than flashing open and snapping shut after hydration.
   const collapsed = (await cookies()).get(SIDEBAR_COOKIE)?.value === "1";
-  const releases = await listUpdateLogs({ publishedOnly: true });
 
   // The break warning watches from here, so it reaches whatever page the agent
   // is on. Everything it needs is already in `db` — this layout reads it on
@@ -91,7 +89,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         canImportRegularCustomers={can(user.role, "regular_customers", "create", db.role_permissions)}
         localAgainstProduction={servingLocalAgainstProduction()}
         notifications={notifications}
-        releases={releases}
         initialCollapsed={collapsed}
       >
         {children}
