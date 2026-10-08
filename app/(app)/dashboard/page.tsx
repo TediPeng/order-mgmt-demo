@@ -451,7 +451,16 @@ export default async function DashboardPage({
                         strong: false,
                       },
                       {
-                        label: `Never reached ROMA (${pos.orders - grossOrders.count})`,
+                        // Usually orders the POS holds and ROMA never got. It
+                        // goes the other way on the edges of a range, because
+                        // the two systems date an order by different clocks --
+                        // ROMA by the day it was packed, Pancake by the day it
+                        // was inserted -- so one near midnight lands on
+                        // different sides in each.
+                        label:
+                          pos.orders - grossOrders.count < 0
+                            ? `In ROMA, not in the POS (${grossOrders.count - pos.orders})`
+                            : `Never reached ROMA (${pos.orders - grossOrders.count})`,
                         value: signed(pos.amount - grossOrders.amount),
                         strong: false,
                       },
