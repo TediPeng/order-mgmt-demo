@@ -12,7 +12,7 @@ import { SALE_STATUSES } from "@/lib/validation";
  * rows fetched to produce eight numbers. The definitions live in SQL now
  * (lib/../migrations: dashboard_kpis and friends) and are deliberately the
  * same ones lib/performance.ts documents: leads bucket by created_at in the
- * app's timezone, sales bucket by created_at too, fulfillment by order_date, and RTS is
+ * app's timezone, sales and fulfillment both bucket by order_date, and RTS is
  * Returned over Delivered on an order-count basis.
  *
  * The lead counts (total/new/ringing) exclude regular customers, matching
