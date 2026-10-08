@@ -16,7 +16,7 @@ import {
 import { readDbLite } from "@/lib/db";
 import { recentActivity as fetchRecentActivity } from "@/lib/audit-log";
 import { getCurrentUser } from "@/lib/auth";
-import { can } from "@/lib/permissions";
+import { can, isFullAccess } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/utils";
 import { StatGrid, StatWidget } from "@/components/StatCard";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -27,7 +27,8 @@ import { RankingBars, type RankingRow } from "@/components/RankingBars";
 import { scopeAgentsForUser, scopeAgentsForRanking, resolveDateRange } from "@/lib/performance";
 import { leadScopeFor, leadStatusCounts } from "@/lib/leads-query";
 import { LeadStatusCards, QUICK_FILTER_STATUSES } from "@/components/LeadStatusCards";
-import { agentKpis, managementKpis, fulfillmentCounts, agentOrderTotals } from "@/lib/dashboard-query";
+import { agentKpis, managementKpis, fulfillmentCounts, agentOrderTotals, grossOrderTotals } from "@/lib/dashboard-query";
+import { posSalesForRange } from "@/lib/pancake/posDailyTotals";
 import { countCompletedSessions } from "@/lib/call-sessions";
 import { LEAD_STATUS_LABELS, FULFILLMENT_STATUSES } from "@/lib/validation";
 import { formatCurrency, todayInTz } from "@/lib/utils";
@@ -63,7 +64,12 @@ export default async function DashboardPage({
   // Delivered and Returned have cards of their own, so the In Fulfillment card
   // shows the stages between.
   const inFulfilmentStatuses = FULFILLMENT_STATUSES.filter((s) => s !== "delivered" && s !== "returned");
-  const [agentStats, kpiStats, fulfillmentBreakdown, statusCountsByStatus] = await Promise.all([
+  // The POS figure is the whole shop's, with no agent attribution in it, so it
+  // is offered only to the roles whose view is already the whole shop. A team
+  // lead's dashboard is scoped to their team and the POS cannot answer that
+  // question -- their tile stays on ROMA's own count.
+  const shopWide = !isAgent && isFullAccess(user.role);
+  const [agentStats, kpiStats, fulfillmentBreakdown, statusCountsByStatus, posSales, grossOrders] = await Promise.all([
     isAgent ? agentKpis(user.id, dashboardRange.from, dashboardRange.to) : Promise.resolve(null),
     !isAgent ? managementKpis(scope, dashboardRange.from, dashboardRange.to) : Promise.resolve(null),
     fulfillmentCounts(scope, dashboardRange.from, dashboardRange.to, inFulfilmentStatuses),
@@ -72,7 +78,15 @@ export default async function DashboardPage({
     // the present, not about a period, and the same figures back the cards on
     // the Leads page.
     leadStatusCounts(scope),
+    shopWide ? posSalesForRange(dashboardRange.from, dashboardRange.to) : Promise.resolve(null),
+    shopWide ? grossOrderTotals(scope, dashboardRange.from, dashboardRange.to) : Promise.resolve(null),
   ]);
+  // Only when the mirror has every day of the range. Short a week it would
+  // read as a bad week, so the tile falls back and says which figure it is on.
+  const pos = posSales && posSales.covered ? posSales : null;
+  // A deduction from the POS reads "-", and the one case where ROMA holds more
+  // than the POS does reads "+" rather than a negative subtraction.
+  const signed = (n: number) => `${n < 0 ? "+" : "−"} ${formatCurrency(Math.abs(n))}`;
   const statusCounts = QUICK_FILTER_STATUSES.map((s) => ({
     status: s,
     count: statusCountsByStatus.get(s) ?? 0,
@@ -345,13 +359,27 @@ export default async function DashboardPage({
                 tone="blue"
                 icon={Sparkles}
               />
+              {/* The POS total is the figure he reads to the floor, so when the
+                  mirror covers the whole range it is the one in large type and
+                  ROMA's own sits underneath. The two differ for exactly two
+                  reasons and the card below names both: a tile that agreed by
+                  hiding the difference would be worse than one that disagreed. */}
               <StatWidget
-                label="Overall Sales"
-                value={formatCurrency(kpiStats.sales.amount)}
+                label={pos ? "POS Sales" : "Overall Sales"}
+                value={formatCurrency(pos ? pos.amount : kpiStats.sales.amount)}
                 href="/leads?status=packaging"
                 tone="green"
                 icon={Wallet}
-                sub={<p>Qty: {kpiStats.sales.quantity}</p>}
+                sub={
+                  pos ? (
+                    <>
+                      <p>Qty: {pos.quantity}</p>
+                      <p>ROMA net: {formatCurrency(kpiStats.sales.amount)}</p>
+                    </>
+                  ) : (
+                    <p>Qty: {kpiStats.sales.quantity}</p>
+                  )
+                }
               />
               <StatWidget
                 label="Overall Returned Orders"
@@ -396,6 +424,66 @@ export default async function DashboardPage({
                 icon={Percent}
               />
             </div>
+
+            {/* Why the two systems disagree, in the order the money comes off.
+                It was worked out by hand three times in one evening, which is
+                the argument for it living on the page: the POS counts every
+                order it holds, ROMA's Sales is net of the ones that failed,
+                and anything still unaccounted for never reached ROMA at all.
+                Those are different problems -- the first is a definition, the
+                second is a bug -- and a single "difference" figure hides
+                which one is growing. */}
+            {pos && grossOrders && (
+              <Card>
+                <CardHeader className="flex flex-wrap items-center justify-between gap-2">
+                  <CardTitle>POS vs ROMA</CardTitle>
+                  <p className="text-xs text-slate-400">
+                    {pos.from} to {pos.to}
+                    {pos.lastSyncedAt ? ` · synced ${formatDateTime(pos.lastSyncedAt)}` : ""}
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  {(
+                    [
+                      {
+                        label: `POS orders (${pos.orders})`,
+                        value: formatCurrency(pos.amount),
+                        strong: false,
+                      },
+                      {
+                        label: `Never reached ROMA (${pos.orders - grossOrders.count})`,
+                        value: signed(pos.amount - grossOrders.amount),
+                        strong: false,
+                      },
+                      {
+                        label: `Returned, cancelled or deleted (${grossOrders.count - kpiStats.sales.count})`,
+                        value: signed(grossOrders.amount - kpiStats.sales.amount),
+                        strong: false,
+                      },
+                      {
+                        label: `ROMA Sales (${kpiStats.sales.count})`,
+                        value: formatCurrency(kpiStats.sales.amount),
+                        strong: true,
+                      },
+                    ] as { label: string; value: string; strong: boolean }[]
+                  ).map((r) => (
+                    <div
+                      key={r.label}
+                      className={`flex items-baseline justify-between gap-4 ${
+                        r.strong ? "border-t border-slate-200 pt-2" : ""
+                      }`}
+                    >
+                      <p className={r.strong ? "font-semibold text-slate-900" : "text-slate-500"}>{r.label}</p>
+                      <p
+                        className={`tabular-nums ${r.strong ? "font-semibold text-slate-900" : "text-slate-700"}`}
+                      >
+                        {r.value}
+                      </p>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
           </>
         )
       )}

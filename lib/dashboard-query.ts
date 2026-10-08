@@ -3,7 +3,7 @@ import { computeRtsPercentage } from "@/lib/performance";
 import type { AgentScope } from "@/lib/leads-query";
 import type { AgentDashboardStats, ManagementKpiStats } from "@/lib/performance";
 import type { Order } from "@/lib/types";
-import { SALE_STATUSES } from "@/lib/validation";
+import { SALE_STATUSES, FULFILLMENT_STATUSES } from "@/lib/validation";
 
 /**
  * Dashboard figures, counted by the database.
@@ -43,15 +43,21 @@ interface KpiRow {
   returned_amount: number;
 }
 
-async function fetchKpis(scope: AgentScope, from: string, to: string): Promise<KpiRow> {
+async function fetchKpis(
+  scope: AgentScope,
+  from: string,
+  to: string,
+  // Same rule as the Performance page, sent to the query rather than restated
+  // in SQL. Without it the tile counted cancellations as sales. Overridable
+  // only so the POS reconciliation can ask for the gross figure as well.
+  saleStatuses: readonly string[] = SALE_STATUSES
+): Promise<KpiRow> {
   const { data, error } = await supabaseAdmin.rpc("dashboard_kpis", {
     p_agent_ids: scope,
     p_from: from,
     p_to: to,
     p_tz: TZ,
-    // Same rule as the Performance page, sent to the query rather than
-    // restated in SQL. Without it the tile counted cancellations as sales.
-    p_sale_statuses: [...SALE_STATUSES],
+    p_sale_statuses: [...saleStatuses],
   });
   if (error) throw new Error(`Dashboard KPIs failed: ${error.message}`);
   const row = (Array.isArray(data) ? data[0] : data) as KpiRow | undefined;
@@ -107,6 +113,25 @@ export async function agentKpis(agentId: string, from: string, to: string): Prom
     returned: { count: num(r.returned_count), quantity: num(r.returned_qty), amount: num(r.returned_amount) },
     rtsPercentage: computeRtsPercentage(num(r.delivered_count), num(r.returned_count)),
   };
+}
+
+/**
+ * The same order-dated rows the Sales figure counts, with nothing left out:
+ * returns, cancellations and deletions included.
+ *
+ * Only the POS reconciliation wants this. A Pancake day total counts every
+ * order the shop holds whatever became of it, while Sales here is net of the
+ * failed ones -- so without this line the difference between the two systems
+ * reads as one unexplained gap when it is really two: orders ROMA deliberately
+ * does not count, and orders ROMA never received.
+ */
+export async function grossOrderTotals(
+  scope: AgentScope,
+  from: string,
+  to: string
+): Promise<{ count: number; amount: number }> {
+  const r = await fetchKpis(scope, from, to, FULFILLMENT_STATUSES);
+  return { count: num(r.sales_count), amount: num(r.sales_amount) };
 }
 
 /** Counts for the In Fulfillment card, already filtered to non-zero statuses

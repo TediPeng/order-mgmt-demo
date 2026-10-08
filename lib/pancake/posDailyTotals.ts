@@ -200,3 +200,129 @@ export async function syncRecentDays(account: PancakeAccount, days = 3): Promise
   }
   return out;
 }
+
+/** The first day ROMA has an order for.
+ *
+ *  The POS is three years older than this app -- 27,991 orders back to Feb
+ *  2023 against ROMA's first on 10 Aug 2026 -- so an All Time range asked of
+ *  both systems is two different questions, and the answers would never agree.
+ *  Clamping the POS side to ROMA's own first day is what makes "matches the
+ *  POS" a statement that can be true. */
+export async function romaFirstOrderDay(): Promise<string | null> {
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .select("order_date")
+    .not("order_date", "is", null)
+    .order("order_date", { ascending: true })
+    .limit(1);
+  if (error) throw new Error(`Cannot find ROMA's first order date: ${error.message}`);
+  const row = (data || [])[0] as { order_date?: unknown } | undefined;
+  return row?.order_date ? String(row.order_date).slice(0, 10) : null;
+}
+
+export interface PosRangeSales {
+  /** The window actually answered, after clamping to ROMA's lifetime and to today. */
+  from: string;
+  to: string;
+  orders: number;
+  quantity: number;
+  amount: number;
+  cancelledOrders: number;
+  cancelledAmount: number;
+  duplicateOrders: number;
+  duplicateAmount: number;
+  /** Every day in [from, to] has a row for every active account. False means
+   *  the figure is short some days and must NOT be shown as the POS total. */
+  covered: boolean;
+  /** How many days of the window are missing from the mirror. */
+  missingDays: number;
+  lastSyncedAt: string | null;
+}
+
+/** The POS total for a range, or null when the mirror cannot answer it.
+ *
+ *  Returns null rather than a smaller number, because a sales tile that is
+ *  quietly missing a week looks like a bad week. The caller falls back to
+ *  ROMA's own figure and says which one it is showing. */
+export async function posSalesForRange(from: string, to: string): Promise<PosRangeSales | null> {
+  const floor = await romaFirstOrderDay();
+  if (!floor) return null;
+
+  const start = from > floor ? from : floor;
+  const today = todayManila();
+  const end = to < today ? to : today;
+  if (start > end) return null;
+
+  const { data, error } = await supabaseAdmin.rpc("pos_sales_range", { p_from: start, p_to: end });
+  if (error) throw new Error(`POS range totals failed: ${error.message}`);
+  const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | undefined;
+  if (!row) return null;
+
+  const n = (v: unknown) => Number(v ?? 0);
+  const expected = Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000) + 1;
+  const daysCovered = n(row.days_covered);
+
+  return {
+    from: start,
+    to: end,
+    orders: n(row.orders),
+    quantity: n(row.quantity),
+    amount: n(row.amount),
+    cancelledOrders: n(row.cancelled_orders),
+    cancelledAmount: n(row.cancelled_amount),
+    duplicateOrders: n(row.duplicate_orders),
+    duplicateAmount: n(row.duplicate_amount),
+    covered: n(row.accounts) > 0 && daysCovered >= expected,
+    missingDays: Math.max(0, expected - daysCovered),
+    lastSyncedAt: row.last_synced_at ? String(row.last_synced_at) : null,
+  };
+}
+
+/** Calendar days in [from, to] inclusive, oldest first. */
+function daysBetween(from: string, to: string): string[] {
+  const out: string[] = [];
+  const end = Date.parse(`${to}T00:00:00.000Z`);
+  for (let t = Date.parse(`${from}T00:00:00.000Z`); t <= end; t += 86_400_000) {
+    out.push(new Date(t).toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+/** Fills in days the mirror is missing, newest first, up to `limit` per call.
+ *
+ *  Pancake failed 443 requests in the week to 8 Oct, and syncRecentDays only
+ *  ever looks at the last three days -- so a day that failed while it was
+ *  recent would stay missing for good. A missing day does not show as a wrong
+ *  number, because posSalesForRange refuses an incomplete range outright; it
+ *  shows as the POS tile quietly reverting to ROMA's own figure, which is
+ *  exactly the sort of silent regression nobody reports. So each run also
+ *  repairs a few of the oldest gaps.
+ *
+ *  Newest first: a hole next to today is the one somebody is looking at. */
+export async function syncMissingDays(
+  account: PancakeAccount,
+  from: string,
+  to: string,
+  limit = 5
+): Promise<{ filled: string[]; remaining: number }> {
+  const { data, error } = await supabaseAdmin
+    .from("pos_daily_totals")
+    .select("day")
+    .eq("pancake_account_id", account.id)
+    .gte("day", from)
+    .lte("day", to)
+    .order("day");
+  if (error) throw new Error(`Cannot read stored POS days: ${error.message}`);
+
+  const have = new Set((data || []).map((r) => String((r as { day: unknown }).day)));
+  const gaps = daysBetween(from, to)
+    .filter((d) => !have.has(d))
+    .reverse();
+
+  const filled: string[] = [];
+  for (const day of gaps.slice(0, limit)) {
+    await syncPosDay(account, day);
+    filled.push(day);
+  }
+  return { filled, remaining: Math.max(0, gaps.length - filled.length) };
+}

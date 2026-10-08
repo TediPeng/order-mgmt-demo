@@ -1,14 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import type { PancakeAccount } from "@/lib/types";
-import { syncRecentDays } from "@/lib/pancake/posDailyTotals";
+import {
+  syncRecentDays,
+  syncMissingDays,
+  romaFirstOrderDay,
+  todayManila,
+} from "@/lib/pancake/posDailyTotals";
 
 export const dynamic = "force-dynamic";
 
-/** Mirrors the last few days of Pancake totals into pos_daily_totals.
+/** Mirrors Pancake's day totals into pos_daily_totals.
  *
- * Nothing reads that table yet. This fills it so the figures can be checked
- * against the POS screen before the dashboard is pointed at them.
+ * The Dashboard's POS Sales tile reads that table, and refuses to show a figure
+ * for a range it is missing any day of -- so this does two things: refresh the
+ * last few days, whose statuses and amounts are still moving, and repair a few
+ * of the oldest gaps, so a day Pancake failed on cannot sit missing for good.
  *
  * Protected by CRON_SECRET, the same Bearer token the other crons take. */
 export async function GET(req: NextRequest) {
@@ -26,13 +33,28 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, accounts: 0, note: "No active Pancake account" });
   }
 
+  // The window the tile can be asked about: ROMA's first order through today.
+  // The POS itself goes back to Feb 2023, three years before this app, and
+  // mirroring that would be filling in days no range on the page can reach.
+  const floor = await romaFirstOrderDay();
+  const today = todayManila();
+
   // One account's outage must not cost the others their refresh, so each is
   // reported on its own rather than taking the whole run down.
   const results = await Promise.all(
     accounts.map(async (account) => {
       try {
         const days = await syncRecentDays(account);
-        return { account: account.account_name, ok: true as const, days };
+        // Gap repair comes second and is capped, so the refresh of today is
+        // never the thing that runs out of time.
+        const repaired = floor ? await syncMissingDays(account, floor, today) : { filled: [], remaining: 0 };
+        return {
+          account: account.account_name,
+          ok: true as const,
+          refreshed: days.map((d) => d.day),
+          repaired: repaired.filled,
+          gapsLeft: repaired.remaining,
+        };
       } catch (e) {
         return { account: account.account_name, ok: false as const, error: e instanceof Error ? e.message : String(e) };
       }
