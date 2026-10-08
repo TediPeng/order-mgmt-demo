@@ -1,6 +1,6 @@
 import type { Order, PancakeAccount } from "@/lib/types";
 import { pancakeFetch, resolvePath } from "./client";
-import { CREATE_ORDER_PATH, mockMode } from "./config";
+import { CREATE_ORDER_PATH, REQUEST_TIMEOUT_MS, mockMode } from "./config";
 import { normalizePhone } from "@/lib/utils";
 
 /**
@@ -63,7 +63,24 @@ export async function findRecentOrderForRetry(
     return { ...NONE, error: "Order has no phone number, so a prior Pancake order cannot be looked up." };
   }
 
-  const from = unix(since);
+  // The window has to open BEFORE the attempt it is asking about, not at it.
+  //
+  // `since` is pancake_last_sync_attempt_at, which forward.ts writes when an
+  // attempt is recorded as FAILED -- after the request timed out. Pancake
+  // created the order at the start of that request, so its inserted_at is up to
+  // a whole timeout earlier, and a window opening at `since` begins just after
+  // the only row it was looking for.
+  //
+  // That is how three customers were sent two parcels each on 7 and 8 Oct: 28525
+  // was created at 08:08:57, the timeout was recorded at 08:09:12, and the retry
+  // searched from 08:09:12. Fifteen seconds too late, every time.
+  //
+  // Reaching back by the timeout plus two minutes of slack covers the gap where
+  // a committed-but-unacknowledged order can hide. Wider would be worse, not
+  // safer: it would start catching the customer's genuine repeat orders, and
+  // those come back as `ambiguous` and hold the order for a human.
+  const LOOKBACK_SECONDS = Math.ceil(REQUEST_TIMEOUT_MS / 1000) + 120;
+  const from = unix(since) - LOOKBACK_SECONDS;
   const to = Math.floor(Date.now() / 1000) + 60; // small skew allowance
   const path =
     `${resolvePath(CREATE_ORDER_PATH, account)}?search=${encodeURIComponent(phone)}` +
