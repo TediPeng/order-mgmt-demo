@@ -356,6 +356,41 @@ export async function listOrdersWithFailedSync(): Promise<Order[]> {
  * killed mid-flight (serverless timeout/instance recycle). Without this they
  * would sit in `syncing` forever and the duplicate guard would skip them, so
  * the sweep releases them back to `sync_failed` for the retry queue. */
+/**
+ * Marks a packed order as waiting for the background forward.
+ *
+ * Written synchronously, before the agent is released, and that is the whole
+ * point of it: if the background task is then lost with its instance, the order
+ * is sitting in a state the sweep can find. `not_synced` could not carry this
+ * meaning -- it is the column default AND what detaching an order leaves
+ * behind, so a sweep could not tell a lost send from an order deliberately
+ * waiting to be re-packed.
+ *
+ * Guarded so it can only ever move an order forward from the default: a row
+ * that is already syncing, synced or failed is left exactly as it is.
+ */
+export async function markQueuedForForward(id: string): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from("orders")
+    .update({ pancake_sync_status: "queued", pancake_sync_error: null })
+    .eq("id", id)
+    .eq("pancake_sync_status", "not_synced")
+    .is("pancake_order_id", null);
+  if (error) throw new Error(`orders queue failed: ${error.message}`);
+}
+
+/** Orders left `queued` for longer than a background forward should ever take. */
+export async function listOrdersStuckQueued(olderThanIso: string): Promise<Order[]> {
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .select("*")
+    .eq("pancake_sync_status", "queued")
+    .is("pancake_order_id", null)
+    .lt("updated_at", olderThanIso);
+  if (error) throw new Error(`orders read failed: ${error.message}`);
+  return (data || []).map(mapOrder);
+}
+
 export async function listOrdersStuckSyncing(olderThanIso: string): Promise<Order[]> {
   const { data, error } = await supabaseAdmin
     .from("orders")

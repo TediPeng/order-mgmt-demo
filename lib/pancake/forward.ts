@@ -37,6 +37,7 @@ import { CREATE_STATUS_PACKAGING_LABEL, LOOKUP_REFRESH_ON_MISS_AFTER_MS } from "
 import { validateForPancake } from "./validate";
 import { verifyAddressIds } from "./address";
 import { latestPancakeOrder } from "./customerHistory";
+import { waitUntil } from "@vercel/functions";
 import { findRecentOrderForRetry } from "./findExisting";
 import { MAX_ATTEMPTS } from "./retry";
 import {
@@ -52,6 +53,7 @@ import { PACKAGING_STATUS } from "@/lib/validation";
 import {
   claimOrderForSync,
   getOrderRow,
+  markQueuedForForward,
   hasSuccessfulForward,
   listAccounts,
   markSyncFailed,
@@ -674,4 +676,58 @@ export async function forwardOrderToPancake(
     `/leads?open=${encodeURIComponent(order.order_number)}`
   );
   return { ok: false, skipped: false, message: `Sync failed: ${errorMsg}` };
+}
+
+/**
+ * Sends an order to Pancake without making the agent wait for the answer.
+ *
+ * Packaging used to `await forwardOrderToPancake` inside the server action, so
+ * the agent sat through a Pancake round trip before their redirect. That is
+ * the only reason the create could not be given more than 15 seconds -- and 15
+ * seconds is less than Pancake sometimes takes to answer a create it has
+ * already committed. A timeout cannot be told apart from a failure, so the
+ * retry sent it again: on 9 Oct one customer received four identical orders
+ * that way, every one of the four creates having worked.
+ *
+ * Two things make this safe rather than merely faster.
+ *
+ * The order is marked `queued` first, and that write IS awaited -- it is a
+ * single update, milliseconds, and it is what leaves the order recoverable if
+ * everything after it is lost.
+ *
+ * Then the promise goes to Vercel's waitUntil(), which keeps the invocation
+ * alive past the response. Without it the instance is free to freeze the
+ * moment the agent is redirected, which suspends the fetch mid-call, and on
+ * thaw the abort timer fires and records a perfectly healthy request as a
+ * timeout -- the same trap maybeSweepPancakeSync() documents.
+ *
+ * If the task is lost regardless, the order stays `queued` and the sweep sends
+ * it. Nothing here is the guarantee. The sweep is.
+ */
+export async function forwardOrderInBackground(
+  orderId: string,
+  opts: { source: PancakeSyncSource; triggeredBy?: string | null }
+): Promise<void> {
+  await markQueuedForForward(orderId);
+
+  const task = forwardOrderToPancake(orderId, opts)
+    .then((result) => {
+      // Not thrown: a declined or failed forward has already written its own
+      // reason to the order and the sync log. This is only so a lost send is
+      // greppable in the function logs.
+      if (!result.ok) {
+        console.error(`Pancake background forward did not send ${orderId}: ${result.message}`);
+      }
+    })
+    .catch((e) => {
+      console.error(`Pancake background forward threw for ${orderId}:`, (e as Error).message);
+    });
+
+  try {
+    // Only meaningful on Vercel; a no-op or a throw elsewhere (local dev),
+    // where nothing freezes the process anyway.
+    waitUntil(task);
+  } catch {
+    void task;
+  }
 }

@@ -1,6 +1,6 @@
 import type { Order, PancakeAccount } from "@/lib/types";
 import { pancakeFetch, resolvePath } from "./client";
-import { CREATE_ORDER_PATH, REQUEST_TIMEOUT_MS, mockMode } from "./config";
+import { CREATE_ORDER_PATH, CREATE_TIMEOUT_MS, mockMode } from "./config";
 import { normalizePhone } from "@/lib/utils";
 
 /**
@@ -79,7 +79,7 @@ export async function findRecentOrderForRetry(
   // a committed-but-unacknowledged order can hide. Wider would be worse, not
   // safer: it would start catching the customer's genuine repeat orders, and
   // those come back as `ambiguous` and hold the order for a human.
-  const LOOKBACK_SECONDS = Math.ceil(REQUEST_TIMEOUT_MS / 1000) + 120;
+  const LOOKBACK_SECONDS = Math.ceil(CREATE_TIMEOUT_MS / 1000) + 120;
   const from = unix(since) - LOOKBACK_SECONDS;
   const to = Math.floor(Date.now() / 1000) + 60; // small skew allowance
   const path =

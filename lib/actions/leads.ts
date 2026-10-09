@@ -37,7 +37,7 @@ import {
   recordCustomerOrder,
   regularCustomerPhonesAmong,
 } from "@/lib/customers";
-import { forwardOrderToPancake } from "@/lib/pancake/forward";
+import { forwardOrderInBackground } from "@/lib/pancake/forward";
 import { computeOrderTotal, validateForPancake } from "@/lib/pancake/validate";
 import { verifyOrderAddress } from "@/lib/pancake/verifyAddress";
 import { insertSyncLog } from "@/lib/pancake/store";
@@ -465,8 +465,11 @@ export async function createLeadAction(formData: FormData) {
     await writeDb(db);
   }
   if (order.status === PACKAGING_STATUS) {
-    // Forward AFTER persisting; the handler has its own duplicate/idempotency guards.
-    await forwardOrderToPancake(order.id, { source: "packaging_event", triggeredBy: user.id });
+    // Forward AFTER persisting; the handler has its own duplicate/idempotency
+    // guards. Not awaited past the queue marker: the agent is on a call, and
+    // making them wait for Pancake is what forced the create down to a 15
+    // second timeout that Pancake does not always answer inside.
+    await forwardOrderInBackground(order.id, { source: "packaging_event", triggeredBy: user.id });
   }
   // Still on the phone: go to the popup rather than the read-only detail page.
   // It is the only screen that ends a call and the only one that updates the
@@ -1002,7 +1005,7 @@ export async function afterLeadUpdatePersisted(
     });
   }
   if (result.enteredPackaging) {
-    await forwardOrderToPancake(result.order.id, { source: "packaging_event", triggeredBy: user.id });
+    await forwardOrderInBackground(result.order.id, { source: "packaging_event", triggeredBy: user.id });
   }
 }
 

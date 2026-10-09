@@ -6,9 +6,11 @@ import { MAX_ATTEMPTS, nextRetryDueAt } from "./retry";
 import { resolveAddressIds } from "./resolve-address";
 import {
   getAccount,
+  getOrderRow,
   listAccounts,
   listCustomersMissingPancakeAddress,
   listOrdersForPolling,
+  listOrdersStuckQueued,
   listOrdersStuckSyncing,
   listOrdersWithFailedSync,
   listSyncLogs,
@@ -20,6 +22,7 @@ import {
 
 export interface SweepSummary {
   released: number;
+  queuedRecovered: number;
   retried: number;
   movedToNeedsReview: number;
   polled: number;
@@ -52,6 +55,11 @@ const ADDRESS_BATCH_LIMIT = 10;
 const CITY_SEARCHES_PER_RUN = 2;
 /** A sync stuck in `syncing` this long was killed mid-flight. */
 const SYNCING_STALE_MINUTES = 10;
+/** A background forward silent this long was lost with its instance.
+ *  Comfortably more than the create's own 60s budget, so a slow send is not
+ *  mistaken for a lost one and sent twice -- which is the whole bug this is
+ *  here to avoid repeating. */
+const QUEUED_STALE_MINUTES = 5;
 /** Don't re-poll an order that synced more recently than this. */
 const MIN_POLL_INTERVAL_MINUTES = 10;
 
@@ -73,6 +81,7 @@ export async function runPancakeSync(opts: SweepOptions = {}): Promise<SweepSumm
   const maxAddresses = opts.maxAddresses ?? ADDRESS_BATCH_LIMIT;
   const summary: SweepSummary = {
     released: 0,
+    queuedRecovered: 0,
     retried: 0,
     movedToNeedsReview: 0,
     polled: 0,
@@ -81,6 +90,47 @@ export async function runPancakeSync(opts: SweepOptions = {}): Promise<SweepSumm
     addressesResolved: 0,
     errors: [],
   };
+
+  // --- 0. Send forwards whose background task was lost ----------------------
+  // Packaging marks the order `queued`, hands the send to waitUntil() and
+  // releases the agent, so a frozen or recycled instance can swallow it. The
+  // marker exists so this step can find those.
+  //
+  // Tried once per pass, and if the order is STILL `queued` afterwards it is
+  // moved out of the state: forwardOrderToPancake has early returns that write
+  // nothing at all -- an order no longer in Packaging, the repeat-buyer hold --
+  // and without this such an order would be picked up and declined on every
+  // run for ever. The retry queue below is where a failure belongs; `queued`
+  // only ever means "nobody has reported back yet".
+  try {
+    for (const order of await listOrdersStuckQueued(minutesAgoIso(QUEUED_STALE_MINUTES))) {
+      try {
+        const result = await forwardOrderToPancake(order.id, { source: "auto_retry" });
+        const after = await getOrderRow(order.id);
+        if (after?.pancake_sync_status === "queued") {
+          const reason = `Queued send did not complete: ${result.message}`;
+          await updateOrderSyncFields(order.id, {
+            pancake_sync_status: "sync_failed",
+            pancake_sync_error: reason,
+          });
+          await insertSyncLog({
+            order_id: order.id,
+            pancake_account_id: order.pancake_pos_account_id,
+            action: "retry",
+            source: "auto_retry",
+            request_at: new Date().toISOString(),
+            result: "failed",
+            error_message: reason,
+          });
+        }
+        summary.queuedRecovered++;
+      } catch (e) {
+        summary.errors.push(`queued recovery ${order.order_number}: ${(e as Error).message}`);
+      }
+    }
+  } catch (e) {
+    summary.errors.push(`queued sweep: ${(e as Error).message}`);
+  }
 
   // --- 1. Release stuck `syncing` orders ------------------------------------
   try {

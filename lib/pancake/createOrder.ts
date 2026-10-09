@@ -2,6 +2,7 @@ import type { PancakeAccount } from "@/lib/types";
 import type { CreateOrderResult, ForwardPayload } from "./types";
 import {
   CREATE_ORDER_PATH,
+  CREATE_TIMEOUT_MS,
   CREATE_STATUS_PACKAGING,
   CREATE_STATUS_PACKAGING_LABEL,
   OUTBOUND_FIELDS,
@@ -131,7 +132,11 @@ export async function createOrder(account: PancakeAccount, payload: ForwardPaylo
     };
   }
 
-  const res = await pancakeFetch(account, resolvePath(CREATE_ORDER_PATH, account), { method: "POST", body });
+  const res = await pancakeFetch(account, resolvePath(CREATE_ORDER_PATH, account), {
+    method: "POST",
+    body,
+    timeoutMs: CREATE_TIMEOUT_MS,
+  });
   const data = unwrapData(res.body);
   // Pancake's own generated order id, now that we no longer impose a custom_id.
   // Stored verbatim — never generated or reformatted here.
