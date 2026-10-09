@@ -128,9 +128,6 @@ export function StatusBadge({ status }: { status: OrderStatus }) {
 // (leads table column, Order Details popup, sync logs page).
 const PANCAKE_SYNC_STATUS_STYLES: Record<PancakeSyncStatus, { chip: string; dot: string }> = {
   not_synced: { chip: "bg-slate-100 text-slate-600", dot: "bg-slate-400" },
-  // Indigo, not the blue of `syncing`: waiting to be sent and being sent are
-  // different things to anybody watching an order that has not arrived.
-  queued: { chip: "bg-indigo-100 text-indigo-700", dot: "bg-indigo-500" },
   syncing: { chip: "bg-blue-100 text-blue-700", dot: "bg-blue-500" },
   synced: { chip: "bg-green-100 text-green-700", dot: "bg-green-500" },
   sync_failed: { chip: "bg-red-100 text-red-700", dot: "bg-red-500" },

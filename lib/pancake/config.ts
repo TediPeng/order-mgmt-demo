@@ -235,23 +235,3 @@ export const WEBHOOK = {
 
 /** Timeout for outbound Pancake calls (ms). */
 export const REQUEST_TIMEOUT_MS = 15_000;
-
-/**
- * The create call gets four times longer than everything else.
- *
- * Pancake commits the order and then answers slowly. At 15s we hung up while
- * it went on to succeed, and because a timeout cannot be told apart from a
- * failure the retry created a second real parcel. On 9 Oct one customer ended
- * up with four identical P1,100 orders that way (Pancake 28583-28586 from two
- * ROMA rows): every one of those creates worked, we just stopped listening.
- * Over the week to 9 Oct only 8 of 650 forwards timed out -- rare, and each
- * one a parcel.
- *
- * Only the create. A read in a page render keeps the short timeout: an agent
- * must not wait a minute for a customer-history panel, and that read timed out
- * 443 times in the same week without costing anything but the panel.
- *
- * This is safe only because the forward no longer runs inside the agent's
- * Packaging click -- see forwardOrderInBackground in ./forward.
- */
-export const CREATE_TIMEOUT_MS = 60_000;

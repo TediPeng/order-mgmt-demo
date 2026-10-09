@@ -172,21 +172,10 @@ export type OrderStatus =
 /** Outbound sync state. "Needs review" is not a status of its own — it is the
  * sync_failed state once the retry budget is exhausted, rendered as
  * "Sync Failed — needs review". */
-export type PancakeSyncStatus =
-  | "not_synced"
-  | "queued"
-  | "syncing"
-  | "synced"
-  | "sync_failed"
-  | "resolved";
+export type PancakeSyncStatus = "not_synced" | "syncing" | "synced" | "sync_failed" | "resolved";
 
 export const PANCAKE_SYNC_STATUS_LABELS: Record<PancakeSyncStatus, string> = {
   not_synced: "Not Synced",
-  // Packed, and the send is on its way without the agent waiting for it.
-  // Distinct from not_synced on purpose: that is both the default AND what a
-  // detach leaves behind, so it cannot also mean "a send is in flight" -- and
-  // the sweep needs to tell the two apart to recover a lost one.
-  queued: "Queued",
   syncing: "Syncing",
   synced: "Synced",
   sync_failed: "Sync Failed",
