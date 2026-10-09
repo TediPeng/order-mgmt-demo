@@ -375,6 +375,13 @@ export default async function DashboardPage({
                     <>
                       <p>Qty: {pos.quantity}</p>
                       <p>ROMA net: {formatCurrency(kpiStats.sales.amount)}</p>
+                      {/* On the tile, not only in the card below. A finished
+                          day agrees with the POS screen to the peso; a day
+                          still running cannot, because this is a mirror taken
+                          every five minutes and the POS has taken more orders
+                          since. Without the time on the figure itself that
+                          reads as a wrong number rather than an old one. */}
+                      {pos.lastSyncedAt && <p>POS as of {formatDateTime(pos.lastSyncedAt)}</p>}
                     </>
                   ) : (
                     <p>Qty: {kpiStats.sales.quantity}</p>

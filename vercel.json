@@ -19,7 +19,7 @@
     },
     {
       "path": "/api/cron/pos-totals",
-      "schedule": "*/15 * * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }
