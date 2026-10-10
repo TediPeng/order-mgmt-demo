@@ -404,8 +404,18 @@ export function LeadTransferClient({
         <Button type="button" variant="outline" onClick={() => run(false)} disabled={busy || !canRun}>
           {busy ? "Checking…" : "Preview"}
         </Button>
+        {/* The label has to say why the button is dead, not what it would do
+            if it were alive. It read "Transfer 1" while disabled -- the count
+            of leads found, before Preview had been pressed -- which looks like
+            a broken button rather than a step not yet taken. */}
         <Button type="button" onClick={() => run(true)} disabled={busy || preview === null || preview === 0}>
-          {busy ? "Transferring…" : preview ? `Transfer ${preview}` : byPhone ? `Transfer ${movable.length}` : "Transfer"}
+          {busy
+            ? "Transferring…"
+            : preview
+              ? `Transfer ${preview}`
+              : preview === 0
+                ? "Nothing to move"
+                : "Preview first"}
         </Button>
       </div>
     </div>
