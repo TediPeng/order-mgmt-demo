@@ -274,10 +274,11 @@ export function LeadTransferClient({
               onChange={(e) => { setOverride(e.target.checked); setPreview(null); }}
             />
             <span className="text-sm text-slate-700">
-              <strong>Move it anyway</strong> — this lead has already become a sale.
+              <strong>Move it anyway</strong> — the ordinary transfer leaves this lead alone.
               <span className="mt-0.5 block text-xs text-slate-500">
                 The lead moves; the sale does not. It stays credited to the agent who made it, and every sales figure
-                keeps counting it for them.
+                keeps counting it for them. A regular customer&apos;s own record is not touched either — only who is
+                holding the lead changes.
               </span>
             </span>
           </label>
@@ -367,9 +368,9 @@ export function LeadTransferClient({
           ))}
         </div>
         <p className="mt-1 text-xs text-slate-400">
-          A queue transfer never moves a sale or anything sent to Pancake. One lead at a time can be moved by phone
-          number with an override, and even then the sale stays credited to the agent who made it. A regular
-          customer&apos;s orders stay with the customer record either way.
+          A queue transfer never moves a sale, anything sent to Pancake, or a regular customer&apos;s lead. One lead
+          at a time can be moved by phone number with an override, and even then the sale stays credited to the agent
+          who made it.
         </p>
       </div>
 
