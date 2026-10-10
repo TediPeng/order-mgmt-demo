@@ -108,6 +108,9 @@ export async function POST(req: NextRequest) {
     // Captured before the update, so a by-number move can still name the agents
     // it took leads off — there is no From box to read them from.
     from_agents?: string[];
+    // Regular customer records that followed their lead. Only an override can
+    // produce any, and only ever for the one number it was given.
+    customers_moved?: string[];
     error?: string;
   };
   if (result.error) return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
@@ -131,6 +134,11 @@ export async function POST(req: NextRequest) {
     // glance: an override is the entry that says why a sold lead moved.
     override: override || null,
     override_reason: override ? overrideReasonText(overrideReason, overrideDetail) : null,
+    // Named separately from the orders: handing over a repeat buyer is the
+    // part somebody will come looking for, and it is not visible in a list of
+    // order ids.
+    regular_customers_moved: (result.customers_moved || []).length,
+    regular_customer_ids: result.customers_moved || [],
   }, { module: "orders", ...info });
 
   if (result.moved > 0) {
@@ -151,5 +159,10 @@ export async function POST(req: NextRequest) {
   }
   await writeDb(db);
 
-  return NextResponse.json({ ok: true, preview: false, moved: result.moved });
+  return NextResponse.json({
+    ok: true,
+    preview: false,
+    moved: result.moved,
+    customersMoved: (result.customers_moved || []).length,
+  });
 }

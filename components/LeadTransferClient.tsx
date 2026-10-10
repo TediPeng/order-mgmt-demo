@@ -277,8 +277,8 @@ export function LeadTransferClient({
               <strong>Move it anyway</strong> — the ordinary transfer leaves this lead alone.
               <span className="mt-0.5 block text-xs text-slate-500">
                 The lead moves; the sale does not. It stays credited to the agent who made it, and every sales figure
-                keeps counting it for them. A regular customer&apos;s own record is not touched either — only who is
-                holding the lead changes.
+                keeps counting it for them. A regular customer&apos;s record moves with their lead, so it leaves the
+                old agent&apos;s list rather than being left behind with no orders in it.
               </span>
             </span>
           </label>
