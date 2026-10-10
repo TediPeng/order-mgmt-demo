@@ -1,6 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { can } from "@/lib/permissions";
 import { v4 as uuid } from "uuid";
 import { requireUserLite, requirePermission } from "./guards";
 import { getRequestInfo } from "@/lib/request-info";
@@ -331,6 +333,109 @@ export async function sendHeldOrderAnywayAction(orderId: string, formData: FormD
     redirect(`${FAILED_PATH}?error=${encodeURIComponent(result.message)}`);
   }
   redirect(`${FAILED_PATH}?sent=${encodeURIComponent(order!.order_number)}`);
+}
+
+export interface BulkSendSkip {
+  order_number: string;
+  reason: string;
+}
+
+export interface BulkSendResult {
+  sent: number;
+  /** Every order that was NOT sent, with the reason. Never summarised away. */
+  skipped: BulkSendSkip[];
+  /** Ticked but not reached this time — the batch cap, not a refusal. */
+  remaining: number;
+  error?: string;
+}
+
+/**
+ * Sends a ticked set of held orders, one reason for all of them.
+ *
+ * Send anyway is per row, which is right for the one order somebody has just
+ * looked into and wrong for the backlog: fifty-seven orders were held on 10 Oct
+ * and the only way through was fifty-seven dialogs, so nobody went through it.
+ *
+ * It does NOT loosen the rule. Each order still goes through
+ * forwardOrderToPancake with the repeat-buyer override, so every other gate —
+ * address, product mapping, order source, staff — still refuses what it
+ * refused before, and every refusal comes back named.
+ *
+ * Only orders actually held on the repeat-buyer rule. A ticked row held for a
+ * missing address would be "sent anyway" against a hold that was never the
+ * problem, and the override would be recorded as a decision nobody made.
+ *
+ * Capped at RETRY_BATCH per press, like Retry all, because each forward is
+ * several calls to Pancake and one of them can sit for fifteen seconds. The
+ * caller is told how many were left so the number on screen is the truth.
+ */
+export async function sendHeldOrdersAnywayAction(
+  orderIds: string[],
+  reason: string
+): Promise<BulkSendResult> {
+  const { user, db } = await requireUserLite();
+
+  // Not requirePermission(): that redirects, and a redirect out of an action
+  // the client is awaiting a result from surfaces as an unexplained failure.
+  if (!can(user.role, "integrations", "manage", db.role_permissions)) {
+    return { sent: 0, skipped: [], remaining: 0, error: "You do not have permission to override a hold." };
+  }
+  const why = (reason || "").trim();
+  if (why.length < 5) {
+    return { sent: 0, skipped: [], remaining: 0, error: "Give a reason of at least 5 characters." };
+  }
+
+  const wanted = Array.from(new Set((orderIds || []).filter(Boolean)));
+  if (wanted.length === 0) return { sent: 0, skipped: [], remaining: 0 };
+
+  const batch = wanted.slice(0, RETRY_BATCH);
+  const remaining = wanted.length - batch.length;
+
+  const skipped: BulkSendSkip[] = [];
+  let sent = 0;
+  const startedAt = Date.now();
+
+  for (const id of batch) {
+    if (sent > 0 && Date.now() - startedAt > RETRY_TIME_BUDGET_MS) {
+      skipped.push({ order_number: id.slice(0, 8), reason: "Ran out of time this request — press again" });
+      continue;
+    }
+
+    const order = await loadOrderInto(db, id);
+    if (!order) {
+      skipped.push({ order_number: id.slice(0, 8), reason: "No longer exists" });
+      continue;
+    }
+    // Asked again here, against the row as it stands. A page left open since
+    // this morning must not override a hold that has since been lifted, or one
+    // that was never the reason it failed.
+    if (!/^Held: last Pancake order/i.test(order.pancake_sync_error || "")) {
+      skipped.push({ order_number: order.order_number, reason: "Not held on the repeat-buyer rule" });
+      continue;
+    }
+
+    logActivity(db, user.id, "PANCAKE_HOLD_OVERRIDDEN", "order", order.id, {
+      order_number: order.order_number,
+      reason: why,
+      how: "failed_queue_selection",
+    }, { module: "integrations", ...(await getRequestInfo()) });
+
+    const result = await forwardOrderToPancake(order.id, {
+      source: "manual_sync",
+      triggeredBy: user.id,
+      allowRetry: true,
+      overrideRepeatHold: true,
+    });
+    // The override only lifts the hold. Everything else that can refuse an
+    // order still can, so the answer is reported rather than assumed.
+    if (result.ok) sent++;
+    else skipped.push({ order_number: order.order_number, reason: result.message });
+  }
+
+  await writeDb(db);
+  revalidatePath(FAILED_PATH);
+
+  return { sent, skipped, remaining };
 }
 
 /**

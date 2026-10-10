@@ -4,7 +4,7 @@ import { readDbLite } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { displayUserName } from "@/lib/types";
-import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { formatCurrency, formatDateTime, normalizePhone } from "@/lib/utils";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -13,12 +13,14 @@ import { listOrdersWithFailedSync, likelyDoubleSubmits } from "@/lib/pancake/sto
 import { RETRY_BATCH } from "@/lib/pancake/config";
 import {
   retryFailedSyncsAction,
+  sendHeldOrdersAnywayAction,
   linkExistingPancakeOrderAction,
   clearDuplicateHoldAction,
   resolveWithoutSyncAction,
   sendHeldOrderAnywayAction,
 } from "@/lib/actions/pancake";
 import { SyncResolveMenu } from "@/components/SyncResolveMenu";
+import { SendHeldAnywayPanel } from "@/components/SendHeldAnywayPanel";
 import type { Order } from "@/lib/types";
 
 /** Retrying twenty orders is twenty conversations with somebody else's API. */
@@ -169,6 +171,35 @@ export default async function SyncFailedPage({
     .flatMap((g) => g.orders.map((o) => o.id));
   const duplicates = await likelyDoubleSubmits(heldIds);
 
+  /**
+   * Every held order in one list, for the bulk override.
+   *
+   * Flat, not per group: the groups are keyed by the customer's PREVIOUS
+   * Pancake order, so one customer's four held orders are one group — and a
+   * "send this group" button would be four parcels to one person. Ticking is
+   * the only shape that lets somebody send one of the four, and the count of
+   * how many are held on the same number rides along so that choice is
+   * visible before it is made.
+   */
+  const heldOrders = ordered
+    .filter((g) => g.cause.key.startsWith("held:"))
+    .flatMap((g) => g.orders);
+  const heldPerPhone = new Map<string, number>();
+  for (const o of heldOrders) {
+    // normalizePhone, not the raw field: 0917…, +63917… and 917… are one
+    // number, and two spellings would read as two customers.
+    const key = normalizePhone(o.customer_phone || "") || o.id;
+    heldPerPhone.set(key, (heldPerPhone.get(key) ?? 0) + 1);
+  }
+  const heldRows = heldOrders.map((o) => ({
+    id: o.id,
+    order_number: o.order_number,
+    customer_name: o.customer_name,
+    amount: formatCurrency(o.total_amount),
+    heldOn: o.pancake_sync_error || "",
+    alsoOnThisNumber: heldPerPhone.get(normalizePhone(o.customer_phone || "") || o.id) ?? 1,
+  }));
+
   function sendAdvice(order: Order): { label: string; tone: string; caution?: string } | null {
     if (!duplicates.has(order.id)) {
       const previous = (order.pancake_sync_error || "").match(/is ([a-z ]+), not delivered/i)?.[1] || "";
@@ -255,6 +286,14 @@ export default async function SyncFailedPage({
           <span className="font-medium text-slate-800">{ordered.length}</span> cause
           {ordered.length === 1 ? "" : "s"}.
         </p>
+      )}
+
+      {canRetry && heldRows.length > 0 && (
+        <SendHeldAnywayPanel
+          rows={heldRows}
+          batchSize={RETRY_BATCH}
+          action={sendHeldOrdersAnywayAction}
+        />
       )}
 
       {ordered.map(({ cause, orders }) => {
