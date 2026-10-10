@@ -20,7 +20,13 @@ import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { Input } from "@/components/ui/Field";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { BackToCallButton } from "@/components/BackToCallButton";
-import { untagRegularCustomerAction } from "@/lib/actions/regular-customers";
+import {
+  changeRegularCustomerOwnerAction,
+  untagRegularCustomerAction,
+} from "@/lib/actions/regular-customers";
+import { ChangeOwnerButton } from "@/components/ChangeOwnerButton";
+import { allowedAssigneeIds } from "@/lib/order-access";
+import { displayUserName } from "@/lib/types";
 import { resolveDialScheme } from "@/lib/dial";
 
 export default async function RegularCustomersPage({
@@ -35,6 +41,17 @@ export default async function RegularCustomersPage({
 
   if (!can(user.role, "regular_customers", "view", db.role_permissions)) redirect("/dashboard");
   const canManage = can(user.role, "regular_customers", "manage", db.role_permissions);
+  // Resolved once for the page, not per row: the list can show five hundred
+  // customers and the candidates are the same for all of them. Each row drops
+  // its own owner from the list below.
+  const ownerCandidates = canManage
+    ? allowedAssigneeIds(user, db)
+        .map((id) => db.profiles.find((p) => p.id === id))
+        .filter((p): p is NonNullable<typeof p> =>
+          Boolean(p && p.is_active && !p.is_test_account))
+        .map((p) => ({ id: p.id, name: displayUserName(p), callName: p.call_name }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+    : [];
   // Adding a regular customer is its own grant — it is not adding a lead, and
   // an agent holds it by default so they can build their own list.
   const canCreate = can(user.role, "regular_customers", "create", db.role_permissions);
@@ -280,6 +297,19 @@ export default async function RegularCustomersPage({
                         <LinkButton href={`/leads/new?customer=${customer.id}`} size="sm">
                           New Order
                         </LinkButton>
+                      )}
+                      {/* Ownership, on the row. It was only on the detail
+                          page, which means opening a customer to answer a
+                          question the list already shows — whose they are. */}
+                      {canManage && (
+                        <ChangeOwnerButton
+                          customerId={customer.id}
+                          customerName={customer.full_name}
+                          currentOwnerName={nameById.get(customer.owner_agent_id) || "nobody"}
+                          orderCount={customer.total_orders ?? 0}
+                          targets={ownerCandidates.filter((t) => t.id !== customer.owner_agent_id)}
+                          action={changeRegularCustomerOwnerAction}
+                        />
                       )}
                       {canManage && (
                         <form action={untagRegularCustomerAction.bind(null, customer.id)}>

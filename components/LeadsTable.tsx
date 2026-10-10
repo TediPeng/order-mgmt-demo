@@ -8,7 +8,12 @@ import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
-import { deleteLeadsAction, type BulkDeleteResult } from "@/lib/actions/lead-bulk";
+import {
+  deleteLeadsAction,
+  transferLeadsSelectionAction,
+  type BulkDeleteResult,
+  type BulkTransferResult,
+} from "@/lib/actions/lead-bulk";
 import { SyncStatusChip, LEAD_STATUS_STYLES } from "@/components/ui/Badge";
 import { OrderDetailsModal } from "@/components/OrderDetailsModal";
 import { TrackingCell } from "@/components/TrackingCell";
@@ -31,6 +36,8 @@ export function LeadsTable({
   linesByOrder,
   canEdit,
   canDelete = false,
+  canAssign = false,
+  transferTargets = [],
   canManageIntegrations = false,
   detachAction,
   canSetFulfillmentStatus = false,
@@ -66,6 +73,12 @@ export function LeadsTable({
    * actually delete — a checkbox that leads to "not permitted" is worse than
    * no checkbox. */
   canDelete?: boolean;
+  /** Transferring a ticked selection. A separate grant from deleting, so the
+   * two appear independently — somebody may hand leads over without being
+   * able to destroy them. */
+  canAssign?: boolean;
+  /** Who the selection may be handed to, resolved by the page. */
+  transferTargets?: { id: string; name: string }[];
   canManageIntegrations?: boolean;
   /** Passed straight through to the popup. See OrderDetailsModal. */
   detachAction?: (formData: FormData) => void;
@@ -105,6 +118,9 @@ export function LeadsTable({
   const [result, setResult] = useState<BulkDeleteResult | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [deleting, startDelete] = useTransition();
+  const [transferTo, setTransferTo] = useState("");
+  const [transferResult, setTransferResult] = useState<BulkTransferResult | null>(null);
+  const [transferring, startTransfer] = useTransition();
 
   useEffect(() => {
     setOrders(initialOrders);
@@ -171,10 +187,36 @@ export function LeadsTable({
     return null;
   };
 
+  /**
+   * Why a row cannot be handed over, or null.
+   *
+   * Deliberately not protectedReason: that also refuses any status past
+   * Ringing, which is right for deleting and wrong here — a lead on Call Back
+   * or Cannot Be Reached is exactly the kind somebody hands to another caller.
+   * What a transfer will not move is a sale, and a regular customer, whose
+   * record lives on the customer rather than the order.
+   */
+  const transferBlockedReason = (o: Order): string | null => {
+    if (o.pancake_order_id || o.forwarded_to_pancake_at) return "Sent to Pancake POS";
+    if (o.order_date) return "Reached Packaging (counts as a sale)";
+    if (o.is_regular_customer) return "Regular customer — use Change owner";
+    return null;
+  };
+
+  // A row is tickable if EITHER bulk action could take it. Each action checks
+  // again on the server and reports every row it refused, with the reason, so
+  // a tick that one of them cannot use is answered rather than ignored.
+  const rowBlockedReason = (o: Order): string | null => {
+    const forDelete = canDelete ? blockedReason(o) : "x";
+    const forTransfer = canAssign ? transferBlockedReason(o) : "x";
+    if (forDelete === null || forTransfer === null) return null;
+    return canAssign && forTransfer !== "x" ? forTransfer : blockedReason(o);
+  };
+
   const selectableIds = useMemo(
-    () => orders.filter((o) => !blockedReason(o)).map((o) => o.id),
+    () => orders.filter((o) => !rowBlockedReason(o)).map((o) => o.id),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [orders]
+    [orders, canDelete, canAssign]
   );
   const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selected.has(id));
 
@@ -201,6 +243,22 @@ export function LeadsTable({
       setSelected(new Set());
       setConfirming(false);
       router.refresh();
+    });
+  }
+
+  function runTransfer() {
+    const ids = Array.from(selected);
+    startTransfer(async () => {
+      const outcome = await transferLeadsSelectionAction(ids, transferTo);
+      setTransferResult(outcome);
+      // Only clear on a move that happened. An outright error — no permission,
+      // no agent picked — must leave the ticks where they are, or the person
+      // has to find the rows again to act on what they were just told.
+      if (outcome.moved > 0) {
+        setSelected(new Set());
+        setTransferTo("");
+        router.refresh();
+      }
     });
   }
 
@@ -271,13 +329,84 @@ export function LeadsTable({
         </Alert>
       )}
 
+      {/* Its own alert rather than sharing the delete one: the two can both
+          have something to say, and a transfer that refused four rows must not
+          be overwritten by the last thing that happened. */}
+      {transferResult && (
+        <Alert
+          kind={transferResult.error ? "error" : transferResult.skipped.length > 0 ? "warning" : "success"}
+          className="mb-3"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              {transferResult.error ? (
+                transferResult.error
+              ) : (
+                <>
+                  {transferResult.moved} lead{transferResult.moved === 1 ? "" : "s"} transferred.
+                  {transferResult.skipped.length > 0 && (
+                    <>
+                      {" "}
+                      {transferResult.skipped.length} left where they were:
+                      <ul className="mt-1 space-y-0.5">
+                        {transferResult.skipped.map((sk) => (
+                          <li key={sk.order_number} className="text-xs">
+                            <span className="font-medium">{sk.order_number}</span> — {sk.reason}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setTransferResult(null)}
+              className="shrink-0 text-xs font-medium underline"
+            >
+              Dismiss
+            </button>
+          </div>
+        </Alert>
+      )}
+
       {/* Appears only once something is ticked, so the ordinary list is not
           carrying a row of controls nobody asked for. */}
-      {canDelete && selected.size > 0 && (
+      {(canDelete || canAssign) && selected.size > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2">
           <span className="text-sm font-medium text-slate-700">
             {selected.size} selected
           </span>
+
+          {/* Transfer sits before Delete and is not behind a confirm: handing
+              a lead to another caller is undone by handing it back, which is
+              not true of the button beside it. */}
+          {canAssign && !confirming && (
+            <span className="flex flex-wrap items-center gap-2">
+              <select
+                value={transferTo}
+                onChange={(e) => setTransferTo(e.target.value)}
+                aria-label="Transfer the selected leads to"
+                className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+              >
+                <option value="">Transfer to…</option>
+                {transferTargets.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <Button
+                type="button"
+                size="sm"
+                onClick={runTransfer}
+                disabled={transferring || !transferTo}
+              >
+                {transferring ? "Transferring…" : `Transfer ${selected.size}`}
+              </Button>
+            </span>
+          )}
           {confirming ? (
             <>
               <span className="text-sm text-red-700">
@@ -292,9 +421,11 @@ export function LeadsTable({
             </>
           ) : (
             <>
-              <Button type="button" variant="danger" size="sm" onClick={() => setConfirming(true)}>
-                <Trash2 className="h-3.5 w-3.5" /> Delete selected
-              </Button>
+              {canDelete && (
+                <Button type="button" variant="danger" size="sm" onClick={() => setConfirming(true)}>
+                  <Trash2 className="h-3.5 w-3.5" /> Delete selected
+                </Button>
+              )}
               <button
                 type="button"
                 onClick={() => setSelected(new Set())}
@@ -330,7 +461,7 @@ export function LeadsTable({
                   status end up printed on top of each other. */}
               <th ref={idHeader} className="sticky left-0 z-30 whitespace-nowrap border-r border-slate-200 bg-slate-50 px-2.5 py-2">
                 <span className="flex items-center gap-2">
-                  {canDelete && (
+                  {(canDelete || canAssign) && (
                     <input
                       type="checkbox"
                       checked={allSelected}
@@ -338,10 +469,10 @@ export function LeadsTable({
                       disabled={selectableIds.length === 0}
                       title={
                         selectableIds.length === 0
-                          ? "No lead on this page can be deleted"
-                          : `Select the ${selectableIds.length} deletable lead${selectableIds.length === 1 ? "" : "s"} on this page`
+                          ? "No lead on this page can be acted on"
+                          : `Select the ${selectableIds.length} lead${selectableIds.length === 1 ? "" : "s"} on this page`
                       }
-                      aria-label="Select every deletable lead on this page"
+                      aria-label="Select every actionable lead on this page"
                       className="h-3.5 w-3.5 cursor-pointer accent-[var(--brand-primary)] disabled:cursor-not-allowed disabled:opacity-40"
                     />
                   )}
@@ -382,15 +513,15 @@ export function LeadsTable({
                 <tr key={o.id} className={cn(style.row, style.rowHover)}>
                   <td className={cn("sticky left-0 z-20 whitespace-nowrap border-r border-slate-100 px-2.5 py-1.5", style.row)}>
                     <span className="flex items-center gap-2">
-                    {canDelete &&
-                      (blockedReason(o) ? (
+                    {(canDelete || canAssign) &&
+                      (rowBlockedReason(o) ? (
                         // Shown disabled rather than left blank: an empty space
                         // where every other row has a box reads as a rendering
                         // fault. The tooltip says which rule is holding it.
                         <input
                           type="checkbox"
                           disabled
-                          title={`${o.order_number} cannot be deleted — ${blockedReason(o)}`}
+                          title={`${o.order_number} cannot be selected — ${rowBlockedReason(o)}`}
                           className="h-3.5 w-3.5 cursor-not-allowed opacity-30"
                         />
                       ) : (

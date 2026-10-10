@@ -10,7 +10,7 @@ import { BreakControls } from "@/components/BreakControls";
 import { BackToCallButton } from "@/components/BackToCallButton";
 import { getActiveBioBreak } from "@/lib/bio-breaks";
 import { allCustomers, findDuplicates, latestOrderDateByCustomer, sharedCustomerIdsForAgent } from "@/lib/customers";
-import { canAssignLeads } from "@/lib/order-access";
+import { canAssignLeads, allowedAssigneeIds } from "@/lib/order-access";
 import { detachFromPancakeOrderAction } from "@/lib/actions/pancake";
 import { guardExemptRole, isBlockingMatch } from "@/lib/regular-customer-guard";
 import { LEAD_PAGE_SIZES, leadScopeFor, leadStatusCounts, previousStatusCounts, duplicatePhoneCount, regularCustomerOrderCount, queryLeads, orderForScope } from "@/lib/leads-query";
@@ -22,7 +22,7 @@ import { LeadSearchBox } from "@/components/LeadSearchBox";
 import { AgentLeadsTable } from "@/components/AgentLeadsTable";
 import { LeadStatusCards, QUICK_FILTER_STATUSES } from "@/components/LeadStatusCards";
 
-import { displayCallName } from "@/lib/types";
+import { displayCallName, displayUserName } from "@/lib/types";
 import type { CallSession, OrderStatus } from "@/lib/types";
 import { listSessionsForOrders } from "@/lib/call-sessions";
 import { resolveDialScheme } from "@/lib/dial";
@@ -269,6 +269,18 @@ export default async function LeadsPage({
 
   const canEdit = can(user.role, "orders", "edit", db.role_permissions);
   const canDelete = can(user.role, "orders", "delete", db.role_permissions);
+  // Who a ticked selection may be handed to. Callers only — a lead parked on
+  // an Administrator's name is a lead nobody is ringing — and the same reach
+  // rule the Transfer Leads page uses, so the two cannot disagree.
+  const canAssign = canAssignLeads(user, db);
+  const transferTargets = canAssign
+    ? allowedAssigneeIds(user, db)
+        .map((id) => db.profiles.find((p) => p.id === id))
+        .filter((p): p is NonNullable<typeof p> =>
+          Boolean(p && p.is_active && p.role === "agent" && !p.is_test_account))
+        .map((p) => ({ id: p.id, name: displayUserName(p) }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+    : [];
   const canManageIntegrations = can(user.role, "integrations", "manage", db.role_permissions);
   // Call Name, not username: ROMA_jamie is how the account signs in, JAMIE is
   // how the floor and the call-log files name the same person. displayCallName
@@ -704,6 +716,8 @@ export default async function LeadsPage({
         linesByOrder={linesByOrder}
         canEdit={canEdit}
         canDelete={canDelete}
+        canAssign={canAssign}
+        transferTargets={transferTargets}
         canManageIntegrations={canManageIntegrations}
         detachAction={detachFromPancakeOrderAction}
         canSetFulfillmentStatus={isFullAccess(user.role)}
