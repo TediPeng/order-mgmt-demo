@@ -788,6 +788,123 @@ export async function importRegularCustomersAction(
   return summary;
 }
 
+// ── Changing the owner ──────────────────────────────────────────────────────
+
+/**
+ * Hands a regular customer to a different agent.
+ *
+ * There was no way to do this. The module had create, which sets the owner,
+ * share, which deliberately never moves it, and untag, which throws the record
+ * away — so a customer who should belong to someone else could only be moved
+ * by editing the database, which is how it was done on 10 Oct and is not a
+ * procedure.
+ *
+ * `owner_agent_id` is what every scoping rule on the module keys off, so this
+ * is the field that decides whose Regular Customers list the record appears in.
+ * Moving the ORDER instead — through Transfer Leads — does not do it: a regular
+ * customer's orders are excluded from the Leads list, so the lead lands
+ * somewhere nobody is looking while the record stays with the old owner.
+ *
+ * Three things it deliberately does not do:
+ *
+ * - The sale credit never moves. `sold_by_agent_id` is stamped once, when the
+ *   order reaches Packaging, and it is the record of who did the work; moving
+ *   it would rewrite closed months and the commission paid on them.
+ * - Orders move only if asked. The tick is off by default, because handing
+ *   over a customer and re-assigning their order history are different
+ *   decisions and only one of them is usually meant.
+ * - A synced order stays locked either way. Pancake has it; who holds it in
+ *   ROMA does not change that.
+ */
+export async function changeRegularCustomerOwnerAction(formData: FormData) {
+  const { user, db } = await requireUserLite();
+
+  const customerId = String(formData.get("customer_id") || "");
+  const newOwnerId = String(formData.get("owner_agent_id") || "");
+  const moveOrders = formData.get("move_orders") === "on";
+  const reason = String(formData.get("reason") || "").trim();
+  const back = `${PATH}/${encodeURIComponent(customerId)}`;
+  const fail = (m: string) => redirect(`${back}?error=${encodeURIComponent(m)}`);
+
+  // The same grant that may untag a customer. Narrower than it looks: who it
+  // may be handed TO is limited again below.
+  if (!can(user.role, "regular_customers", "manage", db.role_permissions)) {
+    fail("You do not have permission to change the owner.");
+  }
+  if (reason.length < 5) fail("Give a reason of at least 5 characters.");
+
+  const { data: row } = await supabaseAdmin.from("customers").select("*").eq("id", customerId).maybeSingle();
+  if (!row) fail("Customer not found.");
+  const customer = row as Customer;
+  if (!customer.is_regular_customer) fail("This is not a regular customer.");
+  if (customer.owner_agent_id === newOwnerId) fail("They already own this customer.");
+
+  // A Team Lead can hand a customer to their own team and no further; an
+  // Administrator to anyone active. Same rule as assigning a lead, so the two
+  // screens cannot disagree about who a person may give work to.
+  if (!allowedAssigneeIds(user, db).includes(newOwnerId)) {
+    fail("You cannot hand this customer to that agent.");
+  }
+  const newOwner = db.profiles.find((p) => p.id === newOwnerId && p.is_active);
+  if (!newOwner) fail("Pick an active agent.");
+
+  // One number, one owner — the rule the Add form already enforces. Without
+  // this the move would quietly create the second record on a number that the
+  // rest of the module assumes cannot exist.
+  const { data: clash } = await supabaseAdmin
+    .from("customers")
+    .select("id")
+    .eq("phone_normalized", customer.phone_normalized)
+    .eq("is_regular_customer", true)
+    .eq("owner_agent_id", newOwnerId)
+    .neq("id", customerId)
+    .limit(1);
+  if (clash && clash.length > 0) {
+    fail(`${displayUserName(newOwner)} already has a regular customer on this number.`);
+  }
+
+  const previousOwner = db.profiles.find((p) => p.id === customer.owner_agent_id);
+
+  await supabaseAdmin
+    .from("customers")
+    .update({ owner_agent_id: newOwnerId, updated_at: new Date().toISOString() })
+    .eq("id", customerId);
+
+  // A share to the person who now owns it is nonsense, and would show them as
+  // both owner and guest on their own record.
+  await supabaseAdmin.from("customer_shares").delete().eq("customer_id", customerId).eq("agent_id", newOwnerId);
+
+  let moved = 0;
+  if (moveOrders) {
+    for (const o of adoptOrders(db, await orderRowsForCustomer(customerId))) {
+      o.agent_id = newOwnerId;
+      o.assigned_agent_email = newOwner!.email || "";
+      markOrderDirty(db, o.id);
+      moved++;
+    }
+  }
+
+  const info = await getRequestInfo();
+  logActivity(db, user.id, "REGULAR_CUSTOMER_OWNER_CHANGED", "customer", customerId, {
+    customer_name: customer.full_name,
+    phone: customer.phone_normalized,
+    reason,
+    orders_moved: moved,
+    sale_credit: "unchanged — stays with whoever made each sale",
+  }, {
+    module: "regular_customers",
+    previous_value: {
+      owner_agent_id: customer.owner_agent_id,
+      owner: previousOwner ? displayUserName(previousOwner) : null,
+    },
+    updated_value: { owner_agent_id: newOwnerId, owner: displayUserName(newOwner!) },
+    ...info,
+  });
+  await writeDb(db);
+
+  redirect(`${back}?owner_changed=${encodeURIComponent(displayUserName(newOwner!))}`);
+}
+
 // ── Sharing ─────────────────────────────────────────────────────────────────
 
 /**

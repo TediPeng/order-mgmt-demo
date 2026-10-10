@@ -13,12 +13,19 @@ import {
 } from "@/lib/customers";
 import { displayUserName } from "@/lib/types";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+import { Alert } from "@/components/ui/Alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge, StatusBadge } from "@/components/ui/Badge";
 import { ConfirmSubmitButton } from "@/components/ui/ConfirmSubmitButton";
 import { LinkButton } from "@/components/ui/Button";
-import { shareCustomerAction, untagRegularCustomerAction } from "@/lib/actions/regular-customers";
+import {
+  changeRegularCustomerOwnerAction,
+  shareCustomerAction,
+  untagRegularCustomerAction,
+} from "@/lib/actions/regular-customers";
 import { ShareCustomerButton } from "@/components/ShareCustomerButton";
+import { ChangeOwnerButton } from "@/components/ChangeOwnerButton";
+import { allowedAssigneeIds } from "@/lib/order-access";
 import { CustomerReturnRate } from "@/components/CustomerReturnRate";
 
 /**
@@ -32,10 +39,15 @@ import { CustomerReturnRate } from "@/components/CustomerReturnRate";
  */
 export default async function RegularCustomerDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  // The page read neither, so every redirect back to it was silent — a change
+  // of owner that was refused looked exactly like one that worked.
+  searchParams: Promise<{ owner_changed?: string; error?: string }>;
 }) {
   const { id } = await params;
+  const sp = await searchParams;
   const user = (await getCurrentUser())!;
   const db = await readDbLite();
 
@@ -77,6 +89,17 @@ export default async function RegularCustomerDetailPage({
 
   const orders = await ordersForCustomer(customer, await ordersForCustomers([customer]));
   const owner = db.profiles.find((p) => p.id === customer.owner_agent_id);
+  // Who this customer may be handed to. The same rule as assigning a lead — an
+  // Administrator may pick anyone active, a Team Lead their own team — so the
+  // two screens cannot disagree about who a person may give work to. The
+  // action checks it again; this only decides what the list offers.
+  const ownerTargets = canManage
+    ? allowedAssigneeIds(user, db)
+        .filter((id) => id !== customer.owner_agent_id)
+        .map((id) => db.profiles.find((p) => p.id === id))
+        .filter((p): p is NonNullable<typeof p> => Boolean(p && p.is_active && !p.is_test_account))
+        .map((p) => ({ id: p.id, name: displayUserName(p), callName: p.call_name }))
+    : [];
   const original = customer.original_agent_id
     ? db.profiles.find((p) => p.id === customer.original_agent_id)
     : null;
@@ -87,6 +110,13 @@ export default async function RegularCustomerDetailPage({
 
   return (
     <div className="space-y-4">
+      {sp.owner_changed && (
+        <Alert kind="success">
+          Owner changed to {sp.owner_changed}. The sale on each order stays credited to whoever made it.
+        </Alert>
+      )}
+      {sp.error && <Alert kind="error">{sp.error}</Alert>}
+
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <div className="flex flex-wrap items-center gap-3">
@@ -118,6 +148,21 @@ export default async function RegularCustomerDetailPage({
               }))}
               sharedWith={sharedWith}
               action={shareCustomerAction}
+            />
+          )}
+          {/* Ownership, not sharing — and the one control that actually moves a
+              customer between agents. Transfer Leads cannot: a regular
+              customer's orders are kept out of the Leads list, so moving the
+              order there leaves the record with the old owner and puts the
+              lead somewhere nobody is looking. */}
+          {canManage && (
+            <ChangeOwnerButton
+              customerId={customer.id}
+              customerName={customer.full_name}
+              currentOwnerName={owner ? displayUserName(owner) : "nobody"}
+              orderCount={orders.length}
+              targets={ownerTargets}
+              action={changeRegularCustomerOwnerAction}
             />
           )}
           {canManage && (
