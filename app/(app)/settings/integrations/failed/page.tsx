@@ -130,7 +130,7 @@ function causeOf(error: string | null): Cause {
 export default async function SyncFailedPage({
   searchParams,
 }: {
-  searchParams: Promise<{ retried?: string; fixed?: string; left?: string; error?: string; linked?: string; cleared?: string; resolved?: string }>;
+  searchParams: Promise<{ retried?: string; fixed?: string; left?: string; error?: string; linked?: string; cleared?: string; resolved?: string; q?: string }>;
 }) {
   const sp = await searchParams;
   const user = (await getCurrentUser())!;
@@ -142,9 +142,35 @@ export default async function SyncFailedPage({
   const failed = await listOrdersWithFailedSync();
   const agentNameById = new Map(db.profiles.map((p) => [p.id, displayUserName(p)]));
 
+  /**
+   * Finding one order among seventy-four, in sixty groups.
+   *
+   * The page is built to be read downwards — biggest cause first — which is
+   * right for clearing a backlog and useless for the other thing people come
+   * here to do, which is answer "what happened to this one". Sixty headings is
+   * a scroll, and the thing being looked for is usually an order number
+   * somebody has just been given on chat.
+   *
+   * Matched against what the rows already show: order number, customer, phone
+   * and agent. The phone is normalised, so 0917…, +63917… and 917… are one
+   * number here exactly as they are everywhere else.
+   */
+  const q = (sp.q || "").trim();
+  const needle = q.toLowerCase();
+  const needlePhone = normalizePhone(q);
+  const visible = q
+    ? failed.filter((o) => {
+        if (o.order_number.toLowerCase().includes(needle)) return true;
+        if ((o.customer_name || "").toLowerCase().includes(needle)) return true;
+        if ((agentNameById.get(o.agent_id) || "").toLowerCase().includes(needle)) return true;
+        const phone = normalizePhone(o.customer_phone || "");
+        return Boolean(needlePhone) && phone.includes(needlePhone);
+      })
+    : failed;
+
   // Grouped, then worst-first: the biggest pile is the one worth fixing next.
   const groups = new Map<string, { cause: Cause; orders: Order[] }>();
-  for (const order of failed) {
+  for (const order of visible) {
     const cause = causeOf(order.pancake_sync_error);
     const group = groups.get(cause.key) || { cause, orders: [] };
     group.orders.push(order);
@@ -184,8 +210,13 @@ export default async function SyncFailedPage({
   const heldOrders = ordered
     .filter((g) => g.cause.key.startsWith("held:"))
     .flatMap((g) => g.orders);
+  // Counted across the WHOLE queue, not the rows on screen. A search for one
+  // order number would otherwise show it alone with no warning, while three
+  // held siblings sat on the same number just out of view — and sending it
+  // would be the second parcel the badge exists to prevent.
   const heldPerPhone = new Map<string, number>();
-  for (const o of heldOrders) {
+  for (const o of failed) {
+    if (!/^Held: last Pancake order/i.test(o.pancake_sync_error || "")) continue;
     // normalizePhone, not the raw field: 0917…, +63917… and 917… are one
     // number, and two spellings would read as two customers.
     const key = normalizePhone(o.customer_phone || "") || o.id;
@@ -280,12 +311,53 @@ export default async function SyncFailedPage({
           </CardContent>
         </Card>
       ) : (
-        <p className="text-sm text-slate-500">
-          <span className="font-medium text-slate-800">{failed.length}</span> order
-          {failed.length === 1 ? "" : "s"} waiting, from{" "}
-          <span className="font-medium text-slate-800">{ordered.length}</span> cause
-          {ordered.length === 1 ? "" : "s"}.
-        </p>
+        <>
+          {/* A plain GET form, so the search is in the URL and a found order
+              can be sent to somebody as a link. No client component for it:
+              there is nothing here to keep in state. */}
+          <form method="get" className="flex flex-wrap items-center gap-2">
+            <input
+              type="search"
+              name="q"
+              defaultValue={q}
+              placeholder="Order number, customer, phone or agent"
+              aria-label="Search the failed queue"
+              className="h-9 w-full max-w-sm rounded-md border border-slate-300 px-3 text-sm"
+            />
+            <Button type="submit" size="sm" variant="outline">
+              Search
+            </Button>
+            {q && (
+              <LinkButton href="/settings/integrations/failed" size="sm" variant="outline">
+                Clear
+              </LinkButton>
+            )}
+          </form>
+
+          <p className="text-sm text-slate-500">
+            <span className="font-medium text-slate-800">{visible.length}</span> order
+            {visible.length === 1 ? "" : "s"}{q ? " matching" : " waiting"}, from{" "}
+            <span className="font-medium text-slate-800">{ordered.length}</span> cause
+            {ordered.length === 1 ? "" : "s"}
+            {q && (
+              <>
+                {" "}
+                — <span className="font-medium text-slate-800">{failed.length}</span> in the queue
+                altogether.
+              </>
+            )}
+            .
+          </p>
+
+          {q && visible.length === 0 && (
+            <Card>
+              <CardContent className="p-10 text-center text-sm text-slate-500">
+                Nothing in the failed queue matches “{q}”. That order may have synced since, or never
+                failed at all — the Sync Logs have its whole history either way.
+              </CardContent>
+            </Card>
+          )}
+        </>
       )}
 
       {canRetry && heldRows.length > 0 && (
